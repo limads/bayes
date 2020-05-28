@@ -3,6 +3,13 @@ name = "bayes"
 version = "0.1.0"
 authors = ["Diego Lima <lima.ds@outlook.com>"]
 edition = "2018"
+license = "LGPL-3.0"
+keywords = ["statistics", "machine learning", "probability", "scientific computing", "inference"]
+categories = ["science"]
+build = "build.rs"
+links = "gsl"
+publish = ["crates-io"]
+readme = "README.md"
 
 [dependencies]
 nalgebra = { version = "0.21.0", features = ["serde-serialize"] }
@@ -13,5 +20,4 @@ rand = "0.7.3"
 rand_distr = "0.2.2"
 
 [features]
-default=["mkl"]
 mkl=[]

@@ -1,6 +1,6 @@
 # About
 
-This is a **work-in-progress** crate that will offer type-safe abstractions to build probabilistic models and inference algorihtms. Two reference algorithms will be implemented in the short term: the `optim::ExpectMax` (general-purpose posterior mode-finding via expectation maximization) and `sim::Metropolis` (Metropolis-Hastitings posterior sampler). Adaptive estimation from conjugate pairs will also be provided. Most of the functionality is being implemented using the linear algebra abstractions from the ![nalgebra](https://crates.io/crates/nalgebra) crate. Certain optimization and basis expansion algorithms are provided via bindings to GNU GSL and Intel MKL (Optional).
+This is a **work-in-progress** crate that will offer composable abstractions to build probabilistic models and inference algorihtms. Two reference algorithms will be implemented in the short term: the `optim::ExpectMax` (general-purpose posterior mode-finding via expectation maximization) and `sim::Metropolis` (Metropolis-Hastitings posterior sampler). Adaptive estimation from conjugate pairs will also be provided. Most of the functionality is being implemented using the linear algebra abstractions from the ![nalgebra](https://crates.io/crates/nalgebra) crate. Certain optimization and basis expansion algorithms are provided via bindings to GNU GSL and Intel MKL (Optional).
 
 # Usage
 
