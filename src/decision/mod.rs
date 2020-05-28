@@ -58,17 +58,17 @@ impl Default for ErrorRate {
 pub struct DecisionBoundary<'a> {
 
     /// Sample for which this decision
-    sample : &'a DMatrix<f64>,
+    _sample : &'a DMatrix<f64>,
 
     /// Single point over the log-likelihood difference between two models
-    log_lik : f64,
+    _log_lik : f64,
 
-    ideal_rate : ErrorRate,
+    _ideal_rate : ErrorRate,
 
     /// Empirical error rate, after the boundary has been optimized over a sample.
     /// empirical_rate should be as close as possible to ideal_rate given the sample
     /// and the pair of models used to make decisions over the sample.
-    empirical_rate : ErrorRate,
+    _empirical_rate : ErrorRate,
 
 }
 
@@ -77,21 +77,21 @@ impl<'a> DecisionBoundary<'a> {
     /// Creates a new decision boundary over the informed sample,
     /// by trying to approach the ideal Error Rate as close as possible. If all missing criteria
     /// are equally important, use ErrorRate::default() (which yields (0.5, 0.5, 0.5, 0.5)).
-    pub fn new(y : &'a DMatrix<f64>, ideal : ErrorRate) -> Self {
+    pub fn new(_y : &'a DMatrix<f64>, _ideal : ErrorRate) -> Self {
         unimplemented!()
     }
 
-    fn d_prime() -> f64 {
+    fn _d_prime() -> f64 {
         unimplemented!()
     }
 
-    fn roc() -> f64 {
+    fn _roc() -> f64 {
         unimplemented!()
     }
 
     /// Returns the actual estimated error rate from the informed sample. This quantity is
     /// supposed to be as close to
-    fn error_rate(&'a self) -> ErrorRate {
+    fn _error_rate(&'a self) -> ErrorRate {
         unimplemented!()
     }
 
@@ -120,11 +120,11 @@ pub struct BayesFactor<'a, D, E>
         E : Distribution
 {
 
-    a : &'a D,
+    _a : &'a D,
 
-    b : &'a E,
+    _b : &'a E,
 
-    bound : DecisionBoundary<'a>
+    _bound : DecisionBoundary<'a>
 }
 
 impl<'a, D,E> BayesFactor<'a, D, E>
@@ -137,8 +137,8 @@ impl<'a, D,E> BayesFactor<'a, D, E>
     /// cost to positive/negative errors.
     pub fn best(
         &'a self,
-        y : &'a DMatrix<f64>,
-        boundary : DecisionBoundary<'a>
+        _y : &'a DMatrix<f64>,
+        _boundary : DecisionBoundary<'a>
     ) -> bool {
         unimplemented!()
     }
@@ -157,15 +157,15 @@ impl<'a, D,E> BayesFactor<'a, D, E>
     /// boundary becomes tied to the lifetime of the sample used to calculate it.
     pub fn optimize(
         &'a self,
-        y : DMatrix<f64>,
-        criterion : ErrorRate,
-        outcomes : DVector<f64>,
-        f : &'a dyn Fn(DMatrix<f64>)->DVector<f64>
+        _y : DMatrix<f64>,
+        _criterion : ErrorRate,
+        _outcomes : DVector<f64>,
+        _f : &'a dyn Fn(DMatrix<f64>)->DVector<f64>
     ) -> DecisionBoundary<'a> {
         unimplemented!()
     }
 
-    pub fn new(a : &'a D, b : &'a E) -> Self {
+    pub fn new(_a : &'a D, _b : &'a E) -> Self {
         unimplemented!()
     }
 }

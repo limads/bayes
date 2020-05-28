@@ -1,7 +1,7 @@
 use crate::gsl::multimin::*;
 use nalgebra::*;
 use crate::gsl::vector_double::*;
-use crate::gsl::matrix_double::*;
+// use crate::gsl::matrix_double::*;
 use std::ffi::c_void;
 use std::mem;
 use crate::gsl::utils::*;

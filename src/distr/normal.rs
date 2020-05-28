@@ -1,11 +1,11 @@
 use crate::distr::*;
-use crate::distr::gamma::*;
+use crate::distr::gamma::Gamma;
 use rand_distr;
 use rand;
 use std::f64::consts::PI;
-use std::ops::Add;
+// use std::ops::Add;
 use crate::sim::*;
-use std::ops::AddAssign;
+// use std::ops::AddAssign;
 
 #[derive(Debug)]
 pub struct Normal {
@@ -125,7 +125,7 @@ impl ExponentialFamily<U1> for Normal
         DVector::from_column_slice(&[theta[0] / theta[1], -0.5 / theta[1]])
     }
 
-    fn update_grad(&mut self, eta : DVectorSlice<'_, f64>) {
+    fn update_grad(&mut self, _eta : DVectorSlice<'_, f64>) {
         unimplemented!()
     }
 
@@ -139,7 +139,7 @@ impl Distribution for Normal
     where Self : Sized
 {
 
-    fn set_parameter(&mut self, p : DVectorSlice<'_, f64>, natural : bool) {
+    fn set_parameter(&mut self, p : DVectorSlice<'_, f64>, _natural : bool) {
         self.mu = p.clone_owned();
     }
 
@@ -161,10 +161,10 @@ impl Distribution for Normal
     }
 
     fn log_prob(&self, y : DMatrixSlice<f64>) -> f64 {
-        let eta = match self.current() {
+        /*let eta = match self.current() {
             Some(eta) => eta,
             None => self.mu.rows(0, self.mu.nrows())
-        };
+        };*/
         let loc_lp = match self.loc_factor {
             Some(ref loc) => loc.log_prob(self.mu.slice((0, 0), (self.mu.nrows(), 1))),
             None => 0.
@@ -178,11 +178,11 @@ impl Distribution for Normal
     }
 
     fn sample(&self) -> DMatrix<f64> {
-        use rand_distr::{Distribution};
+        // use rand_distr::{Distribution};
         use rand::prelude::*;
         let var = self.var()[0];
         let mut samples = DMatrix::zeros(self.mu.nrows(), 1);
-        for (i, t) in self.mu.iter().enumerate() {
+        for (i, _) in self.mu.iter().enumerate() {
             let n : f64 = rand::thread_rng().sample(rand_distr::StandardNormal);
             samples[(i,1)] = var * n;
         }
@@ -199,7 +199,7 @@ impl RandomWalk for Normal {
         })
     }
 
-    fn step_to<'a>(&'a mut self, new_eta : Option<DVectorSlice<'a, f64>>, update : bool) {
+    fn step_to<'a>(&'a mut self, new_eta : Option<DVectorSlice<'a, f64>>, _update : bool) {
         if let Some(ref mut eta_traj) = self.eta_traj {
             eta_traj.step(new_eta)
         } else {
@@ -207,7 +207,7 @@ impl RandomWalk for Normal {
         }
     }
 
-    fn step_by<'a>(&'a mut self, diff_eta : DVectorSlice<'a, f64>, update : bool) {
+    fn step_by<'a>(&'a mut self, diff_eta : DVectorSlice<'a, f64>, _update : bool) {
         self.eta_traj.as_mut().unwrap().step_increment(diff_eta);
     }
 

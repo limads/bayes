@@ -1,11 +1,10 @@
 use super::*;
-use std::boxed::Box;
 use super::gamma::*;
 use serde::{Serialize, Deserialize};
 use rand_distr;
-use rand;
+// use rand;
 use crate::sim::*;
-use std::ops::AddAssign;
+// use std::ops::AddAssign;
 use std::default::Default;
 use super::bernoulli::*;
 use serde::ser::{Serializer};
@@ -72,7 +71,7 @@ impl ExponentialFamily<U1> for Poisson
         &self.log_part
     }
 
-    fn update_grad(&mut self, eta : DVectorSlice<'_, f64>) {
+    fn update_grad(&mut self, _eta : DVectorSlice<'_, f64>) {
         unimplemented!()
     }
 
@@ -167,7 +166,7 @@ impl RandomWalk for Poisson {
         })
     }
 
-    fn step_by<'a>(&'a mut self, diff_eta : DVectorSlice<'a, f64>, update : bool) {
+    fn step_by<'a>(&'a mut self, diff_eta : DVectorSlice<'a, f64>, _update : bool) {
         self.eta_traj.as_mut().unwrap().step_increment(diff_eta);
     }
 
@@ -212,7 +211,7 @@ impl Default for Poisson {
 
 impl Serialize for Poisson {
 
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    fn serialize<S>(&self, _serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
@@ -222,7 +221,7 @@ impl Serialize for Poisson {
 
 impl<'de> Deserialize<'de> for Poisson {
 
-    fn deserialize<D>(deserializer: D) -> Result<Poisson, D::Error>
+    fn deserialize<D>(_deserializer: D) -> Result<Poisson, D::Error>
     where
         D: Deserializer<'de>,
     {

@@ -1,15 +1,10 @@
 use nalgebra::*;
 use super::*;
-use std::fmt::{self, Display};
+// use std::fmt::{self, Display};
 use serde::{Serialize, Deserialize};
-use super::Gamma;
+// use super::Gamma;
 use std::f64::consts::PI;
-use crate::sim::*;
-
-/// At optimization, vary Wishart node and minimize full log_prob.
-/// When done, set Cov::Constant to self and eval full log_prob of self relative to this constant.
-/// At MCMC sampling, eval self not relative to constant covariance;
-/// but relative to Wishart current step.
+// use crate::sim::*;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 enum CovFunction {
@@ -38,23 +33,6 @@ struct LinearOp {
     pub cov_func : CovFunction
 }
 
-/// Sampler should be a standard normal generator.
-/// (1) Generate standard normal vector z of same dimensionality
-/// as x;
-/// (2) Calc mu + sigma^(1/2) * z where the matrix is the cholesky factor of the covariance.
-/// A multinormal covariance can be realized in three distinct ways:
-/// (1) It is a known constant (processes varying on a known scale);
-/// (2) It is a known function of the mean (for example, by making assumptions over the linear output);
-/// and so any mean updates will trigger a covariance update;
-/// (3) It is a realization of a Wishart distribution; or a constant function of a Gamma variable (fully bayesian
-/// linear regression; fully bayesian overdispersed GLM).
-/// The second case is characteristic of generalized linear models for which we want to make location
-/// inferences conditional on the scale maximum likelihood estimate: For any fixed linearized outcome,
-/// we know what the covariance should by the error maximum likelihood estimate X^T W X.
-/// In cases (1) and (2) Multinormal is parametrized only by a mean vector of dimensionality p.
-/// A MultiNormal node in a probabilistic graph always represent the p(y|mu,sigma^-1), where mu is a location
-/// parameter vector owned by the node; and sigma^-1 is a realization of a precision matrix. If the node has a
-/// scale factor, this factor has its log-probability evaluated with respect to this precision matrix.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MultiNormal {
     mu : DVector<f64>,
@@ -196,7 +174,7 @@ impl ExponentialFamily<Dynamic> for MultiNormal {
     }
 
     // eta = [sigma_inv*mu,-0.5*sigma_inv] -> [mu|sigma]
-    fn link_inverse<S>(eta : &Matrix<f64, Dynamic, U1, S>) -> DVector<f64>
+    fn link_inverse<S>(_eta : &Matrix<f64, Dynamic, U1, S>) -> DVector<f64>
         where S : Storage<f64, Dynamic, U1>
     {
         /*let theta_1 = -0.5 * eta.1.clone() * eta.0.clone();
@@ -206,7 +184,7 @@ impl ExponentialFamily<Dynamic> for MultiNormal {
     }
 
     // theta = [mu|sigma] -> [sigma_inv*mu,-0.5*sigma_inv]
-    fn link<S>(theta : &Matrix<f64, Dynamic, U1, S>) -> DVector<f64>
+    fn link<S>(_theta : &Matrix<f64, Dynamic, U1, S>) -> DVector<f64>
         where S : Storage<f64, Dynamic, U1>
     {
         /*let qr = QR::<f64, Dynamic, Dynamic>::new(theta.1.clone());
@@ -218,7 +196,7 @@ impl ExponentialFamily<Dynamic> for MultiNormal {
         unimplemented!()
     }
 
-    fn update_grad(&mut self, eta : DVectorSlice<'_, f64>) {
+    fn update_grad(&mut self, _eta : DVectorSlice<'_, f64>) {
         unimplemented!()
     }
 
@@ -232,9 +210,9 @@ impl Distribution for MultiNormal {
     /// Set parameter should verify if there is a scale factor. If there is,
     /// also sets the eta of those factors and write the new implied covariance
     /// into self. Only after the new covariance is set to self, call self.update_log_partition().
-    fn set_parameter(&mut self, p : DVectorSlice<'_, f64>, natural : bool) {
+    fn set_parameter(&mut self, p : DVectorSlice<'_, f64>, _natural : bool) {
         self.mu.copy_from(&p.column(0));
-        if let Some(ref mut op) = self.op {
+        if let Some(ref mut _op) = self.op {
             /*match op.cov_func {
                 CovFunction::Log => {
                     // op.transf_sigma_inv = Some(self.sigma_inv[(0, 0)] * op.scale.clone() * op.scale.clone().transpose());

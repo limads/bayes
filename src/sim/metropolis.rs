@@ -1,8 +1,8 @@
 use nalgebra::*;
 use crate::distr::*;
 use super::*;
-use crate::optim::*;
-use std::ops::AddAssign;
+// use crate::optim::*;
+// use std::ops::AddAssign;
 use crate::distr::Estimator;
 
 /// The Metropolis-Hastings posterior sampler implements a transition rule based on
@@ -35,14 +35,14 @@ use crate::distr::Estimator;
 /// (2) Calc log prob of the unnormalized target at current and past iterations (lp new; lp past)
 /// (3) Calc r = min(1, exp( lp(new)/lp(past)*lq(past)/lq(new) ).
 /// (4) Draw u~unif[0,1]. Accumulate theta_new to the histogram u < r; Accumulate theta_old otherwise.
-pub struct Metropolis<D>
+struct Metropolis<D>
     where
         D : Distribution
 {
 
-    model : D,
+    _model : D,
 
-    proposal : MultiNormal
+    _proposal : MultiNormal
 
 }
 
@@ -50,7 +50,7 @@ impl<D> Metropolis<D>
     where D : Distribution
 {
 
-    fn step(&mut self) -> bool {
+    fn _step(&mut self) -> bool {
         // (1) Let the posterior have a natural vector order
         // (2) Initialize all parameters from a starting distribution
         // (3) For t = 0..T
@@ -66,7 +66,7 @@ impl<D> Estimator<D> for Metropolis<D>
     where D : Distribution
 {
 
-    fn fit<'a>(&'a mut self, y : DMatrix<f64>) -> Result<&'a D, &'static str> {
+    fn fit<'a>(&'a mut self, _y : DMatrix<f64>) -> Result<&'a D, &'static str> {
         unimplemented!()
     }
 

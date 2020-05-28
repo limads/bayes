@@ -96,7 +96,7 @@ impl ExponentialFamily<Dynamic> for Gamma {
         &self.log_part
     }
 
-    fn update_grad(&mut self, eta : DVectorSlice<'_, f64>) {
+    fn update_grad(&mut self, _eta : DVectorSlice<'_, f64>) {
         unimplemented!()
     }
 
@@ -144,8 +144,8 @@ impl Distribution for Gamma
     }
 
     fn mode(&self) -> DVector<f64> {
-        /// For alpha (shape) <= 1, the mode of the beta is truncated at zero.
-        /// For alpha >> 1, the mode approaces the mode of the gaussian at alpha / beta.
+        // For alpha (shape) <= 1, the mode of the beta is truncated at zero.
+        // For alpha >> 1, the mode approaces the mode of the gaussian at alpha / beta.
         DVector::from_element(1, (self.ab[0] - 1.) / self.ab[1])
     }
 
@@ -196,7 +196,7 @@ impl Distribution for Gamma
 
 impl Serialize for Gamma {
 
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    fn serialize<S>(&self, _serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
@@ -206,7 +206,7 @@ impl Serialize for Gamma {
 
 impl<'de> Deserialize<'de> for Gamma {
 
-    fn deserialize<D>(deserializer: D) -> Result<Gamma, D::Error>
+    fn deserialize<D>(_deserializer: D) -> Result<Gamma, D::Error>
     where
         D: Deserializer<'de>,
     {
@@ -215,25 +215,25 @@ impl<'de> Deserialize<'de> for Gamma {
 }
 
 pub struct ChiSquare {
-    g : Gamma
+    _g : Gamma
 }
 
 impl ChiSquare {
 
     pub fn new(p : usize) -> Self {
-        ChiSquare{ g : Gamma::new(p as f64 / 2., 0.5 ) }
+        ChiSquare{ _g : Gamma::new(p as f64 / 2., 0.5 ) }
     }
 
 }
 
 pub struct Exponential {
-    g : Gamma
+    _g : Gamma
 }
 
 impl Exponential {
 
     pub fn new(lambda : f64) -> Self {
-        Exponential { g : Gamma::new(1.0, lambda) }
+        Exponential { _g : Gamma::new(1.0, lambda) }
     }
 }
 

@@ -1,6 +1,6 @@
 use nalgebra::*;
 use super::*;
-use std::fmt::{self, Debug};
+// use std::fmt::{self, Debug};
 use serde::{Serialize, Deserialize};
 use super::vonmises::*;
 
@@ -97,10 +97,10 @@ impl Wishart {
             Correlation::Homogeneous(ref mut old_rho) => {
                 *old_rho = rho;
             },
-            Correlation::Autoregressive(ref mut old_rho, order) => {
+            Correlation::Autoregressive(ref mut old_rho, _order) => {
                 *old_rho = rho;
             },
-            Correlation::Banded(ref mut old_rho, order, nrow) => {
+            Correlation::Banded(ref mut old_rho, _order, _nrow) => {
                 *old_rho = rho;
             }
             _ => {
@@ -111,7 +111,7 @@ impl Wishart {
 
     /// Extract diagonal of an realized precision matrix, using current correlation
     /// structure.
-    pub fn extract_diag(&self, prec : DMatrixSlice<'_, f64>) -> DVector<f64> {
+    pub fn extract_diag(&self, _prec : DMatrixSlice<'_, f64>) -> DVector<f64> {
         unimplemented!()
     }
 
@@ -171,20 +171,18 @@ impl Wishart {
 
 impl Distribution for Wishart {
 
-    fn set_parameter(&mut self, p : DVectorSlice<'_, f64>, natural : bool) {
-        /// Use p to calculate a 2-column matrix of sufficient statistics for the gamma
-        /// priors to each entry of the diagonal of the covariance. Received p in the
-        /// natural scale is log(precision); or precision in the original scale.
-        /// If there is a rotation factor; eval log_prob(.) of this factor w.r.t.
-        /// the last element of p.
-
-        let n_params = self.mean().nrows() + 1;
-
+    fn set_parameter(&mut self, _p : DVectorSlice<'_, f64>, _natural : bool) {
+        // Use p to calculate a 2-column matrix of sufficient statistics for the gamma
+        // priors to each entry of the diagonal of the covariance. Received p in the
+        // natural scale is log(precision); or precision in the original scale.
+        // If there is a rotation factor; eval log_prob(.) of this factor w.r.t.
+        // the last element of p.
+        // let n_params = self.mean().nrows() + 1;
         unimplemented!()
     }
 
     fn mean<'a>(&'a self) -> &'a DVector<f64> {
-        /// Return diagonal entry current values.
+        // Return diagonal entry current values.
         unimplemented!()
     }
 
@@ -235,21 +233,21 @@ impl ExponentialFamily<U1> for Wishart
         Self : Distribution
 {
 
-    fn base_measure(y : DMatrixSlice<'_, f64>) -> DVector<f64>
+    fn base_measure(_y : DMatrixSlice<'_, f64>) -> DVector<f64>
         //where S : Storage<f64, Dynamic, U1>
     {
         unimplemented!()
     }
 
-    fn sufficient_stat(y : DMatrixSlice<'_, f64>) -> DMatrix<f64> {
+    fn sufficient_stat(_y : DMatrixSlice<'_, f64>) -> DMatrix<f64> {
         unimplemented!()
     }
 
-    fn suf_log_prob(&self, t : DMatrixSlice<'_, f64>) -> f64 {
+    fn suf_log_prob(&self, _t : DMatrixSlice<'_, f64>) -> f64 {
         unimplemented!()
     }
 
-    fn update_log_partition<'a>(&'a mut self, eta : DVectorSlice<'_, f64>) {
+    fn update_log_partition<'a>(&'a mut self, _eta : DVectorSlice<'_, f64>) {
         unimplemented!()
     }
 
@@ -257,7 +255,7 @@ impl ExponentialFamily<U1> for Wishart
         unimplemented!()
     }
 
-    fn update_grad(&mut self, eta : DVectorSlice<'_, f64>) {
+    fn update_grad(&mut self, _eta : DVectorSlice<'_, f64>) {
         unimplemented!()
     }
 
@@ -265,13 +263,13 @@ impl ExponentialFamily<U1> for Wishart
         unimplemented!()
     }
 
-    fn link_inverse<S>(eta : &Matrix<f64, Dynamic, U1, S>) -> DVector<f64>
+    fn link_inverse<S>(_eta : &Matrix<f64, Dynamic, U1, S>) -> DVector<f64>
         where S : Storage<f64, Dynamic, U1>
     {
         unimplemented!()
     }
 
-    fn link<S>(theta : &Matrix<f64, Dynamic, U1, S>) -> DVector<f64>
+    fn link<S>(_theta : &Matrix<f64, Dynamic, U1, S>) -> DVector<f64>
         where S : Storage<f64, Dynamic, U1>
     {
         unimplemented!()
@@ -281,7 +279,7 @@ impl ExponentialFamily<U1> for Wishart
 
 impl ConditionalDistribution<VonMises> for Wishart {
 
-    fn condition(mut self, vm : VonMises) -> Self {
+    fn condition(self, _vm : VonMises) -> Self {
         unimplemented!()
     }
 

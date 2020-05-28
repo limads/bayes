@@ -1,11 +1,11 @@
 use crate::gsl::vector_double::*;
 use crate::gsl::matrix_double::*;
-use std::mem;
-use std::ptr;
+use std::mem::{self};
+// use std::ptr;
 use std::boxed::Box;
 use nalgebra::*;
 use crate::gsl::multifit_nlinear::*;
-use crate::gsl::utils::*;
+// use crate::gsl::utils::*;
 
 //use crate::gsl::errno::gsl_error;
 //extern "C" {
@@ -129,7 +129,7 @@ pub unsafe fn get_nls_result(
 /// the errors of measured values must inform about function updates.
 pub fn nls<T : Sized>(
     beta_init : DVector<f64>,
-    mut extra : T,
+    extra : T,
     n : usize,
     fn_update : Box<dyn Fn(&DVector<f64>, &T)->DVector<f64>>,
     jacobian_update : Box<dyn Fn(&DVector<f64>, &T)->DMatrix<f64>>,
@@ -158,14 +158,18 @@ pub fn nls<T : Sized>(
         );
         //TODO make sure GSL is not relying on aliased use of user x and library x.
         let x : gsl_vector = nls_problem.user_beta.clone().into();
-        let mut fdf : gsl_multifit_nlinear_fdf = mem::uninitialized();
-        fdf.f = Some(f::<T>);
-        fdf.df = Some(df::<T>);
-        fdf.fvv = None; // or Some(ptr::null)
-        fdf.n = n;
-        fdf.p = p;
-        fdf.params = ((&mut nls_problem) as *mut NLSProblem<T>) as *mut ::std::os::raw::c_void;
-        let mut weights_gsl : gsl_vector = weights.into();
+        let mut fdf = gsl_multifit_nlinear_fdf{
+            f : Some(f::<T>),
+            df : Some(df::<T>),
+            fvv : None, // or Some(ptr::null)
+            n : n,
+            p : p,
+            params : ((&mut nls_problem) as *mut NLSProblem<T>) as *mut ::std::os::raw::c_void,
+            nevaldf : 0,
+            nevalf : 0,
+            nevalfvv : 0
+        };
+        let weights_gsl : gsl_vector = weights.into();
         let ans = gsl_multifit_nlinear_winit(
             &x as *const gsl_vector,
             &weights_gsl as *const gsl_vector,
@@ -176,7 +180,7 @@ pub fn nls<T : Sized>(
             println!("Error initializing NLS workspace: {}", ans);
             return None;
         }
-        let mut test_ans : i32 = GSL_CONTINUE;
+        let _test_ans : i32 = GSL_CONTINUE;
         // This is the parameter tolerance
         let xtol = (10.0).powf(-1.0*(p as f64));
         let gtol = 0.0001; //GSL_DBL_EPSILON.powf(1.0 / 3.0);

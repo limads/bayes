@@ -1,7 +1,7 @@
 use nalgebra::*;
 use crate::distr::*;
-use super::*;
-use crate::optim::*;
+// use super::*;
+// use crate::optim::*;
 use std::ops::AddAssign;
 use serde::{Serialize, Deserialize};
 use std::ops::Index;
@@ -73,14 +73,14 @@ impl EtaTrajectory {
 pub struct Sample {
 
     /// Applies link function to eta_traj to get this field.
-    theta_traj : DMatrix<f64>
+    _theta_traj : DMatrix<f64>
 
 }
 
 impl Sample {
 
-    pub fn new(theta_traj : DMatrix<f64>) -> Self {
-        Self{ theta_traj }
+    pub fn new(_theta_traj : DMatrix<f64>) -> Self {
+        Self{ _theta_traj }
     }
 
 }
@@ -89,7 +89,7 @@ impl Index<usize> for Sample {
 
     type Output = Histogram;
 
-    fn index(&self, ix: usize) -> &Self::Output {
+    fn index(&self, _ix: usize) -> &Self::Output {
         unimplemented!()
     }
 

@@ -1,7 +1,7 @@
 use crate::gsl::multimin::*;
 use nalgebra::*;
-use crate::gsl::vector_double::*;
-use crate::gsl::matrix_double::*;
+// use crate::gsl::vector_double::*;
+// use crate::gsl::matrix_double::*;
 use std::ffi::c_void;
 use std::mem;
 use crate::gsl::utils::*;
@@ -70,12 +70,13 @@ pub fn minimize_with_grad<T : Sized>(
             gsl_multimin_fdfminimizer_vector_bfgs2,
             n
         );
-        let mut fdf : gsl_multimin_function_fdf = mem::uninitialized();
-        fdf.f = Some(objective::<T>);
-        fdf.df = Some(gradient::<T>);
-        fdf.fdf = Some(obj_grad::<T>);
-        fdf.n = n;
-        fdf.params = ((&mut probl) as *mut MinProblem<T>) as *mut ::std::os::raw::c_void;
+        let mut fdf = gsl_multimin_function_fdf {
+            f : Some(objective::<T>),
+            df : Some(gradient::<T>),
+            fdf : Some(obj_grad::<T>),
+            n : n,
+            params : ((&mut probl) as *mut MinProblem<T>) as *mut ::std::os::raw::c_void
+        };
         let params_gsl : gsl_vector = params.into();
         let mut steps : Vec<OptimizationStep> = Vec::new();
         gsl_multimin_fdfminimizer_set(

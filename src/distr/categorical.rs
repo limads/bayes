@@ -1,7 +1,7 @@
 use nalgebra::*;
 use super::*;
 use super::dirichlet::*;
-use std::fmt::{self, Display};
+// use std::fmt::{self, Display};
 use serde::{Serialize, Deserialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -85,7 +85,7 @@ impl ExponentialFamily<Dynamic> for Categorical
         Self : Distribution
 {
 
-    fn base_measure(y : DMatrixSlice<'_, f64>) -> DVector<f64> {
+    fn base_measure(_y : DMatrixSlice<'_, f64>) -> DVector<f64> {
         DVector::from_element(1,1.)
     }
 
@@ -107,7 +107,7 @@ impl ExponentialFamily<Dynamic> for Categorical
         &self.log_part
     }
 
-    fn update_grad(&mut self, eta : DVectorSlice<'_, f64>) {
+    fn update_grad(&mut self, _eta : DVectorSlice<'_, f64>) {
         unimplemented!()
     }
 
@@ -135,7 +135,7 @@ impl ExponentialFamily<Dynamic> for Categorical
 
 impl ConditionalDistribution<Dirichlet> for Categorical {
 
-    fn condition(mut self, d : Dirichlet) -> Self {
+    fn condition(self, _d : Dirichlet) -> Self {
         unimplemented!()
     }
 

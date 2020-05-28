@@ -1,9 +1,8 @@
 use crate::gsl::multimin::*;
 use nalgebra::*;
-use crate::gsl::vector_double::*;
-use crate::gsl::matrix_double::*;
-use std::ffi::c_void;
-use std::mem;
+// use crate::gsl::vector_double::*;
+// use crate::gsl::matrix_double::*;
+// use std::ffi::c_void;
 use crate::gsl::utils::*;
 use super::*;
 
@@ -36,10 +35,11 @@ pub fn minimize<T : Sized>(
             gsl_multimin_fminimizer_nmsimplex,
             n
         );
-        let mut mf : gsl_multimin_function = mem::uninitialized();
-        mf.f = Some(objective::<T>);
-        mf.n = n;
-        mf.params = ((&mut probl) as *mut MinProblem<T>) as *mut ::std::os::raw::c_void;
+        let mut mf = gsl_multimin_function {
+            f : Some(objective::<T>),
+            n : n,
+            params : ((&mut probl) as *mut MinProblem<T>) as *mut ::std::os::raw::c_void
+        };
         let params_gsl : gsl_vector = params.clone().into();
         let step_sz_gsl : gsl_vector = params.into();
         gsl_multimin_fminimizer_set(

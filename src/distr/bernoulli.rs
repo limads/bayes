@@ -1,11 +1,11 @@
 use super::*;
-use std::boxed::Box;
-use super::beta::*;
-use serde::{Serialize, Deserialize};
+// use std::boxed::Box;
+// use super::beta::*;
+// use serde::{Serialize, Deserialize};
 use rand_distr;
 use rand;
 use crate::sim::*;
-use std::ops::AddAssign;
+// use std::ops::AddAssign;
 use std::default::Default;
 
 pub type BernoulliFactor = UnivariateFactor<Beta>;
@@ -152,7 +152,7 @@ impl ExponentialFamily<U1> for Bernoulli
         &self.log_part
     }
 
-    fn update_grad(&mut self, eta : DVectorSlice<'_, f64>) {
+    fn update_grad(&mut self, _eta : DVectorSlice<'_, f64>) {
         unimplemented!()
     }
 
@@ -250,7 +250,7 @@ impl Distribution for Bernoulli
     fn sample(&self) -> DMatrix<f64> {
         use rand_distr::{Distribution};
         let mut samples = DMatrix::zeros(self.theta.nrows(), 1);
-        for (i, t) in self.theta.iter().enumerate() {
+        for (i, _) in self.theta.iter().enumerate() {
             samples[(i,1)] = (self.sampler[i].sample(&mut rand::thread_rng()) as i32) as f64;
         }
         samples
@@ -266,7 +266,7 @@ impl RandomWalk for Bernoulli {
         })
     }
 
-    fn step_by<'a>(&'a mut self, diff_eta : DVectorSlice<'a, f64>, update : bool) {
+    fn step_by<'a>(&'a mut self, diff_eta : DVectorSlice<'a, f64>, _update : bool) {
         self.eta_traj.as_mut().unwrap().step_increment(diff_eta);
     }
 

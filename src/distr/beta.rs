@@ -1,8 +1,8 @@
 use super::*;
-use serde::{Serialize, Deserialize};
+// use serde::{Serialize, Deserialize};
 use super::gamma::*;
-use nalgebra::*;
-use nalgebra::storage::*;
+// use nalgebra::*;
+// use nalgebra::storage::*;
 use rand_distr;
 use rand;
 use std::default::Default;
@@ -80,7 +80,7 @@ impl ExponentialFamily<Dynamic> for Beta {
     fn update_log_partition<'a>(&'a mut self, eta : DVectorSlice<'_, f64>) {
         let log_part_val = Gamma::gamma(eta[0] as f64).ln() +
             Gamma::gamma(eta[1] as f64).ln() -
-            Gamma::gamma((eta[0] as f64 + eta[1] as f64 )).ln();
+            Gamma::gamma(eta[0] as f64 + eta[1] as f64 ).ln();
         self.log_part = DVector::from_element(1, log_part_val);
     }
 
@@ -88,7 +88,7 @@ impl ExponentialFamily<Dynamic> for Beta {
         &self.log_part
     }
 
-    fn update_grad(&mut self, eta : DVectorSlice<'_, f64>) {
+    fn update_grad(&mut self, _eta : DVectorSlice<'_, f64>) {
         unimplemented!()
     }
 
@@ -113,7 +113,7 @@ impl Distribution for Beta
     where Self : Sized
 {
 
-    fn set_parameter(&mut self, p : DVectorSlice<'_, f64>, natural : bool) {
+    fn set_parameter(&mut self, p : DVectorSlice<'_, f64>, _natural : bool) {
         self.ab = p.clone_owned();
         let (a, b) = (p[0], p[1]);
         self.mean = DVector::from_element(1, a / (a + b));

@@ -9,7 +9,7 @@ pub mod em;
 
 pub use em::*;
 
-pub trait ApproximateDistribution<D, C>
+trait ApproximateDistribution<D, C>
     where
         C : Dim,
         Self : Distribution + Sized + ExponentialFamily<C>,

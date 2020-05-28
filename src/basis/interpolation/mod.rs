@@ -86,7 +86,7 @@ pub fn interpolate2d(
 }
 
 pub struct InterpolationTask {
-    spline2d_type : *const spline2d::gsl_interp2d_type,
+    _spline2d_type : *const spline2d::gsl_interp2d_type,
     spline : *mut spline2d::gsl_spline2d,
     xacc : *mut spline2d::gsl_interp_accel,
     yacc : *mut spline2d::gsl_interp_accel,
@@ -94,7 +94,7 @@ pub struct InterpolationTask {
     y_dom : (f64, f64),
 //    x_buffer : Vec<f64>,
 //    y_buffer : Vec<f64>,
-    z_buf : Vec<f64>
+    _z_buf : Vec<f64>
 }
 
 impl InterpolationTask {
@@ -152,11 +152,11 @@ impl InterpolationTask {
             println!("interp initialized");
 
             Ok(Self {
-                spline2d_type,
+                _spline2d_type : spline2d_type,
                 spline,
                 xacc,
                 yacc,
-                z_buf,
+                _z_buf : z_buf,
                 x_dom,
                 y_dom
             })

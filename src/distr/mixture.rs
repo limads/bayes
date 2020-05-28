@@ -28,7 +28,7 @@ use super::dirichlet::*;
 /// If we use this mixture and take the product again, the categorical can be interpreted
 /// as being the LHS of the dot product with the row-stacked multivariate means, in which
 /// case the mixture is selecting one of k possible multivariate realizations.
-pub struct NormalMixture {
+struct NormalMixture {
 
     /// Underlying vector of means, against which the vector or matrix of
     /// log-probabilities is compared against the RHS.

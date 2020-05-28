@@ -1,5 +1,4 @@
 use nalgebra::*;
-use std::ops::Index;
 use nalgebra::storage::*;
 use std::fmt::Debug;
 use std::ops::AddAssign;
@@ -116,7 +115,7 @@ pub trait ConditionalDistribution<D>
 
     fn view_factor(&self) -> Option<&D>;
 
-    fn take_factor(mut self) -> Option<D>;
+    fn take_factor(self) -> Option<D>;
 
     fn factor_mut(&mut self) -> Option<&mut D>;
 
