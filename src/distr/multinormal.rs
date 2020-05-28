@@ -1,0 +1,313 @@
+use nalgebra::*;
+use super::*;
+use std::fmt::{self, Display};
+use serde::{Serialize, Deserialize};
+use super::Gamma;
+use std::f64::consts::PI;
+use crate::sim::*;
+
+/// At optimization, vary Wishart node and minimize full log_prob.
+/// When done, set Cov::Constant to self and eval full log_prob of self relative to this constant.
+/// At MCMC sampling, eval self not relative to constant covariance;
+/// but relative to Wishart current step.
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+enum CovFunction {
+    None,
+    Log,
+    Logit
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct LinearOp {
+
+    pub scale : DMatrix<f64>,
+
+    pub shift : DVector<f64>,
+
+    pub lin_mu : DVector<f64>,
+
+    pub lin_sigma_inv : DMatrix<f64>,
+
+    pub transf_sigma_inv : Option<DMatrix<f64>>,
+
+    /// For situations when the covariance is a known
+    /// function of the mean parameter vector, usually
+    /// because we are making inferences conditional on an
+    /// ML estimate of the scale parameter.
+    pub cov_func : CovFunction
+}
+
+/// Sampler should be a standard normal generator.
+/// (1) Generate standard normal vector z of same dimensionality
+/// as x;
+/// (2) Calc mu + sigma^(1/2) * z where the matrix is the cholesky factor of the covariance.
+/// A multinormal covariance can be realized in three distinct ways:
+/// (1) It is a known constant (processes varying on a known scale);
+/// (2) It is a known function of the mean (for example, by making assumptions over the linear output);
+/// and so any mean updates will trigger a covariance update;
+/// (3) It is a realization of a Wishart distribution; or a constant function of a Gamma variable (fully bayesian
+/// linear regression; fully bayesian overdispersed GLM).
+/// The second case is characteristic of generalized linear models for which we want to make location
+/// inferences conditional on the scale maximum likelihood estimate: For any fixed linearized outcome,
+/// we know what the covariance should by the error maximum likelihood estimate X^T W X.
+/// In cases (1) and (2) Multinormal is parametrized only by a mean vector of dimensionality p.
+/// A MultiNormal node in a probabilistic graph always represent the p(y|mu,sigma^-1), where mu is a location
+/// parameter vector owned by the node; and sigma^-1 is a realization of a precision matrix. If the node has a
+/// scale factor, this factor has its log-probability evaluated with respect to this precision matrix.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MultiNormal {
+    mu : DVector<f64>,
+
+    /// (sigma_inv * mu)^T
+    scaled_mu : DVector<f64>,
+
+    /// This is a constant or a draw from the Wishart factor.
+    sigma_inv : DMatrix<f64>,
+
+    //sigma_qr : QR<f64, Dynamic, Dynamic>,
+    //sigma_lu : LU<f64, Dynamic, Dynamic>,
+    //sigma_det : f64,
+    //prec : DMatrix<f64>,
+    //eta : (DVector<f64>, DMatrix<f64>),
+    // prec : DMatrix<f64>,
+
+    /// By setting a shift and scale, sampling and log-prob is not done with respect
+    /// to Self, anymore, but to the related multinormal:
+    /// N(scale * self + shift; scale * shift * scale^T);
+    op : Option<LinearOp>,
+
+    loc_factor : Option<Box<MultiNormal>>,
+
+    scale_factor : Option<Wishart>,
+
+    log_part : DVector<f64>,
+
+    // Vector of scale parameters; against which the Wishart factor
+    // can be updated. Will be none if there is no scale factor.
+    // suff_scale : Option<DVector<f64>>
+}
+
+impl MultiNormal {
+
+    pub fn invert_scale(s : &DMatrix<f64>) -> DMatrix<f64> {
+        let s_qr = QR::<f64, Dynamic, Dynamic>::new(s.clone());
+        s_qr.try_inverse().unwrap()
+        //
+        // self.prec = self.
+    }
+
+    pub fn new(mu : DVector<f64>, sigma : DMatrix<f64>) -> Self {
+        // let suff_scale = None;
+        let log_part = DVector::from_element(1, 0.0);
+        let sigma_inv = Self::invert_scale(&sigma);
+        // let func = CovFunction::None;
+        // let lin_sigma_inv = LinearCov::None;
+        /*let mu = param.0;
+        let mut sigma = param.1;
+        let eta = Self::eta( &(mu.clone(), sigma.clone()) );
+        let sigma_qr = QR::<f64, Dynamic, Dynamic>::new(sigma.clone());
+        let sigma_lu = LU::new(sigma.clone());
+        let sigma_det = sigma_lu.determinant();
+        let prec = sigma_qr.try_inverse().unwrap();*/
+        // Self { mu, sigma, sigma_qr, sigma_lu, sigma_det, prec, eta }
+        let mut norm = Self {
+            mu : mu.clone(),
+            sigma_inv,
+            loc_factor: None,
+            scale_factor : None,
+            op : None,
+            log_part,
+            scaled_mu : mu.clone()
+        };
+        norm.update_log_partition(mu.rows(0, mu.nrows()));
+        norm
+    }
+
+    /*pub fn new(mu : DVector<f64>, w : Wishart) -> Self {
+        Self { mu : mu, cov : Covariance::new_random(w), shift : None, scale : None }
+    }
+
+    pub fn new_standard(n : usize) -> Self {
+        let mu = DVector::from_element(n, 0.0);
+        let mut sigma = DMatrix::from_element(n, n, 0.0);
+        sigma.set_diagonal(&DVector::from_element(n, 1.));
+        Self::new_scaled(mu, sigma)
+    }
+
+    fn dim(&self) -> usize {
+        self.mu.shape().0
+    }
+
+    fn n_params(&self) -> usize {
+        self.mu.shape().0 + self.sigma.shape().0 * self.sigma.shape().1
+    }*/
+
+}
+
+impl ExponentialFamily<Dynamic> for MultiNormal {
+
+    fn base_measure(y : DMatrixSlice<'_, f64>) -> DVector<f64> {
+        DVector::from_element(1, (2. * PI).powf( - (y.ncols() as f64) / 2. ) )
+    }
+
+    /// Returs the matrix [sum(yi) | sum(yi yi^T)]
+    fn sufficient_stat(y : DMatrixSlice<'_, f64>) -> DMatrix<f64> {
+        /*let r_sum = y.row_sum();
+        let cross_p = y.clone_owned().transpose() * &y;
+        let mut t = cross_p.add_column(0);
+        t.column_mut(0).copy_from(&r_sum);
+        t*/
+        let yt = y.clone_owned().transpose();
+        let mut t = DMatrix::zeros(y.ncols(), y.ncols() + 1);
+        let mut ss_ws = DMatrix::zeros(y.ncols(), y.ncols());
+        for (yr, yc) in y.row_iter().zip(yt.column_iter()) {
+            t.slice_mut((0, 0), (t.nrows(), 1)).add_assign(&yc);
+            yc.mul_to(&yr, &mut ss_ws);
+            t.slice_mut((0, 1), (t.ncols() - 1, t.ncols() - 1)).add_assign(&ss_ws);
+        }
+        t
+    }
+
+    fn suf_log_prob(&self, t : DMatrixSlice<'_, f64>) -> f64 {
+        let mut lp = 0.0;
+        lp += self.scaled_mu.dot(&t.column(0));
+        let t_cov = t.columns(1, t.ncols() - 1);
+        for (s_inv_row, tc_row) in self.sigma_inv.row_iter().zip(t_cov.row_iter()) {
+            lp += (-0.5) * s_inv_row.dot(&tc_row);
+        }
+        lp
+    }
+
+    fn log_partition<'a>(&'a self) -> &'a DVector<f64> {
+        &self.log_part
+    }
+
+    /// Updating the log-partition of a multivariate normal assumes a new
+    /// mu vector (eta); but a constant covariance, which should be changed
+    /// by the appropriate step(.) call.
+    fn update_log_partition<'a>(&'a mut self, eta : DVectorSlice<'_, f64>) {
+        // TODO update eta parameter here.
+        let cov = Self::invert_scale(&self.sigma_inv);
+        let sigma_lu = LU::new(cov.clone());
+        let sigma_det = sigma_lu.determinant();
+        let p_eta_cov = -0.25 * eta.clone().transpose() * cov * &eta;
+        self.log_part = DVector::from_element(1, p_eta_cov[0] - 0.5*sigma_det.ln())
+    }
+
+    // eta = [sigma_inv*mu,-0.5*sigma_inv] -> [mu|sigma]
+    fn link_inverse<S>(eta : &Matrix<f64, Dynamic, U1, S>) -> DVector<f64>
+        where S : Storage<f64, Dynamic, U1>
+    {
+        /*let theta_1 = -0.5 * eta.1.clone() * eta.0.clone();
+        let theta_2 = -0.5 * eta.1.clone();
+        (theta_1, theta_2)*/
+        unimplemented!()
+    }
+
+    // theta = [mu|sigma] -> [sigma_inv*mu,-0.5*sigma_inv]
+    fn link<S>(theta : &Matrix<f64, Dynamic, U1, S>) -> DVector<f64>
+        where S : Storage<f64, Dynamic, U1>
+    {
+        /*let qr = QR::<f64, Dynamic, Dynamic>::new(theta.1.clone());
+        let eta_1 = qr.solve(&theta.0).unwrap();
+        let eta_2 = -0.5 * qr.try_inverse().unwrap();
+        let mut eta = eta_2.add_column(0);
+        eta.column_mut(0).copy_from(&eta_1);
+        eta*/
+        unimplemented!()
+    }
+
+    fn update_grad(&mut self, eta : DVectorSlice<'_, f64>) {
+        unimplemented!()
+    }
+
+    fn grad(&self) -> &DVector<f64> {
+        unimplemented!()
+    }
+}
+
+impl Distribution for MultiNormal {
+
+    /// Set parameter should verify if there is a scale factor. If there is,
+    /// also sets the eta of those factors and write the new implied covariance
+    /// into self. Only after the new covariance is set to self, call self.update_log_partition().
+    fn set_parameter(&mut self, p : DVectorSlice<'_, f64>, natural : bool) {
+        self.mu.copy_from(&p.column(0));
+        if let Some(ref mut op) = self.op {
+            /*match op.cov_func {
+                CovFunction::Log => {
+                    // op.transf_sigma_inv = Some(self.sigma_inv[(0, 0)] * op.scale.clone() * op.scale.clone().transpose());
+                },
+                CovFunction::Logit => {
+
+                }
+            }
+            op.lin_mu = op.scale.clone() * p.column(0);
+            op.lin_sigma_inv = op.scale.clone() * self.sigma_inv * op.scale.clone().transpose();*/
+        }
+    }
+
+    fn mean<'a>(&'a self) -> &'a DVector<f64> {
+        &self.mu
+    }
+
+    fn mode(&self) -> DVector<f64> {
+        self.mu.clone()
+    }
+
+    fn var(&self) -> DVector<f64> {
+        self.cov().unwrap().diagonal()
+    }
+
+    fn cov(&self) -> Option<DMatrix<f64>> {
+        Some(Self::invert_scale(&self.sigma_inv))
+    }
+
+    fn log_prob(&self, y : DMatrixSlice<f64>) -> f64 {
+        let t = Self::sufficient_stat(y);
+        let lp = self.suf_log_prob(t.slice((0, 0), (t.nrows(), t.ncols())));
+        let loc_lp = match &self.loc_factor {
+            Some(loc) => {
+                let mu_row : DMatrix<f64> = DMatrix::from_row_slice(self.mu.nrows(), 1, self.mu.data.as_slice());
+                loc.log_prob(mu_row.slice((0, 0), (0, self.mu.nrows())))
+            },
+            None => 0.0
+        };
+        let scale_lp = match &self.scale_factor {
+            Some(scale) => {
+                let sinv_diag : DVector<f64> = self.sigma_inv.diagonal().clone_owned();
+                scale.log_prob(sinv_diag.slice((0, 0), (sinv_diag.nrows(), 1)))
+            },
+            None => 0.0
+        };
+        lp + loc_lp + scale_lp
+    }
+
+    fn sample(&self) -> DMatrix<f64> {
+        unimplemented!()
+    }
+
+}
+
+/*/// This is valid only for independent normals. But since .condition(.)
+/// takes ownership of a value, there is no way a user will build
+/// dependent normal distributions.
+impl Add<MultiNormal, Output=MultiNormal> for MultiNormal {
+
+}
+
+impl Mul<DMatrix<f64>, Output=Normal> for MultiNormal {
+
+}
+
+impl Mul<f64, Output=MultiNormal> for MultiNormal {
+
+}
+
+impl Add<DVector<f64>, Output=MultiNormal for MultiNormal {
+
+}
+
+*/
+

@@ -1,0 +1,17 @@
+[package]
+name = "bayes"
+version = "0.1.0"
+authors = ["Diego Lima <lima.ds@outlook.com>"]
+edition = "2018"
+
+[dependencies]
+nalgebra = { version = "0.21.0", features = ["serde-serialize"] }
+simba="0.1.2"
+petgraph = "0.5.0"
+serde = { version="1.0.106", features=["derive"] }
+rand = "0.7.3"
+rand_distr = "0.2.2"
+
+[features]
+default=["mkl"]
+mkl=[]
