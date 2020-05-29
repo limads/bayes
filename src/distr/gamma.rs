@@ -7,15 +7,16 @@ use serde::{Serialize, Deserialize};
 use serde::ser::{Serializer};
 use serde::de::Deserializer;
 
-/// Gamma is a distribution for scale parameters. For a location parameter centered
+/// The Gamma is a distribution for inverse-scale or rate parameters. For a location parameter centered
 /// at alpha (shape), Gamma(alpha, beta) represents the random distribution of
 /// a relative change alpha*(1/beta) for this parameter. For alpha=1, the gamma distribution has its mode truncated
 /// at zero (which gives rise to the exponential distribution with shape beta; or the distribution of
 /// the squared deviation of a single standard normal (X^2(1)). A sample of size n from the standard normal
 /// has its precision distributed as Gamma with alpha=n/2. For alpha >> 1, the gamma approaches
 /// a gaussian centered at alpha / beta and with dispersion alpha / beta^2.
-/// TODO make alpha fixed at construction; so to characterize a pseudo-sample of size n, set alpha=n/2.
-/// In this way, Gamma implements univariate distribution. To use as exponential prior, set alpha=1.
+/// For a fixed alpha=1, Gamma behaves as an exponential distribution, taking the sum of interval samples as its sufficient statistic.
+/// A Gamma distribution can be seen as a closed-form, finite-sample, slightly biased distribution
+/// for the estimate of an inverse shape (or rate) parameter, where the bias is given by the size of the pseudo-sample considered.
 #[derive(Debug, Clone)]
 pub struct Gamma {
 

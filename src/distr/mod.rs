@@ -251,45 +251,44 @@ pub trait Estimator<D>
 }
 
 /// Implemented by distributions which can have their
-/// log-probability evaluated with respect to a random sample.
-trait Likelihood<C>
+/// log-probability evaluated with respect to a random sample directly.
+/// Implemented by Normal, Poisson and Bernoulli. Other distributions
+/// require that their log-probability be evaluated by using suf_log_prob(.)
+/// by passing the sufficient statistic calculated from the sample.
+pub trait Likelihood<C>
     where
         Self : ExponentialFamily<C>,
         C : Dim
 {
 
     /// Returns a mean estimate using maximum likelihood estimation.
-    /// Will be a vector with single entry for univariate distributions.
-    fn mean_mle(y : DMatrixSlice<'_, f64>) -> DVector<f64>;
+    fn mean_mle(y : DMatrixSlice<'_, f64>) -> f64;
 
     /// Returns a variance estimate using maximum likelihood estimation.
-    /// Will be a matrix with a single entry for univariate distributions;
-    /// or a covariance matrix for multivariate distributions.
-    fn var_mle(y : DMatrixSlice<'_, f64>) -> DMatrix<f64>;
+    fn var_mle(y : DMatrixSlice<'_, f64>) -> f64;
 
-    /// Returns a dispersion estimate for the mean maximum likelihood estimate.
-    /// This estimate can be standardized (standard error of mean for univariate
-    /// estimates; correlation matrix for multivariate estimates) or not
-    /// (variance of mean for univariate estimates; covariance of mean for multivariate
-    /// estimates).
-    fn error_mle(y : DMatrixSlice<'_, f64>, standard : bool) -> DMatrix<f64> {
+    /// Returns a standardized dispersion estimate for the maximum likelihood estimate of the mean.
+    /// (standard error of mean). The standard deviation of the gaussian approximation
+    /// to the posterior of conjugate models should approach this quantity as the sample
+    /// size grows to be infinitely large.
+    fn se_mle(y : DMatrixSlice<'_, f64>) -> f64 {
         let n = y.nrows() as f64;
-        let err = Self::var_mle(y).unscale(n);
-        if standard {
-            match err.nrows() {
-                1 => err.map(|e| e.sqrt() ),
-                _ => MultiNormal::corr_from(err)
-            }
-        } else {
-            err
-        }
+        (Self::var_mle(y) / n).sqrt()
     }
 
-    fn cond_log_prob(&self, eta_cond : DMatrixSlice<'_, f64>, y : DMatrixSlice<'_, f64>) -> f64 {
+    /// The conditional log-probability evaluation works because
+    /// the sufficient statistic of Likelihood implementors is
+    /// just the sum of the outcomes. Under this situation, the
+    /// log-probability of the sufficient stat should equal the
+    /// log-probability of the component-wise multiplication of
+    /// the natural parameter with the individual samples.
+    fn cond_log_prob(&self, y : DMatrixSlice<'_, f64>) -> f64 {
+        let eta_cond = self.view_parameter(true);
+        let log_part = self.log_partition();
         assert!(y.ncols() == eta_cond.ncols());
+        assert!(log_part.nrows() == eta_cond.nrows() && log_part.nrows() == y.nrows());
         let mut lp = 0.0;
-        let lp_iter = eta_cond.row_iter().zip(y.row_iter())
-            .zip(self.log_partition().iter());
+        let lp_iter = eta_cond.row_iter().zip(y.row_iter()).zip(log_part.iter());
         for ((e, y), l) in lp_iter {
             lp += e.dot(&y) - l
         };

@@ -203,6 +203,20 @@ impl Distribution for Normal
 
 }
 
+impl Likelihood<U1> for Normal {
+
+    fn mean_mle(y : DMatrixSlice<'_, f64>) -> f64 {
+        let mle = y.iter().fold(0.0, |ys, y| ys + y) / (y.nrows() as f64);
+        mle
+    }
+
+    fn var_mle(y : DMatrixSlice<'_, f64>) -> f64 {
+        let n = y.nrows() as f64;
+        y.iter().fold(0.0, |ys, y| ys + y.powf(2.) / n)
+    }
+
+}
+
 impl RandomWalk for Normal {
 
     fn current<'a>(&'a self) -> Option<DVectorSlice<'a, f64>> {

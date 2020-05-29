@@ -12,7 +12,9 @@ use std::default::Default;
 /// Then u / (u + v) ~ Beta. It is commonly used to model prior Bernoulli probabilities, where
 /// m and n are the pseudo-data dimensionality of a success trial count and its complement.
 /// By setting u = v >> 0, Beta approaches a gaussian distribution centered at u / (u + v). By setting
-/// u = v = 1, Beta equals a uniform distribution bounded at [0,1].
+/// u = v = 1, Beta equals a uniform distribution bounded at [0,1]. Alternatively, a Beta can be seen
+/// as a closed-form, finite-sample, slightly biased distribution for the estimate of a proportion parameter,
+/// where the bias is given by the size of the pseudo-sample considered.
 #[derive(Debug, Clone)]
 pub struct Beta {
 

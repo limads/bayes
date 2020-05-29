@@ -174,17 +174,17 @@ impl ExponentialFamily<U1> for Bernoulli
 
 impl Likelihood<U1> for Bernoulli {
 
-    fn mean_mle(y : DMatrixSlice<'_, f64>) -> DVector<f64> {
+    fn mean_mle(y : DMatrixSlice<'_, f64>) -> f64 {
         assert!(y.ncols() == 1);
         let mle = y.iter().fold(0.0, |ys, y| {
             assert!(*y == 0. || *y == 1.); ys + y
         }) / (y.nrows() as f64);
-        DVector::from_element(1, mle)
+        mle
     }
 
-    fn var_mle(y : DMatrixSlice<'_, f64>) -> DMatrix<f64> {
-        let m = Self::mean_mle(y)[0];
-        DMatrix::from_element(1,1,m*(1. - m))
+    fn var_mle(y : DMatrixSlice<'_, f64>) -> f64 {
+        let m = Self::mean_mle(y);
+        m * (1. - m)
     }
 
 }
