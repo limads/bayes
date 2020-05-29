@@ -67,7 +67,7 @@ impl ExponentialFamily<Dynamic> for Beta {
         assert!(y.ncols() == 1);
         let mut suf = DMatrix::zeros(2, 1);
         for y in y.column(0).iter() {
-            suf[(0,0)] += y.ln();
+            suf[(0,0)] += (y + 1E-10).ln();
             suf[(1,0)] += (1. - y).ln()
         }
         suf
@@ -80,9 +80,10 @@ impl ExponentialFamily<Dynamic> for Beta {
     }
 
     fn update_log_partition<'a>(&'a mut self, eta : DVectorSlice<'_, f64>) {
-        let log_part_val = Gamma::gamma(eta[0] as f64).ln() +
-            Gamma::gamma(eta[1] as f64).ln() -
-            Gamma::gamma(eta[0] as f64 + eta[1] as f64 ).ln();
+        println!("{}", eta);
+        let log_part_val = Gamma::ln_gamma(eta[0] as f64) +
+            Gamma::ln_gamma(eta[1] as f64) -
+            Gamma::ln_gamma(eta[0] as f64 + eta[1] as f64 );
         self.log_part = DVector::from_element(1, log_part_val);
     }
 

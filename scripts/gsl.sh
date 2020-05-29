@@ -113,6 +113,7 @@ bindgen /usr/include/gsl/gsl_sf_gamma.h -o src/gsl/gamma.rs \
     --no-layout-tests --no-derive-copy --no-derive-debug --no-rustfmt-bindings \
     --no-recursive-whitelist \
     --whitelist-function "gsl_sf_gamma"
+    --whitelist-function "gsl_sf_lngamma"
 rustfmt src/gsl/gamma.rs --force
 
 rm src/gsl/*.bk

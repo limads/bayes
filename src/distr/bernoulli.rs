@@ -10,6 +10,31 @@ use std::default::Default;
 
 pub type BernoulliFactor = UnivariateFactor<Beta>;
 
+/// The Bernoulli is the exponential-family distribution
+/// used as the likelihood for binary outcomes. Each realization is parametrized
+/// by a proportion parameter θ (0.0 ≥ θ ≥ 1.0), whose natural
+/// parameter transformation is the logit ln(θ / (1.0 - θ))
+///
+/// # Example
+///
+/// ```
+/// use rand;
+/// use bayes::distr::*;
+/// use nalgebra::*;
+///
+/// let n = 1000;
+/// let mut y = DMatrix::<f64>::zeros(n, 1);
+/// y.iter_mut().for_each(|b| *b = (rand::random::<bool>() as i32) as f64);
+///
+/// // Maximum likelihood estimate
+/// assert!(Bernoulli::mean_mle((&y).into()) - 0.5 < 1E-3);
+///
+/// // Bayesian conjugate estimate
+/// let mut b = Bernoulli::new(n, None).condition(Beta::new(1,1));
+/// b.fit(y);
+/// let post : Beta = b.take_factor().unwrap();
+/// assert!(post.mean()[0] - 0.5 < 1E-3);
+/// ```
 #[derive(Debug)]
 pub struct Bernoulli {
 

@@ -45,7 +45,12 @@ impl Gamma {
     }
 
     pub fn gamma(y : f64) -> f64 {
+        //println!("Gamma({})={}", y, unsafe{ gsl_sf_gamma(y) });
         unsafe{ gsl_sf_gamma(y) }
+    }
+
+    pub fn ln_gamma(y : f64) -> f64 {
+        unsafe{ gsl_sf_lngamma(y) }
     }
 
 }
@@ -79,7 +84,7 @@ impl ExponentialFamily<Dynamic> for Gamma {
     }
 
     fn update_log_partition<'a>(&'a mut self, eta : DVectorSlice<'_, f64>) {
-        let log_part_v = Gamma::gamma(eta[0] + 1.).ln() -
+        let log_part_v = Gamma::ln_gamma(eta[0] + 1.) -
             (eta[0] + 1.)*(-eta[1]).ln();
         self.log_part = DVector::from_element(1, log_part_v);
     }
