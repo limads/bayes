@@ -15,12 +15,18 @@ pub struct Categorical {
 
 impl Categorical {
 
-    pub fn new(param : DVector<f64>) -> Self {
+    pub fn new(n : usize, param : Option<&[f64]>) -> Self {
         //println!("{}", param);
         //println!("{}", param.sum() + (1. - param.sum()) );
+        let param = match param {
+            Some(p) => {
+                assert!(p.len() == n);
+                DVector::from_column_slice(p)
+            },
+            None => DVector::from_element(n, 1. / ((n + 1) as f64))
+        };
         assert!(param.sum() + (1. - param.sum()) - 1. < 10E-8);
         let eta = Self::link(&param);
-        println!("theta = {}; eta = {}", param, eta);
         let mut cat = Self {
             log_theta : param.map(|t| t.ln() ),
             theta : param,

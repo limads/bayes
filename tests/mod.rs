@@ -22,7 +22,7 @@ fn bernoulli() {
 }
 
 #[test]
-pub fn poisson() {
+fn poisson() {
     let p = Poisson::new(1, Some(1.));
     let ym = DMatrix::from_element(1,1,1.0);
     unsafe {
@@ -31,7 +31,7 @@ pub fn poisson() {
 }
 
 #[test]
-pub fn multinormal() {
+fn multinormal() {
     let mu = DVector::from_element(5, 0.0);
     let mut sigma = DMatrix::from_element(5, 5, 0.0);
     sigma.set_diagonal(&DVector::from_element(5, 1.));
@@ -64,29 +64,31 @@ pub fn multinormal() {
     }
 }
 
-/*#[test]
-pub fn logprob() {
-    let n : Normal = Default::default();
-    let b : Bernoulli = Default::default();
-
-    let e  : Exponential = Default::default();
-    let c : Categorical = Categorical::new_standard(4);
+#[test]
+fn normal() {
+    let n = Normal::new(1, Some(0.), Some(1.));
+    let ym = DMatrix::from_element(1, 1, 0.0);
     unsafe {
-        //println!("{}; {}", gsl_cat_p, n.prob(vec![0.0].iter()));
+        assert!( (gsl_ran_gaussian_pdf(0., 1.) - n.prob(ym.rows(0,1))).abs()  < EPS );
+    }
+}
 
-        assert!( (gsl_ran_exponential_pdf(1., 1.0) - e.prob(vec![1.0].iter())).abs() < EPS);
-        assert!( (gsl_ran_gaussian_pdf(0., 1.) - n.prob(vec![0.0].iter())).abs()  < EPS );
-
-        // Obs: Categorical = Multinomial when n=1
-        let probs : [f64; 5] = [0.2,0.2,0.2,0.2,0.2];
-        let outcome : [u32; 5] = [1, 0, 0, 0, 0];
+#[test]
+fn categorical() {
+    // Obs: Categorical = Multinomial when n=1. Also note that bayes parametrizes
+    // categorical with k-1 classes.
+    let c : Categorical = Categorical::new(4, Some(&[0.2, 0.2, 0.2, 0.2]));
+    let probs : [f64; 5] = [0.2,0.2,0.2,0.2,0.2];
+    let outcome : [u32; 5] = [1, 0, 0, 0, 0];
+    unsafe {
         let gsl_cat_p = gsl_ran_multinomial_pdf(5, &probs[0] as *const _, &outcome[0] as *const _);
         let vprobs = DMatrix::from_iterator(1, 4, outcome[0..4].iter().map(|o| *o as f64));
-        let cat_p = c.prob(vprobs.row_iter());
-        println!("{} {}", gsl_cat_p, cat_p);
+        let cat_p = c.prob(vprobs.slice((0, 0), (1, 4)));
+        println!("Categorical: {} {}", gsl_cat_p, cat_p);
         //println!("{}", gsl_cat_p - cat_p);
         assert!((gsl_cat_p - cat_p).abs() < EPS);
-
-
     }
-}*/
+}
+
+
+

@@ -43,11 +43,12 @@ impl Normal {
     /// All log-probabilities are evaluated conditional against the parameter
     /// for this factor; All sampling is conditional on a sampled value for this
     /// factor.
-    pub fn new(loc : &[f64], scale : f64) -> Self {
-        let mu = DVector::from_column_slice(loc);
+    pub fn new(n : usize, loc : Option<f64>, scale : Option<f64>) -> Self {
+        let mu = DVector::from_element(n, loc.unwrap_or(0.0));
         let joint_ix = (0, mu.nrows());
         let loc_factor = None;
         let scale_factor = None;
+        let scale = scale.unwrap_or(1.);
         let prec_suff = DVector::from_column_slice(&[1. / scale, (1. / scale).ln()]);
         let eta_traj = None;
         let log_part = mu.map(|e| e.powf(2.) / 2. );
@@ -84,7 +85,7 @@ impl ExponentialFamily<U1> for Normal
 
     fn sufficient_stat(y : DMatrixSlice<'_, f64>) -> DMatrix<f64> {
         assert!(y.ncols() == 1);
-        let mut suf = DMatrix::zeros(1, 2);
+        let mut suf = DMatrix::zeros(2, 1);
         for y in y.column(0).iter() {
             suf[(0,0)] += y;
             suf[(1,0)] += y.powf(2.0);
