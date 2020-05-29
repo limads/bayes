@@ -1,6 +1,6 @@
 # About
 
-This is a **work-in-progress** crate that will offer composable abstractions to build probabilistic models and inference algorihtms. Two reference algorithms will be implemented in the short term: the `optim::ExpectMax` (general-purpose posterior mode-finding via expectation maximization) and `sim::Metropolis` (Metropolis-Hastitings posterior sampler). Adaptive estimation from conjugate pairs will also be provided. Most of the functionality is being implemented using the linear algebra abstractions from the ![nalgebra](https://crates.io/crates/nalgebra) crate. Certain optimization and basis expansion algorithms are provided via bindings to GNU GSL and Intel MKL (Optional).
+This is a **work-in-progress** crate that will offer composable abstractions to build probabilistic models and inference algorihtms. Two reference algorithms will be implemented in the short term: the `optim::ExpectMax` (general-purpose posterior mode-finding via expectation maximization) and `sim::Metropolis` (Metropolis-Hastitings posterior sampler). Adaptive estimation from conjugate pairs will also be provided. Most of the functionality is being implemented using the linear algebra abstractions from the [nalgebra](https://crates.io/crates/nalgebra) crate. Certain optimization and basis expansion algorithms are provided via bindings to GNU GSL and Intel MKL (Optional).
 
 # Usage
 
@@ -36,9 +36,9 @@ Probabilistic models are built by conditioning any `Distribution` implementor on
 let b = Bernoulli::new(&[0.5]).condition(Beta::new(1,1));
 ```
 
-This conditioning operation is defined for implementors of `ConditionalDistribution<Factor>`. This trait is implemented for:
+This conditioning operation is defined for implementors of `Conditional<Factor>`. This trait is implemented for:
 
-- All classical conjugate pairs: (Beta-Bernoulli; Normal-Normal, etc);
+- All conjugate pairs: (Beta-Bernoulli; Normal-Normal, etc);
 
 - Distributions conditioned on a random natural parameter factor (classical generalized linear models: Poisson-MultiNormal; Bernoulli-MultiNormal; Categorical-MultiNormal);
 
@@ -46,7 +46,7 @@ This conditioning operation is defined for implementors of `ConditionalDistribut
 
 - A mixture and its discrete categorical draw.
 
-Deep probabilistic graphs can in principle be built as long as the neighboring elements have valid `ConditionalDistribution` implementations; although their usability for any given problem is determined by the inference algorithm implementation.
+Deep probabilistic graphs can in principle be built as long as the neighboring elements have valid `Conditional<Factor>` implementations; although their usability for any given problem is determined by the inference algorithm implementation.
 
 Conditioning takes ownership of the conditioning factor, which can be recovered via:
 
@@ -56,13 +56,13 @@ let factor : Option<Beta> = b.take_factor();
 let factor : Option<&Beta> = b.view_factor();
 ```
 
-For deeper probabilistic graphs, you can also use:
+For deeper probabilistic graphs, you will also be able to use:
 
 ```
-let factor : Option<Vec<&Beta>> = b.find_factors();
+let factor : Option<&Beta> = b.find_factor();
 ```
 
-Which will search the graph for all the distributions of the given type. Graph iteration is done from the unique top-level element to all its roots; then from left-hand-side to right-hand side. Location or direction factors are to the left-hand side; conditionally independent scale factors to the right-hand side.
+Which will search the graph and return the first match. Graph iteration is done from the unique top-level element to all its roots; then from left-hand-side to right-hand side. Location or direction factors are to the left-hand side; conditionally independent scale factors to the right-hand side.
 
 ## Inference (planned)
 
@@ -74,11 +74,12 @@ let post = metr.fit(y).unwrap();
 println!("{}", post.view_factor::<MultiNormal>.unwrap().marginal());
 ```
 
-Certain inference algorithms (usually satisfying a conjugate structure) can be updated sequentially. In this case, `AdaptiveEstimator<Target>` is also implemented:
+Certain inference algorithms (usually satisfying a conjugate structure in shallow probabilistic models) can be updated sequentially by a cheap parameter update:
 
 ```r
+let y = DMatrix::from_column_slice(3, 1, &[0., 1., 0.]);
 let b = Bernoulli::new().condition(beta);
-let b : Option<&Beta> = b.update(DVector::from_column_slice(&[0., 1., 0.]);
+let b : Option<&Beta> = b.fit(&y);
 ```
 
 ## Decision (planned)
@@ -123,6 +124,6 @@ The basic abstractions are already in place and a few implementations for sampli
 
 # License
 
-This crate is licensed under the ![LGPL v3.0](https://www.gnu.org/licenses/lgpl-3.0.en.html).
+This crate is licensed under the [LGPL v3.0](https://www.gnu.org/licenses/lgpl-3.0.en.html).
 
 

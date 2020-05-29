@@ -42,6 +42,13 @@ impl Categorical {
 
 impl Distribution for Categorical {
 
+    fn view_parameter(&self, natural : bool) -> &DVector<f64> {
+        match natural {
+            true => &self.eta,
+            false => &self.theta
+        }
+    }
+
     fn set_parameter(&mut self, p : DVectorSlice<'_, f64>, natural : bool) {
         if natural {
             self.eta = p.clone_owned();
@@ -139,7 +146,7 @@ impl ExponentialFamily<Dynamic> for Categorical
 
 }
 
-impl ConditionalDistribution<Dirichlet> for Categorical {
+impl Conditional<Dirichlet> for Categorical {
 
     fn condition(self, _d : Dirichlet) -> Self {
         unimplemented!()

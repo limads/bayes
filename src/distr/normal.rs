@@ -55,6 +55,12 @@ impl Normal {
         Self{ mu, joint_ix, loc_factor, eta_traj, prec_suff, scale_factor, log_part }
     }
 
+    pub fn mle(y : DMatrixSlice<'_, f64>) -> (f64, f64) {
+        assert!(y.ncols() == 1);
+        let n = y.nrows() as f64;
+        y.iter().fold((0.0, 0.0), |ys, y| (ys.0 + y / n, ys.1 + y.powf(2.) / n) )
+    }
+
     // TODO move to ConditionalDistibution<Gama> implementation.
     /*/// Distribution conditioned on a constant scale factor that is not
     /// modelled probabilistically.
@@ -142,6 +148,11 @@ impl Distribution for Normal
 
     fn set_parameter(&mut self, p : DVectorSlice<'_, f64>, _natural : bool) {
         self.mu = p.clone_owned();
+    }
+
+    fn view_parameter(&self, _natural : bool) -> &DVector<f64> {
+        // see mu; vs. see sigma_inv*mu
+        unimplemented!()
     }
 
     fn mean<'a>(&'a self) -> &'a DVector<f64> {

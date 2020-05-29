@@ -60,16 +60,7 @@ impl ExponentialFamily<Dynamic> for Gamma {
         DVector::from_element(1, 1.)
     }
 
-    /*fn sufficient_stat(y : DMatrix<f64>) -> DMatrix<f64> {
-        if y.ncols() > 1 {
-            panic!("The Gamma distribution can only be evaluated at a single column");
-        }
-        let y0 = y.column(0).map(|y| y.ln());
-        let y1 = y.column(0).map(|y| y);
-        DMatrix::from_columns(&[y0, y1])
-    }*/
-
-    /// y: Vector of precision draws
+    /// y: Vector of precision/rate draws
     fn sufficient_stat(y : DMatrixSlice<'_, f64>) -> DMatrix<f64> {
         assert!(y.ncols() == 1);
         let mut suf = DMatrix::zeros(2, 1);
@@ -134,6 +125,13 @@ impl Distribution for Gamma
         self.mean = DVector::from_element(1, ab[0] / ab[1]);
     }
 
+    fn view_parameter(&self, natural : bool) -> &DVector<f64> {
+        match natural {
+            true => &self.eta,
+            false => &self.ab
+        }
+    }
+
     fn cov(&self) -> Option<DMatrix<f64>> {
         None
     }
@@ -158,39 +156,11 @@ impl Distribution for Gamma
         self.suf_log_prob(suf.rows(0,suf.nrows()))
     }
 
-    //fn shared_factors(&self) -> Factors {
-    //    Vec::new().into()
-    //}
-
-    //fn cond_log_prob(&self, y : DMatrixSlice<f64>, joint : &DVector<f64>) -> f64 {
-    //    unimplemented!()
-    //}
-
     fn sample(&self) -> DMatrix<f64> {
         use rand_distr::Distribution;
         let s = self.sampler.sample(&mut rand::thread_rng());
         DMatrix::from_element(1, 1, s)
     }
-
-    /*fn factors<'b>(&'b self) -> Factors<'b> {
-        unimplemented!()
-    }
-
-    fn factors_mut<'b>(&'b mut self) -> FactorsMut<'b> {
-        unimplemented!()
-    }
-
-    fn marginalize(&self) -> Option<Histogram> {
-        None
-    }*/
-
-    // fn shift_ix(&mut self, by : usize) {
-    //    self.joint_ix.0 += by
-    // }
-
-    //fn retrieve_parameter<'a>(&'a self, joint : &'a DVector<f64>) -> Option<DVectorSlice<'a, f64>> {
-    //    Some(joint.rows(self.joint_ix.0, self.joint_ix.1))
-    //}
 
 }
 
@@ -211,29 +181,6 @@ impl<'de> Deserialize<'de> for Gamma {
         D: Deserializer<'de>,
     {
         unimplemented!()
-    }
-}
-
-pub struct ChiSquare {
-    _g : Gamma
-}
-
-impl ChiSquare {
-
-    pub fn new(p : usize) -> Self {
-        ChiSquare{ _g : Gamma::new(p as f64 / 2., 0.5 ) }
-    }
-
-}
-
-pub struct Exponential {
-    _g : Gamma
-}
-
-impl Exponential {
-
-    pub fn new(lambda : f64) -> Self {
-        Exponential { _g : Gamma::new(1.0, lambda) }
     }
 }
 

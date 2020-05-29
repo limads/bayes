@@ -1,5 +1,5 @@
 use super::*;
-use super::gamma::*;
+// use super::gamma::*;
 use serde::{Serialize, Deserialize};
 use rand_distr;
 // use rand;
@@ -39,6 +39,7 @@ impl Poisson {
         p.set_parameter(l.rows(0, l.nrows()), false);
         p
     }
+
 }
 
 impl ExponentialFamily<U1> for Poisson
@@ -111,6 +112,13 @@ impl Distribution for Poisson
         }
     }
 
+    fn view_parameter(&self, natural : bool) -> &DVector<f64> {
+        match natural {
+            true => &self.eta,
+            false => &self.lambda
+        }
+    }
+
     fn mean<'a>(&'a self) -> &'a DVector<f64> {
         &self.lambda
     }
@@ -155,6 +163,70 @@ impl Distribution for Poisson
         None
     }
 
+
+}
+
+impl Conditional<Gamma> for Poisson {
+
+    fn condition(mut self, g : Gamma) -> Poisson {
+        self.factor = PoissonFactor::Conjugate(g);
+        self.suf_lambda = Some(Gamma::sufficient_stat(self.lambda.slice((0, 0), (self.lambda.nrows(), 1))));
+        // TODO update sampler vector
+        self
+    }
+
+    fn view_factor(&self) -> Option<&Gamma> {
+        match &self.factor {
+            PoissonFactor::Conjugate(g) => Some(g),
+            _ => None
+        }
+    }
+
+    fn take_factor(self) -> Option<Gamma> {
+        match self.factor {
+            PoissonFactor::Conjugate(g) => Some(g),
+            _ => None
+        }
+    }
+
+    fn factor_mut(&mut self) -> Option<&mut Gamma> {
+        match &mut self.factor {
+            PoissonFactor::Conjugate(g) => Some(g),
+            _ => None
+        }
+    }
+
+}
+
+impl Likelihood<U1> for Poisson {
+
+    fn mean_mle(y : DMatrixSlice<'_, f64>) -> DVector<f64> {
+        assert!(y.ncols() == 1);
+        let mle = y.iter().fold(0.0, |ys, y| ys + y) / (y.nrows() as f64);
+        DVector::from_element(1, mle)
+    }
+
+    fn var_mle(y : DMatrixSlice<'_, f64>) -> DMatrix<f64> {
+        DMatrix::from_element(1, 1, Self::mean_mle(y)[0])
+    }
+
+}
+
+impl Estimator<Gamma> for Poisson {
+
+    fn fit<'a>(&'a mut self, y : DMatrix<f64>) -> Result<&'a Gamma, &'static str> {
+        match self.factor {
+            PoissonFactor::Conjugate(ref mut gamma) => {
+                let n = y.nrows() as f64;
+                let ys = y.column(0).sum();
+                let (a, b) = (gamma.view_parameter(false)[0], gamma.view_parameter(false)[1]);
+                let new_param = DVector::from_column_slice(&[a + ys, b + n]);
+                gamma.set_parameter(new_param.rows(0, new_param.nrows()), false);
+                Ok(&(*gamma))
+            },
+            _ => Err("Distribution does not have a conjugate factor")
+        }
+    }
 
 }
 

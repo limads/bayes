@@ -56,13 +56,11 @@ impl Bernoulli {
 
 }
 
-impl ConditionalDistribution<Beta> for Bernoulli {
+impl Conditional<Beta> for Bernoulli {
 
     fn condition(mut self, b : Beta) -> Bernoulli {
         self.factor = BernoulliFactor::Conjugate(b);
-        self.suf_theta = Some(DMatrix::from_row_slice(1, 2,
-            &[self.theta[0].ln(), (1. - self.theta[0]).ln()]
-        ));
+        self.suf_theta = Some(Beta::sufficient_stat(self.theta.slice((0, 0), (self.theta.nrows(), 1))));
         // TODO update sampler vector
         self
     }
@@ -90,7 +88,7 @@ impl ConditionalDistribution<Beta> for Bernoulli {
 
 }
 
-impl ConditionalDistribution<MultiNormal> for Bernoulli {
+impl Conditional<MultiNormal> for Bernoulli {
 
     fn condition(mut self, m : MultiNormal) -> Bernoulli {
         self.factor = BernoulliFactor::CondExpect(m);
@@ -174,20 +172,35 @@ impl ExponentialFamily<U1> for Bernoulli
 
 }
 
-impl ConditionalLikelihood for Bernoulli { }
+impl Likelihood<U1> for Bernoulli {
+
+    fn mean_mle(y : DMatrixSlice<'_, f64>) -> DVector<f64> {
+        assert!(y.ncols() == 1);
+        let mle = y.iter().fold(0.0, |ys, y| {
+            assert!(*y == 0. || *y == 1.); ys + y
+        }) / (y.nrows() as f64);
+        DVector::from_element(1, mle)
+    }
+
+    fn var_mle(y : DMatrixSlice<'_, f64>) -> DMatrix<f64> {
+        let m = Self::mean_mle(y)[0];
+        DMatrix::from_element(1,1,m*(1. - m))
+    }
+
+}
 
 impl Estimator<Beta> for Bernoulli {
 
     fn fit<'a>(&'a mut self, y : DMatrix<f64>) -> Result<&'a Beta, &'static str> {
+        assert!(y.ncols() == 1);
         match self.factor {
-            BernoulliFactor::Conjugate(ref mut g) => {
+            BernoulliFactor::Conjugate(ref mut beta) => {
                 let n = y.nrows() as f64;
-                let y = y.column(0).sum();
-                let a = g.mean()[0];
-                let b = g.mean()[1];
-                let param = DVector::from_column_slice(&[a + y, b + n - y]);
-                g.set_parameter(param.rows(0,param.nrows()), false);
-                Ok(&(*g))
+                let ys = y.column(0).sum();
+                let (a, b) = (beta.view_parameter(false)[0], beta.view_parameter(false)[1]);
+                let new_param = DVector::from_column_slice(&[a + ys, b + n - ys]);
+                beta.set_parameter(new_param.rows(0, new_param.nrows()), false);
+                Ok(&(*beta))
             },
             _ => Err("Distribution does not have a conjugate factor")
         }
@@ -210,6 +223,13 @@ impl Distribution for Bernoulli
         self.eta = eta;
         if let Some(ref mut suf) = self.suf_theta {
             *suf = Beta::sufficient_stat(self.theta.slice((0,0), (self.theta.nrows(),1)));
+        }
+    }
+
+    fn view_parameter(&self, natural : bool) -> &DVector<f64> {
+        match natural {
+            true => &self.eta,
+            false => &self.theta
         }
     }
 

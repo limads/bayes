@@ -44,39 +44,60 @@ pub mod vonmises;
 
 pub use vonmises::*;
 
+/// Trait shared by all parametric distributions in the exponential
+/// family. The Distribution immediate state is defined by a parameter vector
+/// (stored  both on a natural and canonical parameter scale) which can
+/// be changed and inspected via set_parameter/view_parameter. Distribution
+/// summaries (mean, mode, variance and covariance) can be retrieved based
+/// on the current state of the parameter vector. The distribution sampling/
+/// log-probability methods are dependent not only on the current parameter vector,
+/// but also on the state of any applied conditioning factors.
 pub trait Distribution
-    where Self : Debug + Sized //+ Clone /*+ JointDistribution*/
+    where Self : Debug + Sized
 {
 
-    /// Returns the vector(s) that completely determine the output of log_prob and sample.
-    /// For ExponentialFamily implementors, this is the canonical parameter (at the
-    /// same scale of the distribution samples); For Unary and Binary operations
-    /// this is the transformation function applied to both parameters; For non-parametric
-    /// distributions such as histograms this is the full sample over which the histogram
-    /// is calculated.
+    /// Returns the expected value of the distribution, which is a function of
+    /// the current parameter vector.
     fn mean<'a>(&'a self) -> &'a DVector<f64>;
 
-    /// Set internal parameter vector at the informed value.
+    /// Acquires reference to internal parameter vector; either in
+    /// natural form (eta) or canonical form (theta).
+    fn view_parameter(&self, natural : bool) -> &DVector<f64>;
+
+    /// Set internal parameter vector at the informed value; either passing
+    /// the natural form (eta) or the canonical form (theta).
     fn set_parameter(&mut self, p : DVectorSlice<'_, f64>, natural : bool);
 
+    /// Returns the global maximum of the log-likelihood, which is a function
+    /// of the current parameter vector. Note that
+    /// for bounded distributions (Gamma, Beta, Dirichlet), this value might just the the
+    /// the parameter domain inferior or superior limit.
     fn mode(&self) -> DVector<f64>;
 
+    /// Returns the dispersion of the distribution. This is a simple function of the
+    /// parameter vector for discrete distributions; but is a constant or conditioning
+    /// factor for continuous distributions. Returns the diagonal of the covariance
+    /// matrix for continuous distributions.
     fn var(&self) -> DVector<f64>;
 
+    /// Returns None for univariate distributions; Returns the positive-definite
+    /// covariance matrix (inverse of precision matrix) for multivariate distributions
+    /// with independent scale parameters.
     fn cov(&self) -> Option<DMatrix<f64>>;
 
-    /// Log-probability evaluated at the vector y against self.parameter(). The column
-    /// dimension of this sample is known at compile time; The row-dimension of the sample
-    /// should match the number of sampled parameters at self.parameter(), and a panic
-    /// occurs at a dimension mismatch. log_prob(.) reads parameter values from a
-    /// vector owned by the distribution implementer. When evaluating the marginal
-    /// posterior, it is useful to use this function to evaluate the fixed parameters;
-    /// and evaluate the parameters varying at each iteration via cond_log_prob.
+    /// Evaluates the log-probability of the sample y with respect to the current
+    /// parameter state. This method just dispatches to a sufficient statistic log-probability
+    /// or to a conditional log-probability evaluation depending on the conditioning factors
+    /// of the implementor. The samples at matrix y are assumed to be independent over rows (or at least
+    /// conditionally-independent given the current factor graph). Univariate factors require that
+    /// y has a single column; Multivariate factors require y has a number of columns equal to the
+    /// distribution parameter vector.
     fn log_prob(&self, y : DMatrixSlice<f64>) -> f64;
 
     /// Sample from the current distribution; If the sampling unit has multiple dimensions,
     /// they are represented over columns; If multiple units are sampled (if there are multiple
-    /// entries for the parameter vector), a variable number of rows is emitted.
+    /// entries for the parameter vector), a variable number of rows is emitted. Samples should
+    /// follow the same structure as the argument to log_prob(.).
     fn sample(&self) -> DMatrix<f64>;
 
     /// General-purpose comparison of two fitted estimates, used for
@@ -102,21 +123,23 @@ pub trait Distribution
 /// for factors that yield samples of same dimensionality (univariate or multivariate)
 /// and also can restrict potential exponential family factors to the respective
 /// conjugate priors.
-pub trait ConditionalDistribution<D>
+pub trait Conditional<D>
     where
         Self : Distribution + Sized,
         D : Distribution
 {
 
-    /// Sets d as a factor for this distribution. After this method is called,
-    /// sample(.) from self should be conditional on a sample(.) from d; and
-    /// log_prob(.) of self should also depend on d.
+    /// Takes self by value and return a conditional distribution
+    /// of self, with the informed factor as its parent.
     fn condition(self, d : D) -> Self;
 
+    /// Returns a view to the factor.
     fn view_factor(&self) -> Option<&D>;
 
+    /// Takes self by value and outputs its factor.
     fn take_factor(self) -> Option<D>;
 
+    /// Returns a mutable reference to the parent factor.
     fn factor_mut(&mut self) -> Option<&mut D>;
 
 }
@@ -129,77 +152,42 @@ pub enum UnivariateFactor<D> {
     Conjugate(D)
 }
 
-/// Generic trait shared by all exponential-family distributions.
-/// The parameter vector of Univariate distributions represent a series of realizations
-/// that are conditionally independent. But the parameter vector of a multivariate distribution
-/// relates to a series of multivariate realizations of a single conditioning factor; to represent
-/// conditional independence of multivariate relationships, use factor sharing. Shared sister factors
-/// are hevily dependent, but conditioned on each of their paths, they are conditionally independent,
-/// and that is why multivariate quantities are commonly represented via univariate distributions at
-/// the nodes of the graph.
-/// The choice of modelling univariate quantities with the same distribution implementor; but multivariate
-/// quantities with different implementors has some justifications: First, all distributions can implement
-/// indexing operations in a meaningul way (the user might want to inspect conditional expectations and
-/// yield different histograms via normal[3] or normal[10] for a linear regression model for example, following
-/// the same strategy of indexing multivariate quantities). Second, it is extremely common to assume homoscedasticity
-/// but different linear conditional expected values, a situation that can be modelled as matrix-vector multiplication
-/// easily. Assuming different nodes for each univariate realization would hurt performance because we could not use
-/// matrix manipulations so directly; Third, there is a nice connection with the operation of accessing multivariate distribution
-/// dimensions as matrix multiplication by a diagonal design matrix, which can just yield a univariate distribution with varying
-/// conditional expectation: This connection suggests all distributions are multivariate; The univariate ones just have
-/// diagonal scale factors defined exclusively by their location parameters. A series of univariate measurements can actually
-/// be interpreted as a single realization of a multivariate variable; with location fixed at the estimated vector value
-/// and scale completely determined by this location or another independent scale factor.
-/// Multivariate quantities have to be implemented as separate nodes because the user
-/// need to express situations where nodes share the same scale factor (as univariate distributions does)
-/// and situations where the nodes have independent scale factors as different graphs.
-/// The first sister node in a chain always keeps ownership of the parent factor, while new sister
-/// nodes keep only a reference to the parent factor and keep ownership of the sister factor to the left.
-/// Feeding data to any cond_log_prob(.) of a node with sisters require a matrix column dimensionality
-/// that matches the number of sisters: If each child node of a group of size k has dimension d, the data
-/// matrix should be k*d dimensional, where the last d columns are fed to the last sister, and so on.
-/// To view a univariate distribution in its current state, use self.histogram().full() to return a vector
-/// representation of its density. Multivariate distributions can be inspected by multiplying them with
-/// constant design matrices that yield univariate quantities. For a diagonal choice of matrix, each
-/// element will be a univariate distribution with a histogram representation:
-/// let m = MultiNormal::new(5); let uv = x * m; for u in 0..5 { uv[i].histogram().full() }
+/// Generic trait shared by all exponential-family distributions. Encapsulate
+/// all expressions necessary to build a log-probability with respect to a
+/// sufficient statistic.
 pub trait ExponentialFamily<C>
     where
         C : Dim,
         Self : Distribution
 {
 
-    /// Univariate case:
-    /// Returns size-1 vector if this distribution is conditioned on a conjugate
-    /// or constant; Returns size-n vector if this distribution is conditioned on
-    /// a size n sample.
-    /// Multivariate (d) case:
-    /// Returns 1 x d matrix if distribution is conditioned on a conjugate
-    /// or constant; Returns n x d matrix if distribution is conditioned
-    /// on a size n sample.
-    fn link_inverse<S>(
-        eta : &Matrix<f64, Dynamic, U1, S>
-    ) -> Matrix<f64, Dynamic, U1, VecStorage<f64, Dynamic, U1>>
-        where S : Storage<f64, Dynamic, U1>;
-
-    /// Underlying transformation of the natural parameter, involving
-    /// a division by a scale factor. This is a simple transformation of the location
+    /// Transforms a canonical parameter vector (i.e. parameter in the same scale
+    /// as the maximum likelihood estimate) into a natural parameter vector; which
+    /// is a continuous, unbounded transformation. The natural parameter is defined
+    /// so that its inner product with a sufficient statistic completely defines
+    /// the log-probability of the distribution with respect to the sample. This
+    /// is a simple transformation of the location
     /// parameter for bounded distributions such as the Bernoulli; but involves a division
-    /// by a separate parameter in unbounded distributions such as the normal. After this transformation,
-    /// the parameter space becomes unbounded and can take any values over the real line, independent
-    /// of the distribution.
+    /// by a separate parameter in unbounded distributions such as the Normal.
     fn link<S>(
         theta : &Matrix<f64, Dynamic, U1, S>
     ) -> Matrix<f64, Dynamic, U1, VecStorage<f64, Dynamic, U1>>
         where S : Storage<f64, Dynamic, U1>;
 
-    /// Transform the independent sample (with data arranged over rows)
-    /// into a sufficient statistic matrix.
+    /// Transforms a unbounded natural parameter into a bounded canonical parameter
+    /// (the exact inverse of Self::link
+    fn link_inverse<S>(
+        eta : &Matrix<f64, Dynamic, U1, S>
+    ) -> Matrix<f64, Dynamic, U1, VecStorage<f64, Dynamic, U1>>
+        where S : Storage<f64, Dynamic, U1>;
+
+    /// Collapses the independently distributed sample matrix y (with observations arranged over rows)
+    /// into a low-dimensional sufficient statistic matrix.
     fn sufficient_stat(y : DMatrixSlice<'_, f64>) -> DMatrix<f64>;
 
     /// Calculates the log-probability with respect to the informed sufficient
     /// statistic matrix.
-    fn suf_log_prob(&self, y : DMatrixSlice<'_, f64>) -> f64;
+    fn suf_log_prob(&self, t : DMatrixSlice<'_, f64>) -> f64;
 
     /// Normalization factor. Usually is a function of the
     /// dimensionality of the parameter, and is required for the distribution
@@ -209,10 +197,17 @@ pub trait ExponentialFamily<C>
     /// according to a given number of samples.
     fn base_measure(y : DMatrixSlice<'_, f64>) -> DVector<f64>;
 
+    /// The unnormalized log-probability is always defined as the inner product of a sufficient
+    /// statistic with the natural parameter minus a term dependent on the parameter
+    /// alone. This method updates this term for every parameter update.
     fn update_log_partition<'a>(&'a mut self, eta : DVectorSlice<'_, f64>);
 
+    /// The gradient of an exponential-family distribution is a linear function
+    /// of the sufficient statistic (constant) and the currently set natural parameter.
     fn update_grad(&mut self, eta : DVectorSlice<'_, f64>);
 
+    /// Retrieves the gradient of self, with respect to the currently set natural
+    /// parameter and sufficient statistic.
     fn grad(&self) -> &DVector<f64>;
 
     /// Function that captures the distribution invariances to
@@ -222,6 +217,7 @@ pub trait ExponentialFamily<C>
     /// but is a vector holding a single value for multivariate quantities, which are evaluated against a single parameter value.
     fn log_partition<'a>(&'a self) -> &'a DVector<f64>;
 
+    /// Normalized probability of the independent sample y.
     fn prob(&self, y : DMatrixSlice<f64>) -> f64 {
         // (Assume self does not have any factor,
         // since log_prob will evaluate whole graph)
@@ -254,22 +250,48 @@ pub trait Estimator<D>
 
 }
 
-trait ConditionalLikelihood
-    where Self : ExponentialFamily<U1>
+/// Implemented by distributions which can have their
+/// log-probability evaluated with respect to a random sample.
+trait Likelihood<C>
+    where
+        Self : ExponentialFamily<C>,
+        C : Dim
 {
 
-    /// Calculates the univariate log-probability, passing
-    /// the log-probability buffer forward. The univariate
-    /// log-probability is based on the scalar multiplication of
-    /// each natural parameter realization with each sample at y.
-    fn cond_log_prob(&self,
-        eta_cond : DVectorSlice<'_, f64>,
-        y : DMatrixSlice<'_, f64>
-    ) -> f64 {
-        assert!(y.ncols() == 1);
+    /// Returns a mean estimate using maximum likelihood estimation.
+    /// Will be a vector with single entry for univariate distributions.
+    fn mean_mle(y : DMatrixSlice<'_, f64>) -> DVector<f64>;
+
+    /// Returns a variance estimate using maximum likelihood estimation.
+    /// Will be a matrix with a single entry for univariate distributions;
+    /// or a covariance matrix for multivariate distributions.
+    fn var_mle(y : DMatrixSlice<'_, f64>) -> DMatrix<f64>;
+
+    /// Returns a dispersion estimate for the mean maximum likelihood estimate.
+    /// This estimate can be standardized (standard error of mean for univariate
+    /// estimates; correlation matrix for multivariate estimates) or not
+    /// (variance of mean for univariate estimates; covariance of mean for multivariate
+    /// estimates).
+    fn error_mle(y : DMatrixSlice<'_, f64>, standard : bool) -> DMatrix<f64> {
+        let n = y.nrows() as f64;
+        let err = Self::var_mle(y).unscale(n);
+        if standard {
+            match err.nrows() {
+                1 => err.map(|e| e.sqrt() ),
+                _ => MultiNormal::corr_from(err)
+            }
+        } else {
+            err
+        }
+    }
+
+    fn cond_log_prob(&self, eta_cond : DMatrixSlice<'_, f64>, y : DMatrixSlice<'_, f64>) -> f64 {
+        assert!(y.ncols() == eta_cond.ncols());
         let mut lp = 0.0;
-        for ((e, y), l) in eta_cond.iter().zip(y.column(0).iter()).zip(self.log_partition()) {
-            lp += e * y - l
+        let lp_iter = eta_cond.row_iter().zip(y.row_iter())
+            .zip(self.log_partition().iter());
+        for ((e, y), l) in lp_iter {
+            lp += e.dot(&y) - l
         };
         lp
     }

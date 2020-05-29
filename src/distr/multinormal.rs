@@ -5,6 +5,7 @@ use serde::{Serialize, Deserialize};
 // use super::Gamma;
 use std::f64::consts::PI;
 // use crate::sim::*;
+// use std::ops::MulAssign;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 enum CovFunction {
@@ -73,6 +74,16 @@ impl MultiNormal {
         s_qr.try_inverse().unwrap()
         //
         // self.prec = self.
+    }
+
+    pub fn corr_from(mut cov : DMatrix<f64>) -> DMatrix<f64> {
+        assert!(cov.nrows() == cov.ncols());
+        let mut diag_m = DMatrix::zeros(cov.nrows(), cov.ncols());
+        let diag = cov.diagonal().map(|d| 1. / d.sqrt() );
+        diag_m.set_diagonal(&diag);
+        cov *= &diag_m;
+        diag_m *= cov;
+        diag_m
     }
 
     pub fn new(mu : DVector<f64>, sigma : DMatrix<f64>) -> Self {
@@ -206,6 +217,11 @@ impl ExponentialFamily<Dynamic> for MultiNormal {
 }
 
 impl Distribution for MultiNormal {
+
+    fn view_parameter(&self, _natural : bool) -> &DVector<f64> {
+        // see mu; vs. see sigma_inv*mu
+        unimplemented!()
+    }
 
     /// Set parameter should verify if there is a scale factor. If there is,
     /// also sets the eta of those factors and write the new implied covariance

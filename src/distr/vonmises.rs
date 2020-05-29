@@ -21,6 +21,10 @@ impl Distribution for VonMises
         unimplemented!()
     }
 
+    fn view_parameter(&self, _natural : bool) -> &DVector<f64> {
+        unimplemented!()
+    }
+
     fn mean<'a>(&'a self) -> &'a DVector<f64> {
         unimplemented!()
     }

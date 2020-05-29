@@ -181,6 +181,10 @@ impl Distribution for Wishart {
         unimplemented!()
     }
 
+    fn view_parameter(&self, _natural : bool) -> &DVector<f64> {
+        unimplemented!()
+    }
+
     fn mean<'a>(&'a self) -> &'a DVector<f64> {
         // Return diagonal entry current values.
         unimplemented!()
@@ -277,7 +281,7 @@ impl ExponentialFamily<U1> for Wishart
 
 }
 
-impl ConditionalDistribution<VonMises> for Wishart {
+impl Conditional<VonMises> for Wishart {
 
     fn condition(self, _vm : VonMises) -> Self {
         unimplemented!()

@@ -120,10 +120,13 @@ impl Distribution for Beta
         self.update_log_partition(p);
     }
 
+    fn view_parameter(&self, _natural : bool) -> &DVector<f64> {
+        &self.ab
+    }
+
     fn cov(&self) -> Option<DMatrix<f64>> {
         None
     }
-
 
     fn mean<'a>(&'a self) -> &'a DVector<f64> {
         &self.mean
