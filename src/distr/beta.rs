@@ -53,14 +53,13 @@ impl Beta {
 
 impl ExponentialFamily<Dynamic> for Beta {
 
-    fn base_measure(y : DMatrixSlice<'_, f64>) -> DVector<f64>
-        //where S : Storage<f64, Dynamic, Dynamic>
-    {
+    fn base_measure(y : DMatrixSlice<'_, f64>) -> DVector<f64> {
+        println!("y={}", y);
         if y.ncols() > 2 {
             panic!("The Beta distribution can only be evaluated at a single data point");
         }
-        let theta = y[0].exp();
-        DVector::from_element(1, 1. / (theta.exp() * (1. - theta.exp())) )
+        let theta = y[0];
+        DVector::from_element(1, 1. / (theta * (1. - theta)) )
     }
 
     fn sufficient_stat(y : DMatrixSlice<'_, f64>) -> DMatrix<f64> {
@@ -75,7 +74,7 @@ impl ExponentialFamily<Dynamic> for Beta {
 
     fn suf_log_prob(&self, t : DMatrixSlice<'_, f64>) -> f64 {
         assert!(t.ncols() == 1 && t.nrows() == 2);
-        assert!(self.log_part.nrows() == 0);
+        assert!(self.log_part.nrows() == 1);
         self.ab.dot(&t.column(0)) - self.log_part[0]
     }
 
@@ -146,9 +145,9 @@ impl Distribution for Beta
     }
 
     fn log_prob(&self, y : DMatrixSlice<f64>) -> f64 {
-        assert!(y.ncols() == 2);
-        assert!(y.nrows() == 1);
-        self.suf_log_prob(self.ab.slice((0,0), (2,1)))
+        assert!(y.ncols() == 1);
+        let t = Beta::sufficient_stat(y);
+        self.suf_log_prob((&t).into())
     }
 
     /*fn shared_factors(&self) -> Factors {

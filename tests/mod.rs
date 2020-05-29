@@ -31,6 +31,24 @@ fn poisson() {
 }
 
 #[test]
+fn beta() {
+    let beta = Beta::new(1, 1);
+    let ym = DMatrix::from_element(1 ,1 ,0.5);
+    unsafe {
+        assert!( (gsl_ran_beta_pdf(0.5, 1., 1.) -  beta.prob(ym.rows(0,1))).abs() < EPS);
+    }
+}
+
+#[test]
+fn gamma() {
+    let gamma = Gamma::new(1., 1.);
+    let ym = DMatrix::from_element(1 ,1 , 1.0);
+    unsafe {
+        assert!( (gsl_ran_gamma_pdf(1.0, 1., 1.) -  gamma.prob(ym.rows(0,1))).abs() < EPS);
+    }
+}
+
+#[test]
 fn multinormal() {
     let mu = DVector::from_element(5, 0.0);
     let mut sigma = DMatrix::from_element(5, 5, 0.0);

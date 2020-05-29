@@ -91,7 +91,7 @@ pub struct NLSResult {
     pub niter : usize
 }
 
-pub unsafe fn get_nls_result(
+unsafe fn get_nls_result(
     nl_ws : *mut gsl_multifit_nlinear_workspace,
     p : usize,
     niter : usize
@@ -127,7 +127,7 @@ pub unsafe fn get_nls_result(
 /// of parameters; jacobian_update must return a new Jacobian matrix given a
 /// vector of parameters. It is through this jacobian return function that
 /// the errors of measured values must inform about function updates.
-pub fn nls<T : Sized>(
+pub fn minimize_nls<T : Sized>(
     beta_init : DVector<f64>,
     extra : T,
     n : usize,

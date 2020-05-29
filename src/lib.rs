@@ -1,3 +1,9 @@
+//! This create offers composable abstractions to build
+//! probabilistic models (`distr::Distribution` implementors) and inference algorithms
+//! (`distr::Estimator` implementors) that operate on those models. Outputs of inference
+//! algorithms are either exact distributions; approximations based on optimization
+//! of distribution parameters (`optim::Approximate`) or non-parametric representations (`sim::Histogram`).
+
 /// Generic trait and implementations for exponential-family probability distributions
 /// and non-parametric distribution representations (posterior samples and general-purpose histograms).
 pub mod distr;

@@ -12,6 +12,30 @@ use serde::de::Deserializer;
 
 pub type PoissonFactor = UnivariateFactor<Gamma>;
 
+/// The Poisson is the exponential-family distribution
+/// used as the likelihood for countable outcomes. Each realization is parametrized
+/// by a rate parameter λ (λ > 0), whose natural
+/// parameter transformation is its logarithm ln(λ)
+///
+/// # Example
+///
+/// ```
+/// use bayes::distr::*;
+///
+/// let n = 1000;
+/// let mut poiss = Poisson::new(n, Some(1.0));
+/// let y = poiss.sample();
+///
+/// // Maximum likelihood estimate
+/// println!("{}", Poisson::mean_mle((&y).into()));
+/// let mle = Poisson::mean_mle((&y).into());
+///
+/// // Bayesian conjugate estimate
+/// let mut poiss_cond = poiss.condition(Gamma::new(1.0,1.0));
+/// poiss_cond.fit(y);
+/// let post : Gamma = poiss_cond.take_factor().unwrap();
+/// assert!(post.mean()[0] - mle < 1E-3);
+/// ```
 #[derive(Debug, Clone)]
 pub struct Poisson {
 
@@ -110,6 +134,10 @@ impl Distribution for Poisson
         if let Some(ref mut suf) = self.suf_lambda {
             *suf = Gamma::sufficient_stat(self.lambda.slice((0,0), (self.lambda.nrows(),1)));
         }
+        self.sampler.clear();
+        for l in self.lambda.iter() {
+            self.sampler.push(rand_distr::Poisson::new(*l).unwrap());
+        }
     }
 
     fn view_parameter(&self, natural : bool) -> &DVector<f64> {
@@ -150,13 +178,13 @@ impl Distribution for Poisson
     }
 
     fn sample(&self) -> DMatrix<f64> {
-        /*use rand_distr::{Distribution};
+        use rand_distr::{Distribution};
         let mut samples = DMatrix::zeros(self.lambda.nrows(), 1);
-        for (i, t) in self.lambda.iter().enumerate() {
-            samples[(i,1)] = (self.sampler[i].sample(&mut rand::thread_rng()) as i32) as f64;
+        for (i, _) in self.lambda.iter().enumerate() {
+            let s : u64 = self.sampler[i].sample(&mut rand::thread_rng());
+            samples[(i,0)] = s as f64;
         }
-        samples*/
-        unimplemented!()
+        samples
     }
 
     fn cov(&self) -> Option<DMatrix<f64>> {

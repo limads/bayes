@@ -18,22 +18,20 @@ pub type BernoulliFactor = UnivariateFactor<Beta>;
 /// # Example
 ///
 /// ```
-/// use rand;
 /// use bayes::distr::*;
-/// use nalgebra::*;
 ///
 /// let n = 1000;
-/// let mut y = DMatrix::<f64>::zeros(n, 1);
-/// y.iter_mut().for_each(|b| *b = (rand::random::<bool>() as i32) as f64);
+/// let bern = Bernoulli::new(n, None);
+/// let y = bern.sample();
 ///
 /// // Maximum likelihood estimate
-/// assert!(Bernoulli::mean_mle((&y).into()) - 0.5 < 1E-3);
+/// let mle = Bernoulli::mean_mle((&y).into());
 ///
 /// // Bayesian conjugate estimate
-/// let mut b = Bernoulli::new(n, None).condition(Beta::new(1,1));
-/// b.fit(y);
-/// let post : Beta = b.take_factor().unwrap();
-/// assert!(post.mean()[0] - 0.5 < 1E-3);
+/// let mut bern_cond = bern.condition(Beta::new(1,1));
+/// bern_cond.fit(y);
+/// let post : Beta = bern_cond.take_factor().unwrap();
+/// assert!(post.mean()[0] - mle < 1E-3);
 /// ```
 #[derive(Debug)]
 pub struct Bernoulli {
@@ -249,6 +247,10 @@ impl Distribution for Bernoulli
         if let Some(ref mut suf) = self.suf_theta {
             *suf = Beta::sufficient_stat(self.theta.slice((0,0), (self.theta.nrows(),1)));
         }
+        self.sampler.clear();
+        for t in self.theta.iter() {
+            self.sampler.push(rand_distr::Bernoulli::new(*t).unwrap());
+        }
     }
 
     fn view_parameter(&self, natural : bool) -> &DVector<f64> {
@@ -296,7 +298,7 @@ impl Distribution for Bernoulli
         use rand_distr::{Distribution};
         let mut samples = DMatrix::zeros(self.theta.nrows(), 1);
         for (i, _) in self.theta.iter().enumerate() {
-            samples[(i,1)] = (self.sampler[i].sample(&mut rand::thread_rng()) as i32) as f64;
+            samples[(i,0)] = (self.sampler[i].sample(&mut rand::thread_rng()) as i32) as f64;
         }
         samples
     }
