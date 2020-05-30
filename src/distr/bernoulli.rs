@@ -69,13 +69,13 @@ impl Bernoulli {
         bern
     }
 
-    pub fn factorial(n: usize) -> usize {
+    /*pub fn factorial(n: usize) -> usize {
         if n < 2 {
             1
         } else {
             n * Self::factorial(n - 1)
         }
-    }
+    }*/
 
 }
 

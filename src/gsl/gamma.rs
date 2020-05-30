@@ -6,4 +6,8 @@ extern "C" {
 
     pub fn gsl_sf_lngamma(x: f64) -> f64;
 
+    pub fn gsl_sf_gammainv(x : f64) -> f64;
+
 }
+
+

@@ -225,6 +225,7 @@ pub trait ExponentialFamily<C>
         let mut unn_p = DVector::zeros(y.nrows());
         for (i, _) in y.row_iter().enumerate() {
             unn_p[i] = self.log_prob(y.rows(i,1)).exp();
+            println!("lp = {}", unn_p[i]);
         }
         let p = bm.component_mul(&unn_p);
         let joint_p = p.iter().fold(1., |jp, p| jp * p);

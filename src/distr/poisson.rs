@@ -6,7 +6,6 @@ use rand_distr;
 use crate::sim::*;
 // use std::ops::AddAssign;
 use std::default::Default;
-use super::bernoulli::*;
 use serde::ser::{Serializer};
 use serde::de::Deserializer;
 
@@ -58,6 +57,9 @@ pub struct Poisson {
 impl Poisson {
 
     pub fn new(n : usize, lambda : Option<f64>) -> Self {
+        if let Some(l) = lambda {
+            assert!(l > 0.0);
+        }
         let mut p : Poisson = Default::default();
         let l = DVector::from_element(n, lambda.unwrap_or(1.));
         p.set_parameter(l.rows(0, l.nrows()), false);
@@ -73,7 +75,7 @@ impl ExponentialFamily<U1> for Poisson
 
     fn base_measure(y : DMatrixSlice<'_, f64>) -> DVector<f64> {
         assert!(y.ncols() == 1);
-        y.column(0).map(|y| 1. / (Bernoulli::factorial(y as usize) as f64))
+        y.column(0).map(|y| /*1. / (Bernoulli::factorial(y as usize) as f64*/ Gamma::gamma_inv(y + 1.) )
     }
 
     fn sufficient_stat(y : DMatrixSlice<'_, f64>) -> DMatrix<f64> {

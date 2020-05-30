@@ -7,6 +7,14 @@ use bayes::distr::*;
 
 const EPS : f64 = 10E-8;
 
+fn unit_interval_seq(n : usize) -> DMatrix<f64> {
+    DMatrix::from_fn(n, 1, |i,j| (i+1) as f64 * (1. / n as f64) )
+}
+
+fn count_seq(n : usize) -> DMatrix<f64> {
+    DMatrix::from_fn(n, 1, |i,j| (i+1) as f64)
+}
+
 #[test]
 fn bernoulli() {
     for y in [0.0, 1.0].iter() {
@@ -23,28 +31,54 @@ fn bernoulli() {
 
 #[test]
 fn poisson() {
-    let p = Poisson::new(1, Some(1.));
-    let ym = DMatrix::from_element(1,1,1.0);
+    let lambda = unit_interval_seq(100);
+    let count = count_seq(100);
     unsafe {
-        assert!( (gsl_ran_poisson_pdf(1, 1.0) -  p.prob(ym.rows(0,1))).abs() < EPS);
+        for i in 0..100 {
+            for l in lambda.iter() {
+                let gsl_prob = gsl_ran_poisson_pdf(count[(i,0)] as u32, *l);
+                let poiss = Poisson::new(1, Some(*l));
+                let bayes_prob = poiss.prob(count.slice((i,0), (1,1)));
+                assert!( (gsl_prob -  bayes_prob).abs() < EPS);
+            }
+        }
     }
 }
 
 #[test]
 fn beta() {
-    let beta = Beta::new(1, 1);
-    let ym = DMatrix::from_element(1 ,1 ,0.5);
+    let theta = unit_interval_seq(100);
+    let count = count_seq(10);
     unsafe {
-        assert!( (gsl_ran_beta_pdf(0.5, 1., 1.) -  beta.prob(ym.rows(0,1))).abs() < EPS);
+        for i in 0..100 {
+            for (a, b) in count.iter().zip(count.iter()) {
+                let gsl_prob = gsl_ran_beta_pdf(theta[(i,0)], *a, *b);
+                let beta = Beta::new(*a as usize, *b as usize);
+                let bayes_prob = beta.prob(theta.slice((i,0), (1,1)));
+                //println!("Gsl prob: {}", gsl_prob);
+                //println!("Bayes prob: {}", bayes_prob);
+                //println!("a: {}; b: {}; theta: {}", a, b, theta[(i,0)]);
+                assert!( (gsl_prob -  bayes_prob).abs() < EPS);
+            }
+        }
     }
 }
 
 #[test]
 fn gamma() {
-    let gamma = Gamma::new(1., 1.);
-    let ym = DMatrix::from_element(1 ,1 , 1.0);
+    let theta = unit_interval_seq(100);
+    let count = count_seq(10);
     unsafe {
-        assert!( (gsl_ran_gamma_pdf(1.0, 1., 1.) -  gamma.prob(ym.rows(0,1))).abs() < EPS);
+        for i in 0..100 {
+            for (a, b) in count.iter().zip(count.iter()) {
+                // GSL follows the shape/scale parametrization;
+                // bayes follows the shape/inv-scale parametrization
+                let gsl_prob = gsl_ran_gamma_pdf(theta[(i,0)], *a, 1. / *b);
+                let gamma = Gamma::new(*a, *b);
+                let bayes_prob = gamma.prob(theta.slice((i,0), (1,1)));
+                assert!( (gsl_prob -  bayes_prob).abs() < EPS);
+            }
+        }
     }
 }
 
@@ -84,11 +118,27 @@ fn multinormal() {
 
 #[test]
 fn normal() {
-    let n = Normal::new(1, Some(0.), Some(1.));
+    let mu = unit_interval_seq(100);
+    let values = mu.clone();
+    unsafe {
+        //for m in mu.iter() {
+        for (i, y) in values.iter().enumerate() {
+            // GSL parametrizes gaussians by the standard deviation;
+            // bayes by the variance.
+            let gsl_prob = gsl_ran_gaussian_pdf(*y, (1.).sqrt());
+            let norm = Normal::new(1, Some(0.), Some(1.));
+            let bayes_prob = norm.prob(values.slice((i,0), (1,1)));
+            println!("Gsl prob: {} (evaluated at {})", gsl_prob, *y);
+            println!("Bayes prob: {} (evaluated at {})", bayes_prob, *y);
+            assert!( (gsl_prob -  bayes_prob).abs() < EPS);
+        }
+        //}
+    }
+    /*let n = Normal::new(1, Some(0.), Some(1.));
     let ym = DMatrix::from_element(1, 1, 0.0);
     unsafe {
         assert!( (gsl_ran_gaussian_pdf(0., 1.) - n.prob(ym.rows(0,1))).abs()  < EPS );
-    }
+    }*/
 }
 
 #[test]

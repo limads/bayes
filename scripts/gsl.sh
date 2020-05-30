@@ -114,6 +114,7 @@ bindgen /usr/include/gsl/gsl_sf_gamma.h -o src/gsl/gamma.rs \
     --no-recursive-whitelist \
     --whitelist-function "gsl_sf_gamma"
     --whitelist-function "gsl_sf_lngamma"
+    --whitelist-function "gsl_sf_gammainv"
 rustfmt src/gsl/gamma.rs --force
 
 rm src/gsl/*.bk

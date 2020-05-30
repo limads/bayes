@@ -43,6 +43,8 @@ pub struct Beta {
 impl Beta {
 
     pub fn new(a : usize, b : usize) -> Self {
+        assert!(a > 0);
+        assert!(b > 0);
         let mut beta : Beta = Default::default();
         let ab = DVector::from_column_slice(&[a as f64, b as f64]);
         beta.set_parameter(ab.rows(0, 2), false);
@@ -59,22 +61,40 @@ impl ExponentialFamily<Dynamic> for Beta {
             panic!("The Beta distribution can only be evaluated at a single data point");
         }
         let theta = y[0];
-        DVector::from_element(1, 1. / (theta * (1. - theta)) )
+        let theta_trunc = if theta == 0.0 {
+            1E-10
+        } else {
+            if theta == 1. {
+                1. - 1E-10
+            } else {
+                theta
+            }
+        };
+        DVector::from_element(1, 1. / (theta_trunc * (1. - theta_trunc)) )
     }
 
     fn sufficient_stat(y : DMatrixSlice<'_, f64>) -> DMatrix<f64> {
-        assert!(y.ncols() == 1);
+        assert!(y.ncols() == 1, "Beta should be evaluated against a single column sample");
         let mut suf = DMatrix::zeros(2, 1);
         for y in y.column(0).iter() {
-            suf[(0,0)] += (y + 1E-10).ln();
-            suf[(1,0)] += (1. - y).ln()
+            let y_trunc = if *y == 0.0 {
+                1E-10
+            } else {
+                if *y == 1. {
+                    1. - 1E-10
+                } else {
+                    *y
+                }
+            };
+            suf[(0,0)] += y_trunc.ln();
+            suf[(1,0)] += (1. - y_trunc).ln()
         }
         suf
     }
 
     fn suf_log_prob(&self, t : DMatrixSlice<'_, f64>) -> f64 {
-        assert!(t.ncols() == 1 && t.nrows() == 2);
-        assert!(self.log_part.nrows() == 1);
+        assert!(t.ncols() == 1 && t.nrows() == 2, "Sufficient probability matrix of beta should be 2x1");
+        assert!(self.log_part.nrows() == 1, "Sufficient probability matrix of beta should be 2x1");
         self.ab.dot(&t.column(0)) - self.log_part[0]
     }
 

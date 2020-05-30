@@ -20,7 +20,7 @@ pub mod conv;
 /// or the try_backward, which takes ownership of the buffer and returns it to the user in case of
 /// success. Implementors should worry only about implementing the try_forward and try_backward_to
 /// calls.
-pub trait FrequencyDomain<M, N, C>
+pub trait FrequencyBasis<M, N, C>
     where
         M : Scalar,
         N : Scalar,

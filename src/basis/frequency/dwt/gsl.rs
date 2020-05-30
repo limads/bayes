@@ -221,7 +221,7 @@ pub type DWTPlan2D = DWTPlan<Dynamic>;
 
 pub type DWTPlan1D = DWTPlan<U1>;
 
-impl<C> FrequencyDomain<f64, f64, C> for DWTPlan<C>
+impl<C> FrequencyBasis<f64, f64, C> for DWTPlan<C>
     where
         C : Dim
 {

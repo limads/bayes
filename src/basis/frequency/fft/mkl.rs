@@ -447,7 +447,7 @@ impl<'a, N, C> FFTPlan<N, C>
 
 }
 
-impl<N, C> FrequencyDomain<N, Complex<N>, C> for FFTPlan<N, C>
+impl<N, C> FrequencyBasis<N, Complex<N>, C> for FFTPlan<N, C>
     where
         N : Scalar+ Clone + From<f32> + Copy + Debug,
         C : Dim ,

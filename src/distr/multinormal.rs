@@ -34,6 +34,7 @@ struct LinearOp {
     pub cov_func : CovFunction
 }
 
+/// Multivariate normal parametrized by μ (px1) and Σ (pxp).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MultiNormal {
     mu : DVector<f64>,
@@ -165,7 +166,7 @@ impl ExponentialFamily<Dynamic> for MultiNormal {
         for (s_inv_row, tc_row) in self.sigma_inv.row_iter().zip(t_cov.row_iter()) {
             lp += (-0.5) * s_inv_row.dot(&tc_row);
         }
-        lp
+        lp // + self.log_partition()
     }
 
     fn log_partition<'a>(&'a self) -> &'a DVector<f64> {
@@ -173,11 +174,13 @@ impl ExponentialFamily<Dynamic> for MultiNormal {
     }
 
     /// Updating the log-partition of a multivariate normal assumes a new
-    /// mu vector (eta); but a constant covariance, which should be changed
-    /// by the appropriate step(.) call.
+    /// mu vector (eta); but using the currently set covariance value.
+    /// The log-partition of the multivariate normal is a quadratic form of
+    /// the covariance matrix (taking the new location as parameter) that
+    /// has half the log of the determinant of the covariance (scaled by -2) subtracted from it.
     fn update_log_partition<'a>(&'a mut self, eta : DVectorSlice<'_, f64>) {
         // TODO update eta parameter here.
-        let cov = Self::invert_scale(&self.sigma_inv);
+        let cov = Self::invert_scale(&self.sigma_inv) /* * -2.*/;
         let sigma_lu = LU::new(cov.clone());
         let sigma_det = sigma_lu.determinant();
         let p_eta_cov = -0.25 * eta.clone().transpose() * cov * &eta;

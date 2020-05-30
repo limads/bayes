@@ -38,6 +38,8 @@ pub struct Gamma {
 impl Gamma {
 
     pub fn new(alpha : f64, beta : f64) -> Self {
+        assert!(alpha > 0.0, "alpha should be greater than zero");
+        assert!(beta > 0.0, "beta should be greater than zero");
         let mut gamma : Gamma = Default::default();
         let ab = DVector::from_column_slice(&[alpha, beta]);
         gamma.set_parameter(ab.rows(0,2), false);
@@ -51,6 +53,10 @@ impl Gamma {
 
     pub fn ln_gamma(y : f64) -> f64 {
         unsafe{ gsl_sf_lngamma(y) }
+    }
+
+    pub fn gamma_inv(y : f64) -> f64 {
+        unsafe{ gsl_sf_gammainv(y) }
     }
 
 }
@@ -68,9 +74,10 @@ impl ExponentialFamily<Dynamic> for Gamma {
 
     /// y: Vector of precision/rate draws
     fn sufficient_stat(y : DMatrixSlice<'_, f64>) -> DMatrix<f64> {
-        assert!(y.ncols() == 1);
+        assert!(y.ncols() == 1, "Sample should have single column");
         let mut suf = DMatrix::zeros(2, 1);
         for y in y.column(0).iter() {
+            assert!(*y > 0.0, "Gamma should be evaluated against strictly positive values.");
             suf[(0,0)] += y.ln();
             suf[(1,0)] += y;
         }
@@ -78,14 +85,13 @@ impl ExponentialFamily<Dynamic> for Gamma {
     }
 
     fn suf_log_prob(&self, t : DMatrixSlice<'_, f64>) -> f64 {
-        assert!(self.log_part.nrows() == 1);
-        assert!(t.ncols() == 1 && t.nrows() == 2);
+        assert!(self.log_part.nrows() == 1, "Sufficient probability matrix should be 2x1");
+        assert!(t.ncols() == 1 && t.nrows() == 2, "Sufficient probability matrix should be 2x1");
         self.eta.dot(&t.column(0)) - self.log_part[0]
     }
 
     fn update_log_partition<'a>(&'a mut self, eta : DVectorSlice<'_, f64>) {
-        let log_part_v = Gamma::ln_gamma(eta[0] + 1.) -
-            (eta[0] + 1.)*(-eta[1]).ln();
+        let log_part_v = Gamma::ln_gamma(eta[0] + 1.) - (eta[0] + 1.)*(-1.*eta[1]).ln();
         self.log_part = DVector::from_element(1, log_part_v);
     }
 
@@ -129,6 +135,8 @@ impl Distribution for Gamma
         };
         let ab = Self::link_inverse(&eta);
         self.mean = DVector::from_element(1, ab[0] / ab[1]);
+        self.update_log_partition((&eta).into());
+        self.eta = eta;
     }
 
     fn view_parameter(&self, natural : bool) -> &DVector<f64> {
@@ -158,6 +166,7 @@ impl Distribution for Gamma
     }
 
     fn log_prob(&self, y : DMatrixSlice<f64>) -> f64 {
+        assert!(y.ncols() == 1, "Gamma sample should have single column");
         let suf = Self::sufficient_stat(y);
         self.suf_log_prob(suf.rows(0,suf.nrows()))
     }
