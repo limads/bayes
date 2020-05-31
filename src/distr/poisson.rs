@@ -27,7 +27,7 @@ pub type PoissonFactor = UnivariateFactor<Gamma>;
 ///
 /// // Maximum likelihood estimate
 /// println!("{}", Poisson::mean_mle((&y).into()));
-/// let mle = Poisson::mean_mle((&y).into());
+/// let (mle,_) = Poisson::mle((&y).into());
 ///
 /// // Bayesian conjugate estimate
 /// let mut poiss_cond = poiss.condition(Gamma::new(1.0,1.0));

@@ -4,10 +4,8 @@ use super::*;
 use serde::{Serialize, Deserialize};
 // use super::Gamma;
 
-/// Exponential-family distribution defined over theta = [-pi,pi], resulting
-/// from the observation of a periodic process. Useful to model the
-/// common correlation component r of covariance matrices, since theta = acos(r) can be
-/// seen as a draw from a VonMisses distribution.
+/// Exponential-family distribution defined over -π ≥ θ ≥ π, resulting
+/// from the observation of a periodic process.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VonMises {
 

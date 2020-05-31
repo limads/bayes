@@ -22,7 +22,7 @@ use crate::sim::*;
 /// let y = norm.sample();
 ///
 /// // Maximum likelihood estimate
-/// let mle = Normal::mean_mle((&y).into());
+/// let (mle,_) = Normal::mle((&y).into());
 ///
 /// // Bayesian conjugate estimate
 /// let mut norm_cond = norm.condition(Normal::new(1, Some(0.0), Some(1.0)));

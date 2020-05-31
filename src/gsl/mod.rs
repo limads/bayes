@@ -40,6 +40,8 @@ pub mod rng;
 #[allow(dead_code,unused)]
 pub mod rand_utils;
 
+/// Utilities for conversion between nalgebra/GSL structures and
+/// wrapper for GSL error handling.
 #[allow(dead_code,unused)]
 pub mod utils;
 

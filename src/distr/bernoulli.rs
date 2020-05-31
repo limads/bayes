@@ -25,7 +25,7 @@ pub type BernoulliFactor = UnivariateFactor<Beta>;
 /// let y = bern.sample();
 ///
 /// // Maximum likelihood estimate
-/// let mle = Bernoulli::mean_mle((&y).into());
+/// let (mle, _) = Bernoulli::mle((&y).into());
 ///
 /// // Bayesian conjugate estimate
 /// let mut bern_cond = bern.condition(Beta::new(1,1));

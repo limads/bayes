@@ -235,18 +235,16 @@ pub trait ExponentialFamily<C>
 
 }
 
-/// Inference algorithm, parametrized by the distribution output, which can be either
-/// a full posterior or an approximation.
+/// Inference algorithm, parametrized by the distribution output.
 pub trait Estimator<D>
     where
         Self : Sized,
         D : Distribution
 {
 
-    /// Return a reference to the posterior distribution.
-    /// If the algorithm will not be called anymore, just
-    /// move the posterior to the current environment:
-    /// let post = *(model.posterior().unwrap());
+    /// Runs the inference algorithm for the informed sample matrix,
+    /// returning a reference to the modified model (from which
+    /// the posterior information of interest can be retrieved).
     fn fit<'a>(&'a mut self, y : DMatrix<f64>) -> Result<&'a D, &'static str>;
 
 }
@@ -261,6 +259,11 @@ pub trait Likelihood<C>
         Self : ExponentialFamily<C>,
         C : Dim
 {
+
+    /// Returns the mean maximum likelihood estimate and its standard error.
+    fn mle(y : DMatrixSlice<'_, f64>) -> (f64, f64) {
+        (Self::mean_mle(y), Self::se_mle(y))
+    }
 
     /// Returns a mean estimate using maximum likelihood estimation.
     fn mean_mle(y : DMatrixSlice<'_, f64>) -> f64;

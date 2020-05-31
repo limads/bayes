@@ -4,22 +4,17 @@ use crate::distr::*;
 // use crate::optim::*;
 // use std::ops::AddAssign;
 
-/// Expectation Maximization algorithm, for approximating conditional posteriors. At each
-/// phase of the algorithm, we pick a node to optimize; while maintaining all other nodes constant.
-/// By iterating over non-root nodes of the graph iteractively; and optimizing the node gradient with
-/// respect to the full graph log-probability, we are guaranteed to arrive at the posterior mode
-/// if the negative log-posterior is convex. The algorithm outputs a (local) normal approximation by using the last gradient
-/// steps to estimate the precision matrix. The global mode of the posterior is given by this gaussian
-/// mode; and this gaussian precision is a good approximation to the mode precision if we do not
-/// go too far in the parameter space (in the natural parameter scale). The returned graph can also
-/// be interpreted as the conditional posterior for the last optimized node conditional on all
-/// other nodes held constant at their modes. The posterior mode can be used to make predictions
-/// conforming to some decision rule; or to build a proposal distribution for the Metropolis algorithm.
-/// This proposal will be a multivariate gaussian with mean defined as the concatenated node means; and
-/// covariance defined only at the diagonal for single-parameter nodes or at the block-diagonal for
-/// multiparameter nodes. The node-specific gaussian approximation can be obtained by node.approximate()
-/// at the graph returned by ExpectMax::fit.
-struct ExpectMax {
+/// (Work in progress) The expectation maximization algorithm is a general-purpose inference
+/// algorithm that generates a posterior gaussian approximation for each
+/// distribution composing a model. At each step of the algorihtm, the full
+/// model log-probability is evaluated by changing the parameter vector of a single node
+/// in a probabilistic graph, while keeping all the others at their last estimated local
+/// maxima. The algorithm is guaranteed to converge to a global maxima when the log-posterior
+/// is a quadratic function. The gaussian approximation can be used directly if only the
+/// posterior mode is required (i.e. prediction; decision under a quadratic loss) or can
+/// serve as a basis to build an efficient proposal distribution for the Metropolis-Hastings posterior
+/// sampler, which can be used to build a full posterior.
+pub struct ExpectMax {
 
 }
 

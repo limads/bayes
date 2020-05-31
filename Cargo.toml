@@ -15,7 +15,7 @@ readme = "README.md"
 nalgebra = { version = "0.21.0", features = ["serde-serialize"] }
 simba="0.1.2"
 petgraph = "0.5.0"
-serde = { version="1.0.106", features=["derive"] }
+serde = { version="1.0.111", features=["derive"] }
 rand = "0.7.3"
 rand_distr = "0.2.2"
 

@@ -30,32 +30,27 @@ impl Default for ErrorRate {
 
 }
 
-/// A decision boundary is the output of a model comparison strategy
-/// and some sample (which can be, but is not required to, be the sample
-/// used to fit the model). It is an optimized strategy to make a decision
-/// with respect to a pair of probabilistic models and a distribution.
-/// If the difference between a model log_probability and an alternative model
-/// log_probability live on a line (where zero means indifference to which model
-/// is best considering that false positives are as bad as false negativas),
-/// the decision boundary is a partition of this line away from zero in either
+/// A decision boundary is the output of an optimized decision process
+/// to select between two alternative probabilistic models, after
+/// considering an error criterion.
+/// The difference in log-probability between a model
+/// and an alternative lies on the real line (where zero means indifference to which model
+/// is best considering that false positives are as bad as false negativas).
+/// The decision boundary is a partition of this line away from zero in either
 /// direction that gives more weight to false positives relative to false negatives.
+///
 /// While useful as a final output of an inference procedure, DecisionBoundary(.) also
 /// implements distribution, and so can be composed with other distributions inside a graph
 /// (behaving as a Bernoulli random varialble that decides if
 /// the left hand branch is best than the right hand branch given the informed error criterion).
-/// Given a realized decision process with fixed ideal error rate criterion
-/// and fixed known decision vector,
-/// the decision boundary behaves as a Bernoulli random variable with probability
-/// determined only by outputs from one of the branches, that is assumed a fixed decision vector
-/// relative to the other.
-/// In the sample(.) forward pass through the graph, the samples from the left branch are transformed
-/// via a user-defined function to the fixed Bernoulli parameters, and those parameters are used
-/// to evaluate if the incoming transformed samples from the right branch satisfy the boundary
-/// established by the criterion;
-/// In the log_prob(.) backward pass, the incoming
-/// sample has its log-probability calculated relative to the fixed decision vector (which is passed to the right)
-/// and the fixed decision vector log_probability is passed to the left.
 pub struct DecisionBoundary<'a> {
+    // In the sample(.) forward pass through the graph, the samples from the left branch are transformed
+    // via a user-defined function to the fixed Bernoulli parameters, and those parameters are used
+    // to evaluate if the incoming transformed samples from the right branch satisfy the boundary
+    // established by the criterion;
+    // In the log_prob(.) backward pass, the incoming
+    // sample has its log-probability calculated relative to the fixed decision vector (which is passed to the right)
+    // and the fixed decision vector log_probability is passed to the left.
 
     /// Sample for which this decision
     _sample : &'a DMatrix<f64>,
@@ -102,18 +97,17 @@ impl<'a> DecisionBoundary<'a> {
 /// with itself at different values by comparing their conditional log-posteriors.
 /// A peak detection problem, for example, can be formulated
 /// as:
-/// m1.iter_factors().next().try_set(&[0.]);
-/// m2.iter_factors().next().try_set(&[1.]);
-/// Where m1 and m2 are identical posteriors fitted in the same dataset,
-/// and the unique factor is a Bernoulli.
-/// Then:
-/// let bf = m1.compare(m2)
-/// Allows some model comparison strategies:
-/// bf.best(sample, default()) tells if self is more likely than other relative to the informed unobserved sample
-/// and the default error criterion (indiference to false positives vs. false negatives);
-/// bf.optimize(sample, crit, |x| { lookup[x] }, true_values) returns a decision boundary over the log-posterior
-/// diference between self and other that satisfy the required error rate criterion. The informed function maps the
-/// sample values to a decision 0/1 space so it can be compared to true_values.
+///
+/// ```rust
+/// // let bf = m1.compare(m2);
+///
+/// // Verify if self is more likely than the alternative relative to the informed sample
+/// // and the default error criterion (indiference to false positives vs. false negatives);
+/// // bf.best(y, default());
+///
+/// // Obtain optimized decision boundary over the log-posterior for the given criterion.
+/// // let bound = bf.optimize(y, crit, true_values);
+/// ```
 pub struct BayesFactor<'a, D, E>
     where
         D : Distribution,
@@ -143,16 +137,18 @@ impl<'a, D,E> BayesFactor<'a, D, E>
         unimplemented!()
     }
 
-    /// This method calls self.best(.) iteratevely, changing a scalar that partitions the model log-posterior differences
+    /// Calls self.best(.) iteratevely, changing a scalar that partitions the model log-posterior differences
     /// until the decisions (taken not at zero, but at the optimized value) match the observed
     /// 0/1 decision vector as close as possible given the desired criterion (potentially after applying a transformation f to the sample).
     /// f(.) is any function that maps the potentially continuous outcomes to the 0/1
-    /// domain (this is just identity if the Bernoulli). Models where the output
+    /// domain (this is just identity if the Bernoulli).
+    /// Models for which the output
     /// is a categorical can define a decision rule as some linear combination of the categories
     /// (for example, an ordered outcome is a categorical output summed up to the kth element compared
     /// against all other elements). Models with univariate or multivariate continuous outcomes can
     /// determine arbitrary step functions of those to yield an output. Future decisions are then not made at
-    /// zero, but at the chosen decision boundary. The method also calculates the empirical Error Rates, which
+    /// zero, but at the chosen decision boundary.
+    /// The method also calculates the empirical Error Rates, which
     /// should be as close to the ideal criterion informed by the user as possible. The lifetime of the
     /// boundary becomes tied to the lifetime of the sample used to calculate it.
     pub fn optimize(

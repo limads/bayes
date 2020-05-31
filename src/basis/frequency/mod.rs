@@ -1,18 +1,23 @@
 use nalgebra::*;
 use nalgebra::storage::*;
 
+/// Wrapper type to the Fast-Fourier transforms provided by MKL
 #[cfg(feature = "mkl")]
 pub mod fft;
 
+/// Wrapper type to the Wavelet transforms provided by GSL
 pub mod dwt;
 
+/// Convolution routines.
 pub mod conv;
 
 /// Generic trait for frequency or spatio/temporal-frequency domain transformations.
 /// The input data to the try_forward/forward methods must be a matrix or vector
 /// of scalar type M; The input data to the try_backward_to/backward_to methods
 /// must be a matrix or vector of scalar type N. The type C prescribes the dimensionality
-/// of the input/output pair (either vector or matrix). The implementor is
+/// of the input/output pair (either vector or matrix).
+///
+/// The implementor is
 /// assumed to own the forward transform buffer (i.e. the frequency domain data), which
 /// is why the forward methods return a reference with lifetime tied to the implementor.
 /// The backward buffer (if needed) is assumed to have been pre-allocated by the user, which should opt
@@ -27,6 +32,7 @@ pub trait FrequencyBasis<M, N, C>
         C : Dim
 {
 
+    /// Apply the forward transform (original domain to frequency domain).
     fn try_forward<'a, S>(
         &'a mut self,
         src : &Matrix<M,Dynamic,C,S>
@@ -34,6 +40,8 @@ pub trait FrequencyBasis<M, N, C>
         where
             S : ContiguousStorage<M, Dynamic, C>;
 
+    /// Apply the backward transform (frequency domain to original domain)
+    /// by taking a mutable reference to a pre-allocated buffer.
     fn try_backward_to<'a, 'b, /*S,*/ SB>(
         &'a self,
         //src : &'a Matrix<N,Dynamic,C,S>,
@@ -44,6 +52,10 @@ pub trait FrequencyBasis<M, N, C>
             SB : ContiguousStorageMut<M, Dynamic, C>;
             //for<'c> Self : 'a ;
 
+    /// Apply the backward transform (frequency domain to original
+    /// domain) by taking ownership of a pre-allocated buffer. The
+    /// buffer is kept in memory and returned back to the caller in
+    /// case of success; or is de-allocated in case of failure.
     fn try_backward<'a, /*S,*/ SB>(
         &'a self,
         //src : &'a Matrix<N,Dynamic,C,S>,
