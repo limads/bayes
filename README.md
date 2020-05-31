@@ -1,3 +1,5 @@
+![crates.io](https://img.shields.io/crates/v/bayes.svg)
+
 # About
 
 This is a **work-in-progress** crate that will offer composable abstractions to build probabilistic models and inference algorihtms. Two reference algorithms will be implemented in the short term: the `optim::ExpectMax` (general-purpose posterior mode-finding via expectation maximization) and `sim::Metropolis` (Metropolis-Hastitings posterior sampler). Adaptive estimation from conjugate pairs will also be provided (see examples for the `distr::Normal`, `distr::Poisson` and `distr::Binomial` structs). 
