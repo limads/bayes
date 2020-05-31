@@ -10,6 +10,7 @@ build = "build.rs"
 links = "gsl"
 publish = ["crates-io"]
 readme = "README.md"
+description = "Composable abstractions to build probabilistic models and inference algorithms"
 
 [dependencies]
 nalgebra = { version = "0.21.0", features = ["serde-serialize"] }

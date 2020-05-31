@@ -111,7 +111,7 @@ fn multinormal() {
             panic!("Error calculating multivariate density");
         }
         let x = DMatrix::<f64>::from_iterator(1, 5, mu.iter().map(|x| *x));
-        println!("Prob: {}", gsl_prob);
+        // println!("Prob: {}", gsl_prob);
         assert!((gsl_prob - mn.prob(x.slice((0,0), (x.nrows(), x.ncols())))).abs() < EPS);
     }
 }
@@ -128,8 +128,8 @@ fn normal() {
             let gsl_prob = gsl_ran_gaussian_pdf(*y, (1.).sqrt());
             let norm = Normal::new(1, Some(0.), Some(1.));
             let bayes_prob = norm.prob(values.slice((i,0), (1,1)));
-            println!("Gsl prob: {} (evaluated at {})", gsl_prob, *y);
-            println!("Bayes prob: {} (evaluated at {})", bayes_prob, *y);
+            // println!("Gsl prob: {} (evaluated at {})", gsl_prob, *y);
+            // println!("Bayes prob: {} (evaluated at {})", bayes_prob, *y);
             assert!( (gsl_prob -  bayes_prob).abs() < EPS);
         }
         //}
@@ -152,8 +152,8 @@ fn categorical() {
         let gsl_cat_p = gsl_ran_multinomial_pdf(5, &probs[0] as *const _, &outcome[0] as *const _);
         let vprobs = DMatrix::from_iterator(1, 4, outcome[0..4].iter().map(|o| *o as f64));
         let cat_p = c.prob(vprobs.slice((0, 0), (1, 4)));
-        println!("Categorical: {} {}", gsl_cat_p, cat_p);
-        //println!("{}", gsl_cat_p - cat_p);
+        // println!("Categorical: {} {}", gsl_cat_p, cat_p);
+        // println!("{}", gsl_cat_p - cat_p);
         assert!((gsl_cat_p - cat_p).abs() < EPS);
     }
 }
