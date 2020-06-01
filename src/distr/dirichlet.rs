@@ -2,6 +2,7 @@ use nalgebra::*;
 // use rand_distr;
 use super::*;
 use serde::{Serialize, Deserialize};
+use std::fmt::{self, Display};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Dirichlet {
@@ -100,3 +101,12 @@ impl ExponentialFamily<Dynamic> for Dirichlet
     }
 
 }
+
+impl Display for Dirichlet {
+
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Dir(1)")
+    }
+
+}
+

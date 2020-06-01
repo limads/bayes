@@ -6,6 +6,7 @@ use serde::{Serialize, Deserialize};
 use std::f64::consts::PI;
 // use crate::sim::*;
 // use std::ops::MulAssign;
+use std::fmt::{self, Display};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 enum CovFunction {
@@ -301,6 +302,14 @@ impl Posterior for MultiNormal {
             },
             _ => (None, None)
         }
+    }
+
+}
+
+impl Display for MultiNormal {
+
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "MNorm({})", self.mu.nrows())
     }
 
 }

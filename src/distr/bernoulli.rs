@@ -7,6 +7,7 @@ use rand;
 use crate::sim::*;
 // use std::ops::AddAssign;
 use std::default::Default;
+use std::fmt::{self, Display};
 
 pub type BernoulliFactor = UnivariateFactor<Beta>;
 
@@ -364,6 +365,14 @@ impl Default for Bernoulli {
             log_part : DVector::from_element(1, (2.).ln()),
             suf_theta : None,
         }
+    }
+
+}
+
+impl Display for Bernoulli {
+
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Bern({})", self.theta.nrows())
     }
 
 }

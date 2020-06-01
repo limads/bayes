@@ -6,6 +6,7 @@ use super::gamma::*;
 use rand_distr;
 use rand;
 use std::default::Default;
+use std::fmt::{self, Display};
 
 /// A beta distribution yields ratios over the interval [0, 1], produced by taking the
 /// ratio of two independent gamma distributions: If u ~ Gamma(n/2, 0.5) and v ~ Gamma(m/2, 0.5)
@@ -56,7 +57,7 @@ impl Beta {
 impl ExponentialFamily<Dynamic> for Beta {
 
     fn base_measure(y : DMatrixSlice<'_, f64>) -> DVector<f64> {
-        println!("y={}", y);
+        //println!("y={}", y);
         if y.ncols() > 2 {
             panic!("The Beta distribution can only be evaluated at a single data point");
         }
@@ -99,7 +100,7 @@ impl ExponentialFamily<Dynamic> for Beta {
     }
 
     fn update_log_partition<'a>(&'a mut self, eta : DVectorSlice<'_, f64>) {
-        println!("{}", eta);
+        //println!("{}", eta);
         let log_part_val = Gamma::ln_gamma(eta[0] as f64) +
             Gamma::ln_gamma(eta[1] as f64) -
             Gamma::ln_gamma(eta[0] as f64 + eta[1] as f64 );
@@ -231,6 +232,14 @@ impl Default for Beta {
             sampler : rand_distr::Beta::new(1., 1.).unwrap(),
             factor : None
         }
+    }
+
+}
+
+impl Display for Beta {
+
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Beta(1)")
     }
 
 }

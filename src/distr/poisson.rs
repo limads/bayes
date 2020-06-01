@@ -8,6 +8,7 @@ use crate::sim::*;
 use std::default::Default;
 use serde::ser::{Serializer};
 use serde::de::Deserializer;
+use std::fmt::{self, Display};
 
 pub type PoissonFactor = UnivariateFactor<Gamma>;
 
@@ -340,5 +341,13 @@ impl<'de> Deserialize<'de> for Poisson {
     {
         unimplemented!()
     }
+}
+
+impl Display for Poisson {
+
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Poiss({})", self.lambda.nrows())
+    }
+
 }
 

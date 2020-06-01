@@ -3,6 +3,7 @@ use nalgebra::storage::*;
 use std::fmt::Debug;
 use std::ops::AddAssign;
 use crate::decision::BayesFactor;
+use std::fmt::Display;
 
 pub mod poisson;
 
@@ -53,12 +54,12 @@ pub use vonmises::*;
 /// log-probability methods are dependent not only on the current parameter vector,
 /// but also on the state of any applied conditioning factors.
 pub trait Distribution
-    where Self : Debug + Sized
+    where Self : Debug + Display + Sized
 {
 
     /// Returns the expected value of the distribution, which is a function of
     /// the current parameter vector.
-    fn mean<'a>(&'a self) -> &'a DVector<f64>;
+    fn mean(&self) -> &DVector<f64>;
 
     /// Acquires reference to internal parameter vector; either in
     /// natural form (eta) or canonical form (theta).
@@ -213,7 +214,7 @@ pub trait ExponentialFamily<C>
         let mut unn_p = DVector::zeros(y.nrows());
         for (i, _) in y.row_iter().enumerate() {
             unn_p[i] = self.log_prob(y.rows(i,1)).exp();
-            println!("lp = {}", unn_p[i]);
+            //println!("lp = {}", unn_p[i]);
         }
         let p = bm.component_mul(&unn_p);
         let joint_p = p.iter().fold(1., |jp, p| jp * p);
@@ -241,6 +242,7 @@ pub trait Estimator<D>
 /// and iterate up to all elements without any factors.
 /// Location factors are visited before scale factors,
 /// and every path is explored in a depth-first fashion.
+#[derive(Debug)]
 pub struct Factors<'a> {
     factors : Vec<&'a mut dyn Posterior>
 }
@@ -312,6 +314,14 @@ impl<'a> From<Factors<'a>> for Vec<&'a mut dyn Posterior> {
     }
 }
 
+
+impl<'a> From<Vec<&'a mut dyn Posterior>> for Factors<'a> {
+
+    fn from(v : Vec<&'a mut dyn Posterior>) -> Factors<'a> {
+        Factors { factors : v }
+    }
+}
+
 /// Implemented by distributions which can have their
 /// log-probability evaluated with respect to a random sample directly.
 /// Implemented by Normal, Poisson and Bernoulli. Other distributions
@@ -355,19 +365,35 @@ pub trait Likelihood<C>
         (Self::var_mle(y) / n).sqrt()
     }
 
+    /// Returns a mutable iterator over this likelihood
+    /// distribution factor(s).
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use bayes::distr::*;
+    ///
+    /// let mut m = Normal::new(1,None,None).condition(Normal::new(1,None,None))
+    ///     .condition(Gamma::new(1.,1.));
+    /// m.factors_mut().visit::<_,()>(|f, _| println!("{}", f), None);
+    /// ```
     fn factors_mut(&mut self) -> Factors {
-        let (fmut_a, fmut_b) = self.dyn_factors_mut();
+        /*let (fmut_a, fmut_b) = self.dyn_factors_mut();
         let factors_a = if let Some(a) = fmut_a {
-            a.aggregate_factors(Factors::new_empty())
+            let new_factors = Factors::new_empty();
+            let new_factors = a.aggregate_factors(vec![a].into());
+            a.aggregate_factors(new_factors)
         } else {
             Factors::new_empty()
         };
+        println!("Factors a: {:?}", &factors_a);
         let factors_b = if let Some(b) = fmut_b {
             b.aggregate_factors(factors_a)
         } else {
             factors_a
         };
-        factors_b
+        factors_b*/
+        self.aggregate_factors(Factors::new_empty())
     }
 
     /// The conditional log-probability evaluation works because
@@ -390,7 +416,9 @@ pub trait Likelihood<C>
     }
 }
 
-pub trait Posterior {
+pub trait Posterior
+    where Self : Debug + Display //+ Distribution
+{
 
     /*fn dyn_factors(&mut self) -> (Option<&dyn Posterior>, Option<&dyn Posterior>) {
         let (fmut_a, fmut_b) = self.dyn_factors_mut();

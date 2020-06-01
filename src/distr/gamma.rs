@@ -6,6 +6,7 @@ use rand;
 use serde::{Serialize, Deserialize};
 use serde::ser::{Serializer};
 use serde::de::Deserializer;
+use std::fmt::{self, Display};
 
 /// The Gamma is a distribution for inverse-scale or rate parameters. For a location parameter centered
 /// at alpha (shape), Gamma(alpha, beta) represents the random distribution of
@@ -224,6 +225,14 @@ impl Default for Gamma {
             sampler : rand_distr::Gamma::new(1., 1.).unwrap(),
             factor : None
         }
+    }
+
+}
+
+impl Display for Gamma {
+
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Gam(1)")
     }
 
 }

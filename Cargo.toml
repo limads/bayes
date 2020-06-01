@@ -22,3 +22,7 @@ rand_distr = "0.2.2"
 
 [features]
 mkl=[]
+
+[[example]]
+name = "iteration"
+path = "examples/iteration.rs"

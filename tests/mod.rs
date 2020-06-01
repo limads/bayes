@@ -90,7 +90,7 @@ fn multinormal() {
     let mn : MultiNormal = MultiNormal::new(mu.clone(), sigma.clone());
     let lu = Cholesky::new(sigma).unwrap();
     let lower = lu.l();
-    println!("{}", lower);
+    //println!("{}", lower);
     unsafe {
         let lower_gsl : gsl_matrix = lower.into();
         //let mu : [f64; 5] = [0., 0., 0., 0., 0.];

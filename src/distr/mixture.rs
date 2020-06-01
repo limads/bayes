@@ -3,6 +3,7 @@ use super::*;
 use super::categorical::*;
 use super::multinormal::*;
 use super::dirichlet::*;
+use std::fmt::{self, Display};
 
 /// A mixture is defined by a linear combination of normal probability
 /// distributions whose weights result from a categorical distribution draw,
@@ -149,6 +150,11 @@ impl Posterior for NormalMixture {
 
 }
 
+impl Display for NormalMixture {
 
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Mix({})", self.cat.mean().nrows())
+    }
 
+}
 

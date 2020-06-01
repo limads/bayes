@@ -3,6 +3,7 @@ use super::*;
 use super::dirichlet::*;
 // use std::fmt::{self, Display};
 use serde::{Serialize, Deserialize};
+use std::fmt::{self, Display};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Categorical {
@@ -176,3 +177,14 @@ impl Conditional<Dirichlet> for Categorical {
     }
 
 }
+
+impl Display for Categorical {
+
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Cat({})", self.theta.nrows())
+    }
+
+}
+
+
+

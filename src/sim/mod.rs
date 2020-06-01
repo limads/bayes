@@ -21,6 +21,7 @@ pub use metropolis::*;
 /// optimization or posterior sampling are considered as conditioned or unconditional priors.
 /// After optimization/simulation, this trajectory is used to build an approximation to the
 /// corresponding posterior entry, which can be retrieved via node.approximate() or node.marginal().
+/// TODO rename to RandomWalk
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EtaTrajectory {
 
@@ -98,6 +99,7 @@ impl Index<usize> for Sample {
 /// RandomWalk is implemented by distributions who may
 /// maintain a history of changes in the natural parameter
 /// scale of its parent(s) node(s).
+/// TODO move to posterior trait.
 pub trait RandomWalk
     where
         Self : Distribution

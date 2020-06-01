@@ -3,6 +3,7 @@ use super::*;
 // use std::fmt::{self, Display};
 use serde::{Serialize, Deserialize};
 // use super::Gamma;
+use std::fmt::{self, Display};
 
 /// Exponential-family distribution defined over -π ≥ θ ≥ π, resulting
 /// from the observation of a periodic process.
@@ -105,3 +106,12 @@ impl ExponentialFamily<U1> for VonMises
     }
 
 }
+
+impl Display for VonMises {
+
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "VMis(1)")
+    }
+
+}
+

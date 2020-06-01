@@ -6,6 +6,7 @@ use std::f64::consts::PI;
 // use std::ops::Add;
 use crate::sim::*;
 // use std::ops::AddAssign;
+use std::fmt::{self, Display};
 
 /// The Normal is the exponential-family distribution
 /// used as the likelihood for continuous unbounded outcomes and as priors
@@ -237,7 +238,7 @@ impl Distribution for Normal
             None => 0.
         };
         let t = Self::sufficient_stat(y);
-        println!("suff stat: {}", t);
+        //println!("suff stat: {}", t);
         self.suf_log_prob(t.slice((0, 0), (2, 1))) + loc_lp + scale_lp
     }
 
@@ -321,6 +322,37 @@ impl Conditional<Normal> for Normal {
 
 }
 
+impl Conditional<Gamma> for Normal {
+
+    fn condition(mut self, g : Gamma) -> Normal {
+        self.scale_factor = Some(g);
+        // TODO update sampler vector
+        self
+    }
+
+    fn view_factor(&self) -> Option<&Gamma> {
+        match &self.scale_factor {
+            Some(g) => Some(g),
+            _ => None
+        }
+    }
+
+    fn take_factor(self) -> Option<Gamma> {
+        match self.scale_factor {
+            Some(g) => Some(g),
+            _ => None
+        }
+    }
+
+    fn factor_mut(&mut self) -> Option<&mut Gamma> {
+        match &mut self.scale_factor {
+            Some(g) => Some(g),
+            None => None
+        }
+    }
+
+}
+
 impl Estimator<Normal> for Normal {
 
     fn fit<'a>(&'a mut self, y : DMatrix<f64>) -> Result<&'a Normal, &'static str> {
@@ -371,6 +403,14 @@ impl RandomWalk for Normal {
             let t_cols = DMatrix::from_columns(&cols[..]);
             Some(Sample::new(t_cols))
         })
+    }
+
+}
+
+impl Display for Normal {
+
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Norm({})", self.mu.nrows())
     }
 
 }

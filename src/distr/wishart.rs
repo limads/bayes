@@ -3,6 +3,7 @@ use super::*;
 // use std::fmt::{self, Debug};
 use serde::{Serialize, Deserialize};
 use super::vonmises::*;
+use std::fmt::{self, Display};
 
 /// A structural representation of a correlation matrix, with entries over [-1,1], resulting
 /// from a function of a scalar correlation rho and the (i,j) offset. Conditional on a realization of this
@@ -313,4 +314,11 @@ impl Conditional<VonMises> for Wishart {
 
 }
 
+impl Display for Wishart {
+
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Wish({})", self.diag.nrows())
+    }
+
+}
 
