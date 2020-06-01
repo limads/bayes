@@ -1,4 +1,4 @@
-![crates.io](https://img.shields.io/crates/v/bayes.svg)
+![Crates.io](https://img.shields.io/crates/v/bayes?style=flat-square)
 
 # About
 
