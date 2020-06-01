@@ -255,6 +255,23 @@ impl Distribution for Normal
 
 }
 
+impl Posterior for Normal {
+
+    fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>) {
+        // Scale-only factors are not considered for now.
+        match (&mut self.loc_factor, &mut self.scale_factor) {
+            (Some(ref mut l), Some(ref mut s)) => {
+                (Some(l.as_mut() as &mut dyn Posterior), Some(s as &mut dyn Posterior))
+            },
+            (Some(ref mut l), None) => {
+                (Some(l.as_mut() as &mut dyn Posterior), None)
+            },
+            _ => (None, None)
+        }
+    }
+
+}
+
 impl Likelihood<U1> for Normal {
 
     fn mean_mle(y : DMatrixSlice<'_, f64>) -> f64 {

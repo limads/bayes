@@ -93,6 +93,17 @@ impl Distribution for Categorical {
 
 }
 
+impl Posterior for Categorical {
+
+    fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>) {
+        match &mut self.factor {
+            Some(ref mut d) => (Some(d as &mut dyn Posterior), None),
+            None => (None, None)
+        }
+    }
+
+}
+
 impl ExponentialFamily<Dynamic> for Categorical
     where
         Self : Distribution

@@ -100,18 +100,6 @@ pub trait Distribution
     /// follow the same structure as the argument to log_prob(.).
     fn sample(&self) -> DMatrix<f64>;
 
-    /// General-purpose comparison of two fitted estimates, used for
-    /// determining predictive accuracy, running cross-validation, etc.
-    /// Comparisons can be made between two fitted models
-    /// for purposes of hyperparameter tuning or model selection; between
-    /// a fitted model and a saturated model for decision analysis; or between
-    /// a fitted model and a null model for hypothesis testing.
-    fn compare<'a, D>(&'a self, other : &'a D) -> BayesFactor<'a, Self, D>
-        where D : Distribution
-    {
-        BayesFactor::new(&self, &other)
-    }
-
 }
 
 /// A probabilistic graph is linked by each element holding an owned Distribution
@@ -232,7 +220,6 @@ pub trait ExponentialFamily<C>
         joint_p
     }
 
-
 }
 
 /// Inference algorithm, parametrized by the distribution output.
@@ -249,6 +236,82 @@ pub trait Estimator<D>
 
 }
 
+/// Mutable iterator over a probabilistic graph.
+/// Starts at the immediate factors of a likelihood node
+/// and iterate up to all elements without any factors.
+/// Location factors are visited before scale factors,
+/// and every path is explored in a depth-first fashion.
+pub struct Factors<'a> {
+    factors : Vec<&'a mut dyn Posterior>
+}
+
+impl<'a> Factors<'a> {
+
+    pub fn new_empty() -> Self {
+        Self{ factors : Vec::new() }
+    }
+
+    pub fn push(&'a mut self, p : &'a mut dyn Posterior) {
+        self.factors.push(p);
+    }
+
+    pub fn aggregate(mut self, p : &'a mut dyn Posterior) -> Self {
+        self.factors.push(p);
+        self
+    }
+
+    /// The visit(.) method takes a generic closure and an optional sequence
+    /// of generic data references that can carry some data to apply
+    /// to each node in the graph.
+    pub fn visit<F, D>(&mut self, f : F, opt_data : Option<&[D]>) -> Result<(), &'static str>
+        where F : Fn(&mut dyn Posterior, Option<&D>)
+    {
+        let mut ix = 0;
+        for factor in self.factors.iter_mut() {
+            if let Some(data) = opt_data {
+                if let Some(d) = data.get(ix) {
+                    f(*factor, Some(d));
+                    ix += 1;
+                } else {
+                    return Err("Not enought data entries");
+                }
+            } else {
+                f(*factor, None);
+            }
+        }
+        match opt_data {
+            Some(data) => if data.len() == ix {
+                Ok(())
+            } else {
+                Err("Excess of data entries")
+            },
+            None => Ok(())
+        }
+    }
+
+}
+
+impl<'a> Iterator for Factors<'a> {
+
+    type Item = &'a mut dyn Posterior;
+
+    fn next(&mut self) -> Option<&'a mut dyn Posterior> {
+        if self.factors.len() == 0 {
+            None
+        } else {
+            Some(self.factors.remove(0))
+        }
+    }
+
+}
+
+impl<'a> From<Factors<'a>> for Vec<&'a mut dyn Posterior> {
+
+    fn from(f : Factors<'a>) -> Vec<&'a mut dyn Posterior> {
+        f.factors
+    }
+}
+
 /// Implemented by distributions which can have their
 /// log-probability evaluated with respect to a random sample directly.
 /// Implemented by Normal, Poisson and Bernoulli. Other distributions
@@ -256,9 +319,21 @@ pub trait Estimator<D>
 /// by passing the sufficient statistic calculated from the sample.
 pub trait Likelihood<C>
     where
-        Self : ExponentialFamily<C>,
+        Self : ExponentialFamily<C> + Distribution + Posterior,
         C : Dim
 {
+
+    /// General-purpose comparison of two fitted estimates, used for
+    /// determining predictive accuracy, running cross-validation, etc.
+    /// Comparisons can be made between two fitted models
+    /// for purposes of hyperparameter tuning or model selection; between
+    /// a fitted model and a saturated model for decision analysis; or between
+    /// a fitted model and a null model for hypothesis testing.
+    fn compare<'a, D>(&'a self, other : &'a D) -> BayesFactor<'a, Self, D>
+        where D : Distribution
+    {
+        BayesFactor::new(&self, &other)
+    }
 
     /// Returns the mean maximum likelihood estimate and its standard error.
     fn mle(y : DMatrixSlice<'_, f64>) -> (f64, f64) {
@@ -278,6 +353,21 @@ pub trait Likelihood<C>
     fn se_mle(y : DMatrixSlice<'_, f64>) -> f64 {
         let n = y.nrows() as f64;
         (Self::var_mle(y) / n).sqrt()
+    }
+
+    fn factors_mut(&mut self) -> Factors {
+        let (fmut_a, fmut_b) = self.dyn_factors_mut();
+        let factors_a = if let Some(a) = fmut_a {
+            a.aggregate_factors(Factors::new_empty())
+        } else {
+            Factors::new_empty()
+        };
+        let factors_b = if let Some(b) = fmut_b {
+            b.aggregate_factors(factors_a)
+        } else {
+            factors_a
+        };
+        factors_b
     }
 
     /// The conditional log-probability evaluation works because
@@ -300,6 +390,39 @@ pub trait Likelihood<C>
     }
 }
 
+pub trait Posterior {
 
+    /*fn dyn_factors(&mut self) -> (Option<&dyn Posterior>, Option<&dyn Posterior>) {
+        let (fmut_a, fmut_b) = self.dyn_factors_mut();
+        let f_a : Option<&dyn Posterior> = match fmut_a {
+            Some(a) => Some(&(*a)),
+            None
+        };
+        let f_b : Option<&dyn Posterior> = match fmut_b {
+            Some(b) => Some(&(*b)),
+            None
+        };
+        (f_a, f_b)
+    }*/
+
+    fn aggregate_factors<'a>(&'a mut self, factors : Factors<'a>) -> Factors<'a> {
+        let (fmut_a, fmut_b) = self.dyn_factors_mut();
+        let factors = if let Some(f_a) = fmut_a {
+            factors.aggregate(f_a)
+        } else {
+            factors
+        };
+        let factors = if let Some(f_b) = fmut_b {
+            factors.aggregate(f_b)
+        } else {
+            factors
+        };
+        factors
+    }
+
+    fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>);
+
+    // fn approximate(&self) -> Option<&D>;
+}
 
 

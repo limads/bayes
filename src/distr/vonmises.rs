@@ -47,6 +47,13 @@ impl Distribution for VonMises
         None
     }
 
+}
+
+impl Posterior for VonMises {
+
+    fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>) {
+        unimplemented!()
+    }
 
 }
 

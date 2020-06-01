@@ -32,7 +32,9 @@ pub struct Gamma {
 
     log_part : DVector<f64>,
 
-    sampler : rand_distr::Gamma<f64>
+    sampler : rand_distr::Gamma<f64>,
+
+    factor : Option<Box<Gamma>>
 }
 
 impl Gamma {
@@ -179,6 +181,17 @@ impl Distribution for Gamma
 
 }
 
+impl Posterior for Gamma {
+
+    fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>) {
+        match &mut self.factor {
+            Some(ref mut g) => (Some(g.as_mut() as &mut dyn Posterior), None),
+            None => (None, None)
+        }
+    }
+
+}
+
 impl Serialize for Gamma {
 
     fn serialize<S>(&self, _serializer: S) -> Result<S::Ok, S::Error>
@@ -208,7 +221,8 @@ impl Default for Gamma {
             ab : ab,
             mean : DVector::from_element(1, 0.5),
             log_part : DVector::from_element(1, 0.0),
-            sampler : rand_distr::Gamma::new(1., 1.).unwrap()
+            sampler : rand_distr::Gamma::new(1., 1.).unwrap(),
+            factor : None
         }
     }
 

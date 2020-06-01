@@ -14,11 +14,11 @@ The building blocks of probabilistic models are the `Distribution` implementors 
 
 - `distr::Bernoulli` for univariate binary outcomes;
 
-- `distr::Beta` for binary priors;
+- `distr::Beta` for proportion priors;
 
 - `distr::Poisson` for univariate count outcomes;
 
-- `distr::Gamma` for generic inverse-scale priors;
+- `distr::Gamma` for generic inverse-scale or rate priors;
 
 - `distr::Normal` for univariate continuous outcomes and location priors;
 
@@ -56,7 +56,7 @@ Conditioning takes ownership of the conditioning factor, which can be recovered 
 
 ```rust
 let factor : Option<Beta> = b.take_factor();
-# or
+// or
 let factor : Option<&Beta> = b.view_factor();
 ```
 

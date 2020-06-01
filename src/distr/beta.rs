@@ -31,7 +31,7 @@ pub struct Beta {
 
     log_part : DVector<f64>,
 
-    // factor : Option<Box<Beta>>
+    factor : Option<Box<Beta>>
 
 }
 
@@ -210,6 +210,17 @@ impl Distribution for Beta
 
 }
 
+impl Posterior for Beta {
+
+    fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>) {
+        match &mut self.factor {
+            Some(ref mut b) => (Some(b.as_mut() as &mut dyn Posterior), None),
+            None => (None, None)
+        }
+    }
+
+}
+
 impl Default for Beta {
 
     fn default() -> Self {
@@ -217,7 +228,8 @@ impl Default for Beta {
             ab : DVector::from_column_slice(&[1., 1.]),
             mean : DVector::from_element(1, 0.5),
             log_part : DVector::from_element(1, 0.0),
-            sampler : rand_distr::Beta::new(1., 1.).unwrap()
+            sampler : rand_distr::Beta::new(1., 1.).unwrap(),
+            factor : None
         }
     }
 

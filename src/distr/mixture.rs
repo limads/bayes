@@ -141,3 +141,14 @@ impl Distribution for NormalMixture
 
 }
 
+impl Posterior for NormalMixture {
+
+    fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>) {
+        (Some(&mut self.cat as &mut dyn Posterior), None)
+    }
+
+}
+
+
+
+

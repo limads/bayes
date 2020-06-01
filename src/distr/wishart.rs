@@ -229,6 +229,18 @@ impl Distribution for Wishart {
         None
     }
 
+}
+
+impl Posterior for Wishart {
+
+    fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>) {
+        match &mut self.rot_fact {
+            Some(ref mut v) => {
+                (Some(v as &mut dyn Posterior), None)
+            },
+            _ => (None, None)
+        }
+    }
 
 }
 

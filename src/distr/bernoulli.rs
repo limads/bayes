@@ -305,6 +305,18 @@ impl Distribution for Bernoulli
 
 }
 
+impl Posterior for Bernoulli {
+
+    fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>) {
+        match &mut self.factor {
+            BernoulliFactor::Conjugate(ref mut b) => (Some(b as &mut dyn Posterior), None),
+            BernoulliFactor::CondExpect(ref mut m) => (Some(m as &mut dyn Posterior), None),
+            _ => (None, None)
+        }
+    }
+
+}
+
 impl RandomWalk for Bernoulli {
 
     fn current<'a>(&'a self) -> Option<DVectorSlice<'a, f64>> {

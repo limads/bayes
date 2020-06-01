@@ -193,6 +193,17 @@ impl Distribution for Poisson
         None
     }
 
+}
+
+impl Posterior for Poisson {
+
+    fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>) {
+        match &mut self.factor {
+            PoissonFactor::Conjugate(ref mut b) => (Some(b as &mut dyn Posterior), None),
+            PoissonFactor::CondExpect(ref mut m) => (Some(m as &mut dyn Posterior), None),
+            _ => (None, None)
+        }
+    }
 
 }
 

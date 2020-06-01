@@ -46,6 +46,14 @@ impl Distribution for Dirichlet {
 
 }
 
+impl Posterior for Dirichlet {
+
+    fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>) {
+        unimplemented!()
+    }
+
+}
+
 impl ExponentialFamily<Dynamic> for Dirichlet
     where
         Self : Distribution
