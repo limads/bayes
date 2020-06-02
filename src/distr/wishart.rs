@@ -222,7 +222,7 @@ impl Distribution for Wishart {
         lp + rot_lp
     }
 
-    fn sample(&self) -> DMatrix<f64> {
+    fn sample_into(&self, _dst : DMatrixSliceMut<'_,f64>) {
         unimplemented!()
     }
 
@@ -241,6 +241,14 @@ impl Posterior for Wishart {
             },
             _ => (None, None)
         }
+    }
+
+    fn set_approximation(&mut self, _m : MultiNormal) {
+        unimplemented!()
+    }
+
+    fn approximation(&self) -> Option<&MultiNormal> {
+        unimplemented!()
     }
 
 }

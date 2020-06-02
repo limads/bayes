@@ -174,10 +174,10 @@ impl Distribution for Gamma
         self.suf_log_prob(suf.rows(0,suf.nrows()))
     }
 
-    fn sample(&self) -> DMatrix<f64> {
+    fn sample_into(&self, mut dst : DMatrixSliceMut<'_,f64>) {
         use rand_distr::Distribution;
-        let s = self.sampler.sample(&mut rand::thread_rng());
-        DMatrix::from_element(1, 1, s)
+        let g = self.sampler.sample(&mut rand::thread_rng());
+        dst[(0,0)] = g;
     }
 
 }
@@ -189,6 +189,14 @@ impl Posterior for Gamma {
             Some(ref mut g) => (Some(g.as_mut() as &mut dyn Posterior), None),
             None => (None, None)
         }
+    }
+
+    fn set_approximation(&mut self, _m : MultiNormal) {
+        unimplemented!()
+    }
+
+    fn approximation(&self) -> Option<&MultiNormal> {
+        unimplemented!()
     }
 
 }

@@ -40,7 +40,7 @@ impl Distribution for VonMises
         unimplemented!()
     }
 
-    fn sample(&self) -> DMatrix<f64> {
+    fn sample_into(&self, _dst : DMatrixSliceMut<'_,f64>) {
         unimplemented!()
     }
 
@@ -53,6 +53,14 @@ impl Distribution for VonMises
 impl Posterior for VonMises {
 
     fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>) {
+        unimplemented!()
+    }
+
+    fn set_approximation(&mut self, _m : MultiNormal) {
+        unimplemented!()
+    }
+
+    fn approximation(&self) -> Option<&MultiNormal> {
         unimplemented!()
     }
 

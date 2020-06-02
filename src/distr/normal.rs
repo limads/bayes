@@ -242,16 +242,13 @@ impl Distribution for Normal
         self.suf_log_prob(t.slice((0, 0), (2, 1))) + loc_lp + scale_lp
     }
 
-    fn sample(&self) -> DMatrix<f64> {
-        // use rand_distr::{Distribution};
+    fn sample_into(&self, mut dst : DMatrixSliceMut<'_, f64>) {
         use rand::prelude::*;
         let var = self.var()[0];
-        let mut samples = DMatrix::zeros(self.mu.nrows(), 1);
         for (i, _) in self.mu.iter().enumerate() {
             let n : f64 = rand::thread_rng().sample(rand_distr::StandardNormal);
-            samples[(i,0)] = var * n;
+            dst[(i,0)] = var * n;
         }
-        samples
     }
 
 }
@@ -259,16 +256,17 @@ impl Distribution for Normal
 impl Posterior for Normal {
 
     fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>) {
-        // Scale-only factors are not considered for now.
-        match (&mut self.loc_factor, &mut self.scale_factor) {
-            (Some(ref mut l), Some(ref mut s)) => {
-                (Some(l.as_mut() as &mut dyn Posterior), Some(s as &mut dyn Posterior))
-            },
-            (Some(ref mut l), None) => {
-                (Some(l.as_mut() as &mut dyn Posterior), None)
-            },
-            _ => (None, None)
-        }
+        let loc = self.loc_factor.as_mut().map(|lf| lf.as_mut() as &mut dyn Posterior);
+        let scale = self.scale_factor.as_mut().map(|sf| sf as &mut dyn Posterior);
+        (loc, scale)
+    }
+
+    fn set_approximation(&mut self, _m : MultiNormal) {
+        unimplemented!()
+    }
+
+    fn approximation(&self) -> Option<&MultiNormal> {
+        unimplemented!()
     }
 
 }
@@ -285,9 +283,25 @@ impl Likelihood<U1> for Normal {
         y.iter().fold(0.0, |ys, y| ys + y.powf(2.) / n)
     }
 
-    fn cond_log_prob(&self, _y : DMatrixSlice<'_, f64>) -> f64 {
-        unimplemented!()
+    fn visit_factors<F>(&mut self, f : F) where F : Fn(&mut dyn Posterior) {
+        if let Some(ref mut loc) = self.loc_factor {
+            f(loc.as_mut());
+            loc.visit_post_factors(&f as &dyn Fn(&mut dyn Posterior));
+        }
+        if let Some(ref mut scale) = self.scale_factor {
+            f(scale);
+            scale.visit_post_factors(&f as &dyn Fn(&mut dyn Posterior));
+        }
     }
+
+    //fn cond_log_prob(&self, _y : DMatrixSlice<'_, f64>) -> f64 {
+    //    unimplemented!()
+    //}
+
+    /*fn factors_mut(&mut self) -> Factors {
+        //self.dyn_factors_mut().into()
+        unimplemented!()
+    }*/
 
 }
 

@@ -52,7 +52,7 @@ pub struct Bernoulli {
 
     /// In case this has a beta factor, when updating the parameter, also update this buffer
     /// with [log(theta) log(1-theta)]; and pass it instead of the eta as the log-prob argument.
-    suf_theta : Option<DMatrix<f64>>
+    suf_theta : Option<DMatrix<f64>>,
 
 }
 
@@ -211,6 +211,64 @@ impl Likelihood<U1> for Bernoulli {
         m * (1. - m)
     }
 
+    fn visit_factors<F>(&mut self, f : F) where F : Fn(&mut dyn Posterior) {
+        match self.factor {
+            BernoulliFactor::Conjugate(ref mut b) => {
+                f(b);
+                b.visit_post_factors(&f as &dyn Fn(&mut dyn Posterior));
+            },
+            BernoulliFactor::CondExpect(ref mut m) => {
+                f(m);
+                m.visit_post_factors(&f as &dyn Fn(&mut dyn Posterior));
+            },
+            _ => { }
+        }
+    }
+
+   /*fn factors_mut(&mut self) -> Factors {
+        unimplemented!()
+        /*match &mut self.factor {
+            BernoulliFactor::Conjugate(b) => {
+                let factors = Factors::new_empty();
+                let factors = factors.aggregate(b);
+                b.aggregate_factors(factors)
+                //if let (Some(opt_a), _) = factors.as_slice()[0].dyn_factors_mut() {
+                //    unimplemented!()
+                //} else {
+                //    factors
+                //}
+            },
+            BernoulliFactor::CondExpect(m) => {
+                unimplemented!()
+            },
+            _ => Factors::new_empty()
+        }*/
+        // f.map(|f| f.aggregate_factors(vec![f].into()) ).unwrap_or(Factors::new_empty())
+        //if let Some(f) = factors.as_slice().get(0) {
+        //    panic!("Unimplemented")
+        //} else {
+        //    factors
+        //}
+
+        //if let Some(f) = factors.as_slice().get(0) {
+        //    f.aggregate_factors(factors)
+        //} else {
+        //    factors
+        //}
+        // let factors = f_vec.into();
+        // factors
+        //if let BernoulliFactor::Conjugate(ref mut b) =
+        /*match &mut self.factor {
+            BernoulliFactor::Conjugate(b) => {
+                b.aggregate_factors(factors)
+            },
+            BernoulliFactor::CondExpect(m) => {
+                m.aggregate_factors(factors)
+            },
+            _ => Factors::new_empty()
+        }*/
+    }*/
+
 }
 
 impl Estimator<Beta> for Bernoulli {
@@ -295,18 +353,16 @@ impl Distribution for Bernoulli
         eta.dot(&y) - self.log_part[0] + factor_lp
     }
 
-    fn sample(&self) -> DMatrix<f64> {
+    fn sample_into(&self, mut dst : DMatrixSliceMut<'_,f64>) {
         use rand_distr::{Distribution};
-        let mut samples = DMatrix::zeros(self.theta.nrows(), 1);
         for (i, _) in self.theta.iter().enumerate() {
-            samples[(i,0)] = (self.sampler[i].sample(&mut rand::thread_rng()) as i32) as f64;
+            dst[(i,0)] = (self.sampler[i].sample(&mut rand::thread_rng()) as i32) as f64;
         }
-        samples
     }
 
 }
 
-impl Posterior for Bernoulli {
+/*impl Posterior for Bernoulli {
 
     fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>) {
         match &mut self.factor {
@@ -316,7 +372,14 @@ impl Posterior for Bernoulli {
         }
     }
 
-}
+    fn set_approximation(&mut self, m : MultiNormal) {
+        unimplemented!()
+    }
+
+    fn approximate(&self) -> Option<&MultiNormal> {
+        unimplemented!()
+    }
+}*/
 
 impl RandomWalk for Bernoulli {
 

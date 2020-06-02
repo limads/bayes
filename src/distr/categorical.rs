@@ -84,7 +84,7 @@ impl Distribution for Categorical {
         self.suf_log_prob(t.rows(0, t.nrows())) + factor_lp
     }
 
-    fn sample(&self) -> DMatrix<f64> {
+    fn sample_into(&self, _dst : DMatrixSliceMut<'_, f64>) {
         unimplemented!()
     }
 
@@ -101,6 +101,14 @@ impl Posterior for Categorical {
             Some(ref mut d) => (Some(d as &mut dyn Posterior), None),
             None => (None, None)
         }
+    }
+
+    fn set_approximation(&mut self, _m : MultiNormal) {
+        unimplemented!()
+    }
+
+    fn approximation(&self) -> Option<&MultiNormal> {
+        unimplemented!()
     }
 
 }

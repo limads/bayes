@@ -136,7 +136,7 @@ impl Distribution for NormalMixture
         lp
     }
 
-    fn sample(&self) -> DMatrix<f64> {
+    fn sample_into(&self, dst : DMatrixSliceMut<'_, f64>) {
         unimplemented!()
     }
 
@@ -146,6 +146,14 @@ impl Posterior for NormalMixture {
 
     fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>) {
         (Some(&mut self.cat as &mut dyn Posterior), None)
+    }
+
+    fn set_approximation(&mut self, m : MultiNormal) {
+        unimplemented!()
+    }
+
+    fn approximate(&self) -> Option<&MultiNormal> {
+        unimplemented!()
     }
 
 }

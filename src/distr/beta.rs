@@ -183,10 +183,10 @@ impl Distribution for Beta
         unimplemented!()
     }*/*/
 
-    fn sample(&self) -> DMatrix<f64> {
+    fn sample_into(&self, mut dst : DMatrixSliceMut<'_,f64>) {
         use rand_distr::Distribution;
         let b = self.sampler.sample(&mut rand::thread_rng());
-        DMatrix::from_element(1, 1, b)
+        dst[(0,0)] = b;
     }
 
     /*fn factors<'b>(&'b self) -> Factors<'b> {
@@ -218,6 +218,14 @@ impl Posterior for Beta {
             Some(ref mut b) => (Some(b.as_mut() as &mut dyn Posterior), None),
             None => (None, None)
         }
+    }
+
+    fn set_approximation(&mut self, _m : MultiNormal) {
+        unimplemented!()
+    }
+
+    fn approximation(&self) -> Option<&MultiNormal> {
+        unimplemented!()
     }
 
 }

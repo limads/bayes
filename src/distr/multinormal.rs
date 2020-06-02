@@ -71,6 +71,22 @@ pub struct MultiNormal {
 
 impl MultiNormal {
 
+    fn _from_approximation(mut eta : DMatrix<f64>, lp_traj : DVector<f64>) -> Self {
+        assert!(eta.ncols() == lp_traj.nrows());
+        let mu_approx = eta.column(eta.ncols()).clone_owned();
+        let eta_c = eta.clone();
+        let eta_iter = eta.column_iter_mut().skip(1).zip(eta_c.column_iter()).enumerate();
+        for (i, (mut eta_curr, eta_last)) in eta_iter {
+            eta_curr -= eta_last;
+            eta_curr.unscale_mut(lp_traj[i+1] - lp_traj[i]);
+        }
+        let eta = eta.remove_column(0);
+        let eta_t = eta_c.remove_column(0).transpose();
+        let prec_approx = eta * eta_t;
+        let sigma_approx = Self::invert_scale(&prec_approx);
+        MultiNormal::new(mu_approx, sigma_approx)
+    }
+
     pub fn invert_scale(s : &DMatrix<f64>) -> DMatrix<f64> {
         let s_qr = QR::<f64, Dynamic, Dynamic>::new(s.clone());
         s_qr.try_inverse().unwrap()
@@ -283,7 +299,7 @@ impl Distribution for MultiNormal {
         lp + loc_lp + scale_lp
     }
 
-    fn sample(&self) -> DMatrix<f64> {
+    fn sample_into(&self, _dst : DMatrixSliceMut<'_, f64>) {
         unimplemented!()
     }
 
@@ -292,16 +308,17 @@ impl Distribution for MultiNormal {
 impl Posterior for MultiNormal {
 
     fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>) {
-        // Scale-only factors are not considered for now.
-        match (&mut self.loc_factor, &mut self.scale_factor) {
-            (Some(ref mut l), Some(ref mut s)) => {
-                (Some(l.as_mut() as &mut dyn Posterior), Some(s as &mut dyn Posterior))
-            },
-            (Some(ref mut l), None) => {
-                (Some(l.as_mut() as &mut dyn Posterior), None)
-            },
-            _ => (None, None)
-        }
+        let loc = self.loc_factor.as_mut().map(|lf| lf.as_mut() as &mut dyn Posterior);
+        let scale = self.scale_factor.as_mut().map(|sf| sf as &mut dyn Posterior);
+        (loc, scale)
+    }
+
+    fn set_approximation(&mut self, _m : MultiNormal) {
+        unimplemented!()
+    }
+
+    fn approximation(&self) -> Option<&MultiNormal> {
+        unimplemented!()
     }
 
 }

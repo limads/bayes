@@ -24,5 +24,5 @@ rand_distr = "0.2.2"
 mkl=[]
 
 [[example]]
-name = "iteration"
-path = "examples/iteration.rs"
+name = "composition"
+path = "examples/composition.rs"

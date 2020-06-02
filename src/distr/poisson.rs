@@ -180,14 +180,12 @@ impl Distribution for Poisson
         eta.dot(&y) - self.log_part[0] + factor_lp
     }
 
-    fn sample(&self) -> DMatrix<f64> {
+    fn sample_into(&self, mut dst : DMatrixSliceMut<'_,f64>) {
         use rand_distr::{Distribution};
-        let mut samples = DMatrix::zeros(self.lambda.nrows(), 1);
         for (i, _) in self.lambda.iter().enumerate() {
             let s : u64 = self.sampler[i].sample(&mut rand::thread_rng());
-            samples[(i,0)] = s as f64;
+            dst[(i,0)] = s as f64;
         }
-        samples
     }
 
     fn cov(&self) -> Option<DMatrix<f64>> {
@@ -196,7 +194,7 @@ impl Distribution for Poisson
 
 }
 
-impl Posterior for Poisson {
+/*impl Posterior for Poisson {
 
     fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>) {
         match &mut self.factor {
@@ -206,7 +204,15 @@ impl Posterior for Poisson {
         }
     }
 
-}
+    fn set_approximation(&mut self, m : MultiNormal) {
+        unimplemented!()
+    }
+
+    fn approximate(&self) -> Option<&MultiNormal> {
+        unimplemented!()
+    }
+
+}*/
 
 impl Conditional<Gamma> for Poisson {
 
@@ -251,6 +257,32 @@ impl Likelihood<U1> for Poisson {
     fn var_mle(y : DMatrixSlice<'_, f64>) -> f64 {
         Self::mean_mle(y)
     }
+
+    fn visit_factors<F>(&mut self, f : F) where F : Fn(&mut dyn Posterior) {
+        match self.factor {
+            PoissonFactor::Conjugate(ref mut b) => {
+                f(b);
+                b.visit_post_factors(&f as &dyn Fn(&mut dyn Posterior));
+            },
+            PoissonFactor::CondExpect(ref mut m) => {
+                f(m);
+                m.visit_post_factors(&f as &dyn Fn(&mut dyn Posterior));
+            },
+            _ => { }
+        }
+    }
+
+    /*fn factors_mut(&mut self) -> Factors {
+        match self.factor {
+            BernoulliFactor::Conjugate(b) => b.aggregate_factors(Factors::new_empty()),
+            BernoulliFactor::CondExpect(m) => m.aggregate_factors(Factors::new_empty()),
+            _ => Factors::new_empty()
+        }
+    }*/
+
+    //fn factors_mut(&mut self) -> Factors {
+    //    unimplemented!()
+    //}
 
 }
 

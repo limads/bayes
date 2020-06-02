@@ -35,7 +35,7 @@ impl Distribution for Dirichlet {
         unimplemented!()
     }
 
-    fn sample(&self) -> DMatrix<f64> {
+    fn sample_into(&self, _dst : DMatrixSliceMut<'_, f64>) {
         // let dirichlet = Dirichlet::new(vec![1.0, 2.0, 3.0]).unwrap();
         // let samples = dirichlet.sample(&mut rand::thread_rng());*/
         unimplemented!()
@@ -50,6 +50,14 @@ impl Distribution for Dirichlet {
 impl Posterior for Dirichlet {
 
     fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>) {
+        unimplemented!()
+    }
+
+    fn set_approximation(&mut self, _m : MultiNormal) {
+        unimplemented!()
+    }
+
+    fn approximation(&self) -> Option<&MultiNormal> {
         unimplemented!()
     }
 

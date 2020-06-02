@@ -54,7 +54,7 @@ pub use vonmises::*;
 /// log-probability methods are dependent not only on the current parameter vector,
 /// but also on the state of any applied conditioning factors.
 pub trait Distribution
-    where Self : Debug + Display + Sized
+    where Self : Debug + Display //+ Sized
 {
 
     /// Returns the expected value of the distribution, which is a function of
@@ -99,7 +99,14 @@ pub trait Distribution
     /// they are represented over columns; If multiple units are sampled (if there are multiple
     /// entries for the parameter vector), a variable number of rows is emitted. Samples should
     /// follow the same structure as the argument to log_prob(.).
-    fn sample(&self) -> DMatrix<f64>;
+    fn sample(&self) -> DMatrix<f64> {
+        let n = self.mean().nrows();
+        let mut m : DMatrix<f64> = DMatrix::zeros(n, 1);
+        self.sample_into((&mut m).into());
+        m
+    }
+
+    fn sample_into(&self, dst : DMatrixSliceMut<'_,f64>);
 
 }
 
@@ -237,90 +244,6 @@ pub trait Estimator<D>
 
 }
 
-/// Mutable iterator over a probabilistic graph.
-/// Starts at the immediate factors of a likelihood node
-/// and iterate up to all elements without any factors.
-/// Location factors are visited before scale factors,
-/// and every path is explored in a depth-first fashion.
-#[derive(Debug)]
-pub struct Factors<'a> {
-    factors : Vec<&'a mut dyn Posterior>
-}
-
-impl<'a> Factors<'a> {
-
-    pub fn new_empty() -> Self {
-        Self{ factors : Vec::new() }
-    }
-
-    pub fn push(&'a mut self, p : &'a mut dyn Posterior) {
-        self.factors.push(p);
-    }
-
-    pub fn aggregate(mut self, p : &'a mut dyn Posterior) -> Self {
-        self.factors.push(p);
-        self
-    }
-
-    /// The visit(.) method takes a generic closure and an optional sequence
-    /// of generic data references that can carry some data to apply
-    /// to each node in the graph.
-    pub fn visit<F, D>(&mut self, f : F, opt_data : Option<&[D]>) -> Result<(), &'static str>
-        where F : Fn(&mut dyn Posterior, Option<&D>)
-    {
-        let mut ix = 0;
-        for factor in self.factors.iter_mut() {
-            if let Some(data) = opt_data {
-                if let Some(d) = data.get(ix) {
-                    f(*factor, Some(d));
-                    ix += 1;
-                } else {
-                    return Err("Not enought data entries");
-                }
-            } else {
-                f(*factor, None);
-            }
-        }
-        match opt_data {
-            Some(data) => if data.len() == ix {
-                Ok(())
-            } else {
-                Err("Excess of data entries")
-            },
-            None => Ok(())
-        }
-    }
-
-}
-
-impl<'a> Iterator for Factors<'a> {
-
-    type Item = &'a mut dyn Posterior;
-
-    fn next(&mut self) -> Option<&'a mut dyn Posterior> {
-        if self.factors.len() == 0 {
-            None
-        } else {
-            Some(self.factors.remove(0))
-        }
-    }
-
-}
-
-impl<'a> From<Factors<'a>> for Vec<&'a mut dyn Posterior> {
-
-    fn from(f : Factors<'a>) -> Vec<&'a mut dyn Posterior> {
-        f.factors
-    }
-}
-
-
-impl<'a> From<Vec<&'a mut dyn Posterior>> for Factors<'a> {
-
-    fn from(v : Vec<&'a mut dyn Posterior>) -> Factors<'a> {
-        Factors { factors : v }
-    }
-}
 
 /// Implemented by distributions which can have their
 /// log-probability evaluated with respect to a random sample directly.
@@ -329,7 +252,7 @@ impl<'a> From<Vec<&'a mut dyn Posterior>> for Factors<'a> {
 /// by passing the sufficient statistic calculated from the sample.
 pub trait Likelihood<C>
     where
-        Self : ExponentialFamily<C> + Distribution + Posterior,
+        Self : ExponentialFamily<C> + Distribution + Sized,
         C : Dim
 {
 
@@ -340,7 +263,7 @@ pub trait Likelihood<C>
     /// a fitted model and a saturated model for decision analysis; or between
     /// a fitted model and a null model for hypothesis testing.
     fn compare<'a, D>(&'a self, other : &'a D) -> BayesFactor<'a, Self, D>
-        where D : Distribution
+        where D : Distribution + Sized
     {
         BayesFactor::new(&self, &other)
     }
@@ -365,7 +288,9 @@ pub trait Likelihood<C>
         (Self::var_mle(y) / n).sqrt()
     }
 
-    /// Returns a mutable iterator over this likelihood
+    fn visit_factors<F>(&mut self, f : F) where F : Fn(&mut dyn Posterior);
+
+    /*/// Returns a mutable iterator over this likelihood
     /// distribution factor(s).
     ///
     /// # Example
@@ -377,24 +302,7 @@ pub trait Likelihood<C>
     ///     .condition(Gamma::new(1.,1.));
     /// m.factors_mut().visit::<_,()>(|f, _| println!("{}", f), None);
     /// ```
-    fn factors_mut(&mut self) -> Factors {
-        /*let (fmut_a, fmut_b) = self.dyn_factors_mut();
-        let factors_a = if let Some(a) = fmut_a {
-            let new_factors = Factors::new_empty();
-            let new_factors = a.aggregate_factors(vec![a].into());
-            a.aggregate_factors(new_factors)
-        } else {
-            Factors::new_empty()
-        };
-        println!("Factors a: {:?}", &factors_a);
-        let factors_b = if let Some(b) = fmut_b {
-            b.aggregate_factors(factors_a)
-        } else {
-            factors_a
-        };
-        factors_b*/
-        self.aggregate_factors(Factors::new_empty())
-    }
+    fn factors_mut(&mut self) -> Factors;*/
 
     /// The conditional log-probability evaluation works because
     /// the sufficient statistic of Likelihood implementors is
@@ -417,7 +325,7 @@ pub trait Likelihood<C>
 }
 
 pub trait Posterior
-    where Self : Debug + Display //+ Distribution
+    where Self : Debug + Display + Distribution
 {
 
     /*fn dyn_factors(&mut self) -> (Option<&dyn Posterior>, Option<&dyn Posterior>) {
@@ -433,7 +341,7 @@ pub trait Posterior
         (f_a, f_b)
     }*/
 
-    fn aggregate_factors<'a>(&'a mut self, factors : Factors<'a>) -> Factors<'a> {
+    /*fn aggregate_factors<'a>(&'a mut self, factors : Factors<'a>) -> Factors<'a> {
         let (fmut_a, fmut_b) = self.dyn_factors_mut();
         let factors = if let Some(f_a) = fmut_a {
             factors.aggregate(f_a)
@@ -446,11 +354,29 @@ pub trait Posterior
             factors
         };
         factors
-    }
+    }*/
 
     fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>);
 
-    // fn approximate(&self) -> Option<&D>;
+    fn visit_post_factors(&mut self, f : &dyn Fn(&mut dyn Posterior)) {
+        let (opt_lhs, opt_rhs) = self.dyn_factors_mut();
+        if let Some(lhs) = opt_lhs {
+            f(lhs);
+            lhs.visit_post_factors(f);
+        }
+        if let Some(rhs) = opt_rhs {
+            f(rhs);
+            rhs.visit_post_factors(f);
+        }
+    }
+
+    fn set_approximation(&mut self, _m : MultiNormal) {
+        unimplemented!()
+    }
+
+    fn approximation(&self) -> Option<&MultiNormal> {
+        unimplemented!()
+    }
 }
 
 
