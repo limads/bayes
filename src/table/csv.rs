@@ -1,8 +1,8 @@
 use ::csv;
 use std::fs::File;
-use std::collections::HashMap;
+// use std::collections::HashMap;
 use nalgebra::{DMatrix, DVector};
-use std::io::{self, Read, Write};
+use std::io::{Read, Write};
 use nalgebra::Scalar;
 use std::fmt::Display;
 use std::str::FromStr;
@@ -30,24 +30,23 @@ pub fn load_content_from_file(path : &str) -> Result<String,()> {
     }
 }
 
-pub fn save_content_to_file(content : &str, path : &str) -> Result<(), ()> {
+fn save_content_to_file(content : &str, path : &str) -> Result<(), ()> {
     let mut f = File::open(path).map_err(|e|{ println!("{}", e); () })?;
     f.write(content.as_bytes()).map_err(|e|{ println!("{}", e); () })?;
     Ok(())
 }
 
-pub fn load_from_stdin() -> Result<String,()> {
+/*fn load_from_stdin() -> Result<String,()> {
     let mut buffer = String::new();
     io::stdin().read_to_string(&mut buffer).map_err(|_| ())?;
     Ok(buffer)
-}
+}*/
 
-pub fn split_on_blank_line(content : String) -> Vec<String> {
+/*fn split_on_blank_line(content : String) -> Vec<String> {
     content.split("\n\n").map(|s| s.to_string() ).collect()
-}
+}*/
 
-/// Preserve this one!
-pub fn parse_header(
+fn parse_header(
     csv_reader : &mut csv::Reader<&[u8]>
 ) -> Option<Vec<String>> {
     let mut header_entries = Vec::new();
@@ -70,7 +69,7 @@ pub fn parse_header(
 /// valid names, return None. The csv crate considers
 /// the first row as a header by default, so we should check that
 /// we don't have a "pure" data file.
-pub fn try_convert_header_to_data(header : &[String]) -> Option<(Vec<String>, Vec<String>)> {
+fn try_convert_header_to_data(header : &[String]) -> Option<(Vec<String>, Vec<String>)> {
     let mut new_header = Vec::new();
     let mut first_line = Vec::new();
     for (i, e) in header.iter().enumerate() {
@@ -139,25 +138,25 @@ pub fn parse_csv_as_text_cols(
     }
 }
 
-/// Preserve this one!
-pub fn parse_csv_as_text_rows(content : &String) -> Option<Vec<Vec<String>>> {
+/// Returns a pair of (header, [non-header rows])
+pub fn parse_csv_as_text_rows(content : &str) -> Option<(Option<Vec<String>>, Vec<Vec<String>>)> {
     let mut rows : Vec<Vec<String>> = Vec::new();
     let mut csv_reader = csv::Reader::from_reader(content.as_bytes());
-    if let Some(h) = parse_header(&mut csv_reader) {
-        rows.push(h);
-    }
-    for row_record in csv_reader.records() {
+    let header = parse_header(&mut csv_reader);
+    for (i, row_record) in csv_reader.records().enumerate() {
         if let Ok(row) = row_record {
             let mut row_s = Vec::<String>::new();
             row.iter().for_each(|e|{ row_s.push(e.into()); });
             rows.push(row_s);
+        } else {
+            println!("Error parsing line {}", i);
+            return None;
         }
     }
-    Some(rows)
+    Some((header, rows))
 }
 
-/// Preserve this one!
-/// Try to parse the whole text table as a given DVector type,
+/*/// Try to parse the whole text table as a given DVector type,
 /// preserving the names.
 pub fn try_parse_col_vectors<N>(
     cols : HashMap<String, Vec<String>>
@@ -171,7 +170,7 @@ pub fn try_parse_col_vectors<N>(
     } else {
         return Some( ans.iter().map(|(k, v)| (k.clone(), v.clone().unwrap())).collect() )
     }
-}
+}*/
 
 /// Give up on this one
 /// Parse a CSV file as a map from column names to vectors with same dimension.
@@ -192,9 +191,8 @@ pub fn try_parse_col_vectors<N>(
     }
 }*/
 
-/// Keep this one! --- Entry point for a table (column order does not matter)
 /// Column loader generic over primitive type.
-pub fn try_parse_col<T>(col : &Vec<String>) -> Option<Vec<T>>
+fn try_parse_col<T>(col : &Vec<String>) -> Option<Vec<T>>
     where T : FromStr
 {
     let mut parsed = Vec::<T>::new();
@@ -215,19 +213,19 @@ pub fn try_parse_col<T>(col : &Vec<String>) -> Option<Vec<T>>
     }
 }
 
-pub fn try_dvec_from_col<N>(col : &Vec<String>) -> Option<DVector<N>>
+/*fn try_dvec_from_col<N>(col : &Vec<String>) -> Option<DVector<N>>
     where N : Scalar + FromStr
 {
     Some( DVector::<N>::from_vec(try_parse_col::<N>(col)?))
-}
+}*/
 
-pub fn try_dvec_from_row<N>(row : &Vec<String>) -> Option<RowDVector<N>>
+fn try_dvec_from_row<N>(row : &Vec<String>) -> Option<RowDVector<N>>
     where N : Scalar + FromStr
 {
     Some( RowDVector::<N>::from_vec(try_parse_col::<N>(row)?))
 }
 
-/// Keep this one!
+/*/// Keep this one!
 /// Generate a table from a matrix by mapping the given names to its column vectors,
 /// preserving the order of names.
 pub fn packed_into_table<N>(
@@ -247,7 +245,7 @@ pub fn packed_into_table<N>(
         },
         false => None
     }
-}
+}*/
 
 /// Give up on this one.
 /// Given a vector of strings, parse each entry as f32. If all entries
@@ -277,13 +275,13 @@ pub fn packed_into_table<N>(
 /// matrix otherwise.
 /// This keeps the matrix in the same order the data is organized
 /// over the file. Existing headers (if any) are ignored.
-pub fn load_matrix_from_string<N>(
-    content : &String
-) -> Result<DMatrix<N>, &'static str>
+pub fn load_matrix_from_str<N>(
+    content : &str
+) -> Result<(Option<Vec<String>>, DMatrix<N>), &'static str>
     where
         N : Scalar + FromStr
 {
-    let rows = parse_csv_as_text_rows(&content)
+    let (header, rows) = parse_csv_as_text_rows(content)
         .ok_or("Could not parse rows as text")?;
     let mut data : Vec<RowDVector<N>> = Vec::new();
     for (i, r) in rows.iter().enumerate() {
@@ -306,7 +304,7 @@ pub fn load_matrix_from_string<N>(
     }
     match data.len() {
         0 => Err("No rows were parsed"),
-        _ => Ok(DMatrix::<N>::from_rows(&data[..]))
+        _ => Ok((header, DMatrix::<N>::from_rows(&data[..])))
     }
 }
 
@@ -336,11 +334,11 @@ pub fn build_string_packed<N>(m : &DMatrix<N>) -> String
     content
 }
 
-pub fn load_matrix_from_file<N>(path : &str) -> Option<DMatrix<N>>
+pub fn load_matrix_from_file<N>(path : &str) -> Option<(Option<Vec<String>>, DMatrix<N>)>
     where N : Scalar + FromStr
 {
     let content = load_content_from_file(path).ok()?;
-    load_matrix_from_string(&content)
+    load_matrix_from_str(&content[..])
         .map_err(|e| println!("{}", e) )
         .ok()
 }
@@ -367,7 +365,7 @@ pub fn load_batch_content(paths : &str) -> Result<Vec<String>,()> {
     }
 }
 
-pub fn load_batch_packed<N>(cont : Vec<String>) -> Option<Vec<DMatrix<N>>>
+/*pub fn load_batch_packed<N>(cont : Vec<String>) -> Option<Vec<DMatrix<N>>>
     where N : Scalar + FromStr
 {
     let mut mtxs : Vec<DMatrix<N>> = Vec::new();
@@ -378,7 +376,7 @@ pub fn load_batch_packed<N>(cont : Vec<String>) -> Option<Vec<DMatrix<N>>>
         }
     }
     Some(mtxs)
-}
+}*/
 
 /*pub fn load_batch_tables<N>(
     batch : Vec<String>

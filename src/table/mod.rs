@@ -9,6 +9,8 @@ use sqlparser::parser::Parser;
 use sqlparser::ast::Statement;
 use nalgebra::*;
 // use rust_decimal::Decimal;
+use std::str::FromStr;
+use std::io::Read;
 
 pub mod csv;
 
@@ -100,9 +102,13 @@ impl Table {
     pub fn open<P>(path : P) -> Result<Self, String>
         where P : AsRef<Path>
     {
-        let f = File::open(path).map_err(|e| format!("{}", e) )?;
-        let _source = TableSource::File(f);
-        unimplemented!()
+        let mut f = File::open(path).map_err(|e| format!("{}", e) )?;
+        let mut content = String::new();
+        f.read_to_string(&mut content).map_err(|e| format!("{}", e) )?;
+        let source = TableSource::File(f);
+        let mut tbl : Table = content.parse().map_err(|e| format!("{}", e) )?;
+        tbl._source = source;
+        Ok(tbl)
     }
 
     pub fn save(&mut self) -> Result<(), String> {
@@ -155,6 +161,25 @@ impl Table {
         self.col_types.iter_mut().skip(ix_range.0).take(ix_range.1)
             .for_each(|ct| *ct = col_type);
         Ok(())
+    }
+
+}
+
+impl FromStr for Table {
+
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let (opt_header, data) = csv::load_matrix_from_str(s)?;
+        let col_names = opt_header.ok_or(format!("Unable to parse header"))?;
+        let col_types : Vec<ColumnType> =
+            (0..col_names.len()).map(|_| ColumnType::Double ).collect();
+        Ok(Self {
+            _source : TableSource::Unknown,
+            col_types,
+            col_names,
+            data
+        })
     }
 
 }
