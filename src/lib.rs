@@ -44,3 +44,7 @@ mod mkl;
 /// Auto-generated bindings to GSL (mostly for optimization and sampling).
 pub mod gsl;
 
+/// Load data from tabular sources to in-memory double precision matrices.
+/// Support csv files or relational databases via "sql" feature.
+pub mod table;
+

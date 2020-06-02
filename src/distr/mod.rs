@@ -311,16 +311,23 @@ pub trait Likelihood<C>
     /// log-probability of the component-wise multiplication of
     /// the natural parameter with the individual samples.
     fn cond_log_prob(&self, y : DMatrixSlice<'_, f64>) -> f64 {
-        let eta_cond = self.view_parameter(true);
-        let log_part = self.log_partition();
-        assert!(y.ncols() == eta_cond.ncols());
-        assert!(log_part.nrows() == eta_cond.nrows() && log_part.nrows() == y.nrows());
-        let mut lp = 0.0;
-        let lp_iter = eta_cond.row_iter().zip(y.row_iter()).zip(log_part.iter());
-        for ((e, y), l) in lp_iter {
-            lp += e.dot(&y) - l
-        };
-        lp
+        match C::try_to_usize() {
+            Some(_) => {
+                let eta_cond = self.view_parameter(true);
+                let log_part = self.log_partition();
+                assert!(y.ncols() == eta_cond.ncols());
+                assert!(log_part.nrows() == eta_cond.nrows() && log_part.nrows() == y.nrows());
+                let mut lp = 0.0;
+                let lp_iter = eta_cond.row_iter().zip(y.row_iter()).zip(log_part.iter());
+                for ((e, y), l) in lp_iter {
+                    lp += e.dot(&y) - l
+                };
+                lp
+            },
+            None => {
+                self.suf_log_prob(y)
+            }
+        }
     }
 }
 
