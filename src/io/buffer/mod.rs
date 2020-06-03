@@ -1,9 +1,4 @@
 use nalgebra::*;
-// use nalgebra::*;
-// use std::ops::{Div, Add, Mul, Sub};
-// use std::ops::Range;
-// use std::convert::TryFrom;
-// use std::io::{self, Write};
 use simba::scalar::RealField;
 
 #[inline(always)]
@@ -79,6 +74,7 @@ impl<N> Buffer<N>
     where N : Scalar + RealField + From<f32>
 {
 
+    /// Creates a new buffer with the given dimensions.
     pub fn create(nrow : usize, ncol : usize) -> Self {
         Self {
             data : DMatrix::zeros(nrow, ncol),
@@ -88,14 +84,22 @@ impl<N> Buffer<N>
         }
     }
 
+    /// Sets a constant offset applied to every element
+    /// copied from an 8-bit source (0-255) to a floating-point
+    /// destination [-inf,inf]
     pub fn set_offset(&mut self, offset : N) {
         self.offset = offset;
     }
 
+    /// Sets a constant scale factor applied to every element
+    /// copied from an 8-bit source (0-255) to a floating-point
+    /// destination [-inf,inf]
     pub fn set_scale(&mut self, scale : N) {
         self.scale = scale;
     }
 
+    /// Slices the underlying floating-point matrix. If partial_update(.)
+    /// was called, slice is made relative to the update offset.
     pub fn slice(&self, offset : (usize, usize), size : (usize, usize)) -> DMatrixSlice<'_, N> {
         match self.last_update {
             Update::None => panic!("Buffer was not updated yet"),
@@ -108,6 +112,8 @@ impl<N> Buffer<N>
         }
     }
 
+    /// Slices the underlying floating-point matrix, returning a mutable reference.
+    /// If partial_update(.) was called, slice is made relative to the update offset.
     pub fn slice_mut(&mut self, offset : (usize, usize), size : (usize, usize)) -> DMatrixSliceMut<'_, N> {
         match self.last_update {
             Update::None => panic!("Buffer was not updated yet"),
@@ -122,6 +128,8 @@ impl<N> Buffer<N>
 
 }
 
+// TODO Implementations are kept separate for now
+// because primitive cast does not work for generic functions.
 impl Buffer<f32> {
 
     pub fn read_full(&mut self, src : &[u8]) {
@@ -134,36 +142,56 @@ impl Buffer<f32> {
         self.last_update = Update::Partial(offset, sz);
     }
 
-    fn read_from(&mut self, src : &[u8], start : (usize, usize), buf_dims : (usize, usize)) {
-        assert!(check_bounds(start, self.data.shape(), buf_dims), "[update_from] Out of buffer bounds");
-        let (offset, scale) = (self.offset, self.scale);
-        for (buf_row, mut dst_row) in zip_rows_dst_mut(src, &mut self.data, buf_dims.1, start) {
+    fn read_from(&mut self, src : &[u8], offset : (usize, usize), size : (usize, usize)) {
+        assert!(check_bounds(offset, self.data.shape(), size), "[update_from] Out of buffer bounds");
+        let (depth_offset, depth_scale) = (self.offset, self.scale);
+        for (buf_row, mut dst_row) in zip_rows_dst_mut(src, &mut self.data, size.1, offset) {
             buf_row.iter().zip(dst_row.iter_mut())
-                .for_each(|(b, d)|{ *d = (*b as f32+offset)*scale; })
+                .for_each(|(b, d)|{ *d = (*b as f32+depth_offset)*depth_scale; })
         }
     }
 
-    pub fn write_into(&self, dst : &mut [u8], start : (usize, usize), buf_dims : (usize, usize)) {
-        assert!(check_bounds(start, self.data.shape(), buf_dims), "[write_into] Out of buffer bounds");
-        let (offset, scale) = (self.offset, self.scale);
-        for (buf_row, dst_row) in zip_rows_buffer_mut(dst, &self.data, buf_dims.1, start) {
+    pub fn write_into(&self, dst : &mut [u8], offset : (usize, usize), size : (usize, usize)) {
+        assert!(check_bounds(offset, self.data.shape(), size), "[write_into] Out of buffer bounds");
+        let (depth_offset, depth_scale) = (self.offset, self.scale);
+        for (buf_row, dst_row) in zip_rows_buffer_mut(dst, &self.data, size.1, offset) {
         buf_row.iter_mut().zip(dst_row.iter())
-            .for_each(|(b, d)|{ *b = ((*d + offset)*scale) as u8 })
+            .for_each(|(b, d)|{ *b = ((*d + depth_offset)*depth_scale) as u8 })
         }
     }
 
 }
 
+// TODO Implementations are kept separate for now
+// because primitive cast does not work for generic functions.
 impl Buffer<f64> {
 
-    pub fn full_update(&mut self, _src : &[u8]) {
-
+    pub fn read_full(&mut self, src : &[u8]) {
+        self.read_from(src, (0, 0), (self.data.nrows(), self.data.ncols()));
+        self.last_update = Update::Full;
     }
 
+    pub fn read_partial(&mut self, src : &[u8], offset : (usize, usize), sz : (usize, usize)) {
+        self.read_from(src, offset, sz);
+        self.last_update = Update::Partial(offset, sz);
+    }
 
-    pub fn partial_update(&mut self, _src : &[u8]) {
+    fn read_from(&mut self, src : &[u8], offset : (usize, usize), size : (usize, usize)) {
+        assert!(check_bounds(offset, self.data.shape(), size), "[update_from] Out of buffer bounds");
+        let (depth_offset, depth_scale) = (self.offset, self.scale);
+        for (buf_row, mut dst_row) in zip_rows_dst_mut(src, &mut self.data, size.1, offset) {
+            buf_row.iter().zip(dst_row.iter_mut())
+                .for_each(|(b, d)|{ *d = (*b as f64+depth_offset)*depth_scale; })
+        }
+    }
 
+    pub fn write_into(&self, dst : &mut [u8], offset : (usize, usize), size : (usize, usize)) {
+        assert!(check_bounds(offset, self.data.shape(), size), "[write_into] Out of buffer bounds");
+        let (depth_offset, depth_scale) = (self.offset, self.scale);
+        for (buf_row, dst_row) in zip_rows_buffer_mut(dst, &self.data, size.1, offset) {
+        buf_row.iter_mut().zip(dst_row.iter())
+            .for_each(|(b, d)|{ *b = ((*d + depth_offset)*depth_scale) as u8 })
+        }
     }
 
 }
-
