@@ -31,3 +31,7 @@ mkl=[]
 [[example]]
 name = "composition"
 path = "examples/composition.rs"
+
+[[example]]
+name = "table"
+path = "examples/table.rs"

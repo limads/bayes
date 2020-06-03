@@ -328,7 +328,7 @@ pub fn build_string_packed<N>(m : &DMatrix<N>) -> String
     for r in m.row_iter() {
         let mut row_iter = r.iter();
         row_iter.next().map(|el|{ content += &format!("{}", el); });
-        row_iter.for_each(|el|{ content += &format!(", {}", el); });
+        row_iter.for_each(|el|{ content += &format!(",{}", el); });
         content += "\n";
     }
     content

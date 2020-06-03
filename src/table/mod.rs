@@ -11,6 +11,7 @@ use nalgebra::*;
 // use rust_decimal::Decimal;
 use std::str::FromStr;
 use std::io::Read;
+use std::fmt::{self, Display};
 
 pub mod csv;
 
@@ -27,6 +28,21 @@ pub enum ColumnType {
     Float,
     Boolean,
     Numeric
+}
+
+impl Display for ColumnType {
+
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ColumnType::Integer => write!(f, "integer"),
+            ColumnType::Long => write!(f, "bigint"),
+            ColumnType::Double => write!(f, "double precision"),
+            ColumnType::Float => write!(f, "real"),
+            ColumnType::Boolean => write!(f, "bool"),
+            ColumnType::Numeric => write!(f, "decimal"),
+        }
+    }
+
 }
 
 pub enum ColumnIndex {
@@ -99,6 +115,15 @@ pub struct Table {
 
 impl Table {
 
+    pub fn from_reader<R>(mut reader : R) -> Result<Self, String>
+        where R : Read
+    {
+        let mut content = String::new();
+        reader.read_to_string(&mut content).map_err(|e| format!("{}", e) )?;
+        let tbl : Table = content.parse().map_err(|e| format!("{}", e) )?;
+        Ok(tbl)
+    }
+
     pub fn open<P>(path : P) -> Result<Self, String>
         where P : AsRef<Path>
     {
@@ -115,6 +140,10 @@ impl Table {
         unimplemented!()
     }
 
+    pub fn take_data(self) -> DMatrix<f64> {
+        self.data
+    }
+
     /// Generate a sequence of SQL insert statements for the current table and tries to
     /// insert them using the the relational database held by the table.
     /// If the informed name does not exist in the database, and create is true,
@@ -124,7 +153,91 @@ impl Table {
         unimplemented!()
     }
 
-    // Re-uses the data buffer and query to update information.
+    /// Generates SQL statement to insert all rows of the matrix
+    /// into the named table. If the numeric type cannot be coerced
+    /// into the run-time type of the column, the method will fail.
+    pub fn insert_stmt(&self, name : &str) -> Result<String, String> {
+        let mut stmt = String::new();
+        stmt += &format!("insert into {} values ", name);
+        let ncols = self.data.ncols();
+        let nrows = self.data.nrows();
+        for (row_ix, row) in self.data.row_iter().enumerate() {
+            stmt += "(";
+            for (col_ix, (f, t)) in row.iter().zip(self.col_types.iter()).enumerate() {
+                match t {
+                    ColumnType::Integer => {
+                        if f.fract() == 0.0 {
+                            stmt += &format!("{}", *f as i32)[..];
+                        } else {
+                            return Err(format!("Conversion to integer failed"));
+                        }
+                    },
+                    ColumnType::Long => {
+                        if f.fract() == 0.0 {
+                            stmt += &format!("{}", *f as i64)[..];
+                        } else {
+                            return Err(format!("Conversion to integer failed"));
+                        }
+                    },
+                    ColumnType::Double | ColumnType::Float | ColumnType::Numeric => {
+                        stmt += &format!("{}", f)[..];
+                    },
+                    ColumnType::Boolean => {
+                        if f.fract() == 0.0 {
+                            match *f as i32 {
+                                0 => stmt += "'f'",
+                                1 => stmt += "'t'",
+                                _ => return Err(format!("Invalid boolean state"))
+                            }
+                        } else {
+                            return Err(format!("Conversion to boolean failed"));
+                        }
+                    }
+                };
+                if col_ix < ncols - 1 {
+                    stmt += ",";
+                } else {
+                    stmt += ")";
+                    if row_ix < nrows - 1 {
+                        stmt += ",\n";
+                    } else {
+                        stmt += ";";
+                    }
+                }
+            }
+        }
+        Ok(stmt)
+    }
+
+    /// Generates create table SQL statement, using the
+    /// current run-time type information. If data cannot
+    /// be coerced from the matrix into any column format, the
+    /// method will fail. If populate is false, just creates the
+    /// table, without inserting any data.
+    pub fn create_stmt(&self, name : &str, populate : bool) -> Result<String, String> {
+        let mut stmt = format!("create table {} (", name);
+        for (i, (name, tp)) in self.col_names.iter().zip(self.col_types.iter()).enumerate() {
+            let name = match name.chars().find(|c| *c == ' ') {
+                Some(_) => String::from("\"") + &name[..] + "\"",
+                None => name.clone()
+            };
+            stmt += &format!("{} {}", name, tp);
+            if i < self.col_names.len() - 1 {
+                stmt += ","
+            } else {
+                stmt += ");\n"
+            }
+        }
+        if populate {
+            stmt += &self.insert_stmt(name)?[..];
+        }
+        Ok(stmt)
+    }
+
+    /// Re-uses the query/file-path to update information,
+    /// potentially saving a matrix re-allocation if the data
+    /// dimensionality did not increase. Trims data
+    /// if it is smaller than the previous call.
     fn _update(&mut self) {
         unimplemented!()
     }
@@ -154,7 +267,10 @@ impl Table {
         Some(self.data.slice((0,ix_range.0), (self.data.nrows(), ix_range.1)))
     }
 
-    pub fn cast<I>(&mut self, ix : I, col_type : ColumnType) -> Result<(), &'static str>
+    /// Casts the column(s) to informed type to change CSV/Sql output.
+    /// All data is stored as a continuous f64 buffer irrespective of
+    /// the output types.
+    pub fn cast_output<I>(&mut self, ix : I, col_type : ColumnType) -> Result<(), &'static str>
         where I : Into<ColumnIndex>
     {
         let ix_range = self.index_range(ix.into()).ok_or("Invalid index")?;
@@ -180,6 +296,21 @@ impl FromStr for Table {
             col_names,
             data
         })
+    }
+
+}
+
+impl Display for Table {
+
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut header = String::new();
+        self.col_names.iter().take(self.col_names.len() - 1)
+            .for_each(|name| { header += name; header += "," });
+        if let Some(last) = self.col_names.last() {
+            header += last;
+        }
+        let content = csv::build_string_packed(&self.data);
+        write!(f, "{}\n{}", header, content)
     }
 
 }
