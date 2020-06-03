@@ -1,8 +1,8 @@
 use ::csv;
-use std::fs::File;
+// use std::fs::File;
 // use std::collections::HashMap;
-use nalgebra::{DMatrix, DVector};
-use std::io::{Read, Write};
+use nalgebra::{DMatrix /*DVector*/ };
+// use std::io::{Read, Write};
 use nalgebra::Scalar;
 use std::fmt::Display;
 use std::str::FromStr;
@@ -10,8 +10,8 @@ use std::str::FromStr;
 use nalgebra::base::RowDVector;
 // use std::boxed::Box;
 
-/// Read from a text file, returning its contents as a String
-pub fn load_content_from_file(path : &str) -> Result<String,()> {
+/*/// Read from a text file, returning its contents as a String
+fn load_content_from_file(path : &str) -> Result<String,()> {
     match File::open(path) {
         Ok(mut f) => {
             let mut content = String::new();
@@ -28,13 +28,13 @@ pub fn load_content_from_file(path : &str) -> Result<String,()> {
             Err(())
         }
     }
-}
+}*/
 
-fn save_content_to_file(content : &str, path : &str) -> Result<(), ()> {
+/*fn save_content_to_file(content : &str, path : &str) -> Result<(), ()> {
     let mut f = File::open(path).map_err(|e|{ println!("{}", e); () })?;
     f.write(content.as_bytes()).map_err(|e|{ println!("{}", e); () })?;
     Ok(())
-}
+}*/
 
 /*fn load_from_stdin() -> Result<String,()> {
     let mut buffer = String::new();
@@ -308,18 +308,18 @@ pub fn load_matrix_from_str<N>(
     }
 }
 
-pub fn print_packed_sequence<N : Scalar + Display>(v : &DVector<N>) {
+/*fn print_packed_sequence<N : Scalar + Display>(v : &DVector<N>) {
     println!("C0,C1");
     for (i, e) in v.iter().enumerate() {
         println!("{},{}", i,e);
     }
-}
+}*/
 
-pub fn print_packed<N>(m : &DMatrix<N>)
+/*fn print_packed<N>(m : &DMatrix<N>)
     where N : Scalar + Display + FromStr
 {
     println!("{}", build_string_packed(m))
-}
+}*/
 
 pub fn build_string_packed<N>(m : &DMatrix<N>) -> String
     where N : Scalar + Display + FromStr
@@ -334,24 +334,24 @@ pub fn build_string_packed<N>(m : &DMatrix<N>) -> String
     content
 }
 
-pub fn load_matrix_from_file<N>(path : &str) -> Option<(Option<Vec<String>>, DMatrix<N>)>
+/*fn load_matrix_from_file<N>(path : &str) -> Option<(Option<Vec<String>>, DMatrix<N>)>
     where N : Scalar + FromStr
 {
     let content = load_content_from_file(path).ok()?;
     load_matrix_from_str(&content[..])
         .map_err(|e| println!("{}", e) )
         .ok()
-}
+}*/
 
-pub fn save_matrix_to_file<N>(m : &DMatrix<N>, path : &str)
+/*fn save_matrix_to_file<N>(m : &DMatrix<N>, path : &str)
 -> Result<(),()>
     where N : Scalar + FromStr + Display
 {
     let content = build_string_packed(m);
     save_content_to_file(&content, path)
-}
+}*/
 
-pub fn load_batch_content(paths : &str) -> Result<Vec<String>,()> {
+/*fn load_batch_content(paths : &str) -> Result<Vec<String>,()> {
     let paths : Vec<&str> = paths.split(",").collect();
     let opt_cont : Vec<Option<String>> = paths
         .iter().map(|p| load_content_from_file(p).ok() )
@@ -363,7 +363,7 @@ pub fn load_batch_content(paths : &str) -> Result<Vec<String>,()> {
     } else {
         Err(())
     }
-}
+}*/
 
 /*pub fn load_batch_packed<N>(cont : Vec<String>) -> Option<Vec<DMatrix<N>>>
     where N : Scalar + FromStr
