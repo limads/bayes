@@ -130,12 +130,13 @@ impl Table {
         }
     }
 
-    pub fn load<C>(client : C, query : &str, max : usize) -> Result<Self, String>
-        where C : Into<TableSource>
+    pub fn load<S>(source : S, query : &str, max : usize) -> Result<Self, String>
+        where S : Into<TableSource>
     {
-        let source = client.into();
+        let source = source.into();
         match source {
             TableSource::Postgre(client) => Self::load_postgre(client, query, max),
+            TableSource::File(f) => Self::load_from_file(f),
             _ => Err(format!("Unknown client"))
         }
 

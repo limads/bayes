@@ -95,6 +95,14 @@ impl From<Client> for TableSource {
 
 }
 
+impl From<File> for TableSource {
+
+    fn from(f : File) -> Self {
+        TableSource::File(f)
+    }
+
+}
+
 /// Wraps a column-major double precision numeric data matrix,
 /// which can be indexed by column name or position.
 /// Keeps run-time types associated with each column
@@ -124,16 +132,20 @@ impl Table {
         Ok(tbl)
     }
 
-    pub fn open<P>(path : P) -> Result<Self, String>
-        where P : AsRef<Path>
-    {
-        let mut f = File::open(path).map_err(|e| format!("{}", e) )?;
+    fn load_from_file(mut f : File) -> Result<Self, String> {
         let mut content = String::new();
         f.read_to_string(&mut content).map_err(|e| format!("{}", e) )?;
         let source = TableSource::File(f);
         let mut tbl : Table = content.parse().map_err(|e| format!("{}", e) )?;
         tbl._source = source;
         Ok(tbl)
+    }
+
+    pub fn open<P>(path : P) -> Result<Self, String>
+        where P : AsRef<Path>
+    {
+        let f = File::open(path).map_err(|e| format!("{}", e) )?;
+        Self::load_from_file(f)
     }
 
     pub fn save(&mut self) -> Result<(), String> {

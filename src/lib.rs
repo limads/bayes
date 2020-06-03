@@ -44,5 +44,6 @@ mod mkl;
 /// Auto-generated bindings to GSL (mostly for optimization and sampling).
 pub mod gsl;
 
+/// Utilities to load and save data into/from dynamically-allocated matrices.
 pub mod io;
 
