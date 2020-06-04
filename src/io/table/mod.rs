@@ -165,6 +165,26 @@ impl Table {
         unimplemented!()
     }
 
+    /*pub fn apply(src : S, dst : D, f : Fn(&Table)->Option<Table>) -> Result<(), String>
+        where
+            S : Into<TableSource>,
+            D : Into<TableSource>
+    {
+        let src = src.into();
+        let dst = dst.into();
+        let ans = match src {
+            TableSource::Unknown => return Err("Unknown source"),
+            TableSource::Postgres(c) => {
+                fn load_postgre(mut client : Client, sql : &str, max : usize)
+            },
+            TableSource::File(f) => {
+                let tbl = Table::load_from_file(f);
+                f(&tbl).ok_or(format!("User-function failed"))?;
+
+            }
+        }
+    }*/
+
     /// Generates SQL statement to insert all rows of the matrix
     /// into the named table. If the numeric type cannot be coerced
     /// into the run-time type of the column, the method will fail.

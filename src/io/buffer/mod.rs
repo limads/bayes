@@ -114,7 +114,11 @@ impl<N> Buffer<N>
 
     /// Slices the underlying floating-point matrix, returning a mutable reference.
     /// If partial_update(.) was called, slice is made relative to the update offset.
-    pub fn slice_mut(&mut self, offset : (usize, usize), size : (usize, usize)) -> DMatrixSliceMut<'_, N> {
+    pub fn slice_mut(
+        &mut self,
+        offset : (usize, usize),
+        size : (usize, usize)
+    ) -> DMatrixSliceMut<'_, N> {
         match self.last_update {
             Update::None => panic!("Buffer was not updated yet"),
             Update::Full => self.data.slice_mut(offset, size),
@@ -123,6 +127,22 @@ impl<N> Buffer<N>
                 let sz = (up_sz.0 + size.0, up_sz.1 + size.1);
                 self.data.slice_mut(off, sz)
             }
+        }
+    }
+
+    pub fn last_update_slice(&self) -> DMatrixSlice<'_, N> {
+        match self.last_update {
+            Update::None => panic!("Buffer was not updated yet"),
+            Update::Full => self.data.slice((0, 0), self.data.shape()),
+            Update::Partial(up_off, up_sz) => self.data.slice(up_off, up_sz)
+        }
+    }
+
+    pub fn last_update_slice_mut(&mut self) -> DMatrixSliceMut<'_,N> {
+        match self.last_update {
+            Update::None => panic!("Buffer was not updated yet"),
+            Update::Full => self.data.slice_mut((0, 0), self.data.shape()),
+            Update::Partial(up_off, up_sz) => self.data.slice_mut(up_off, up_sz)
         }
     }
 

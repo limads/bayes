@@ -192,8 +192,8 @@ pub fn try_parse_col_vectors<N>(
 }*/
 
 /// Column loader generic over primitive type.
-fn try_parse_col<T>(col : &Vec<String>) -> Option<Vec<T>>
-    where T : FromStr
+fn try_parse_num<T>(col : &Vec<String>) -> Option<Vec<T>>
+    where T : FromStr + From<i32>
 {
     let mut parsed = Vec::<T>::new();
     let mut all_parsed = true;
@@ -202,8 +202,11 @@ fn try_parse_col<T>(col : &Vec<String>) -> Option<Vec<T>>
         if let Ok(d) = (*s).parse::<T>() {
             parsed.push(d);
         } else {
-            // println!("could not parse some entries as numbers");
-            all_parsed = false;
+            if let Ok(d) = (*s).parse::<i32>() {
+                parsed.push(T::from(d));
+            } else {
+                all_parsed = false;
+            }
         }
     }
     if all_parsed {
@@ -220,9 +223,9 @@ fn try_parse_col<T>(col : &Vec<String>) -> Option<Vec<T>>
 }*/
 
 fn try_dvec_from_row<N>(row : &Vec<String>) -> Option<RowDVector<N>>
-    where N : Scalar + FromStr
+    where N : Scalar + FromStr + From<i32>
 {
-    Some( RowDVector::<N>::from_vec(try_parse_col::<N>(row)?))
+    Some( RowDVector::<N>::from_vec(try_parse_num::<N>(row)?))
 }
 
 /*/// Keep this one!
@@ -279,7 +282,7 @@ pub fn load_matrix_from_str<N>(
     content : &str
 ) -> Result<(Option<Vec<String>>, DMatrix<N>), &'static str>
     where
-        N : Scalar + FromStr
+        N : Scalar + FromStr + From<i32>
 {
     let (header, rows) = parse_csv_as_text_rows(content)
         .ok_or("Could not parse rows as text")?;

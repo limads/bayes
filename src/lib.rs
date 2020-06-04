@@ -22,8 +22,8 @@ pub mod distr;
 /// (Expectation Maximization; work in progress).
 pub mod optim;
 
-/// Basis transformations. model non-linear processes;
-/// Moslty via bindings to GSL and MKL (work in progress).
+/// Basis transformations useful to model non-linear processes,
+/// moslty via bindings to GSL and MKL (work in progress).
 pub mod basis;
 
 /// Supports the derivation of optimized decision rules based on comparison
