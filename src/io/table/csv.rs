@@ -10,6 +10,8 @@ use std::str::FromStr;
 use nalgebra::base::RowDVector;
 // use std::boxed::Box;
 
+use super::NullAction;
+
 /*/// Read from a text file, returning its contents as a String
 fn load_content_from_file(path : &str) -> Result<String,()> {
     match File::open(path) {
@@ -193,7 +195,7 @@ pub fn try_parse_col_vectors<N>(
 
 /// Column loader generic over primitive type.
 fn try_parse_num<T>(col : &Vec<String>) -> Option<Vec<T>>
-    where T : FromStr + From<i32>
+    where T : FromStr + From<i32> + Scalar + From<f32>
 {
     let mut parsed = Vec::<T>::new();
     let mut all_parsed = true;
@@ -204,6 +206,19 @@ fn try_parse_num<T>(col : &Vec<String>) -> Option<Vec<T>>
         } else {
             if let Ok(d) = (*s).parse::<i32>() {
                 parsed.push(T::from(d));
+                if *s == "NA" || *s == "NaN" || *s == "NAN" || *s == "NULL" || *s == "null" {
+                    parsed.push(T::from(std::f32::NAN));
+                } else {
+                    if *s == "TRUE" || *s == "true" || *s == "t"  {
+                        parsed.push(T::from(1.0));
+                    } else {
+                        if *s == "FALSE" || *s == "false" || *s == "f" {
+                            parsed.push(T::from(0.0));
+                        } else {
+                            all_parsed = false;
+                        }
+                    }
+                }
             } else {
                 all_parsed = false;
             }
@@ -223,7 +238,7 @@ fn try_parse_num<T>(col : &Vec<String>) -> Option<Vec<T>>
 }*/
 
 fn try_dvec_from_row<N>(row : &Vec<String>) -> Option<RowDVector<N>>
-    where N : Scalar + FromStr + From<i32>
+    where N : Scalar + FromStr + From<i32> + From<f32>
 {
     Some( RowDVector::<N>::from_vec(try_parse_num::<N>(row)?))
 }
@@ -279,18 +294,23 @@ pub fn packed_into_table<N>(
 /// This keeps the matrix in the same order the data is organized
 /// over the file. Existing headers (if any) are ignored.
 pub fn load_matrix_from_str<N>(
-    content : &str
-) -> Result<(Option<Vec<String>>, DMatrix<N>), &'static str>
+    content : &str,
+    null_action : NullAction
+) -> Result<(Option<Vec<String>>, DMatrix<N>), String>
     where
-        N : Scalar + FromStr + From<i32>
+        N : Scalar + FromStr + From<i32> + From<f32>
 {
     let (header, rows) = parse_csv_as_text_rows(content)
-        .ok_or("Could not parse rows as text")?;
+        .ok_or("Could not parse rows as text".to_string())?;
     let mut data : Vec<RowDVector<N>> = Vec::new();
     for (i, r) in rows.iter().enumerate() {
         if i == 0 {
             if let Some(h) = try_dvec_from_row::<N>(r) {
                 data.push(h);
+            } else {
+                if let NullAction::Error = null_action {
+                    return Err(format!("Null value at row {}", i));
+                }
             }
         } else {
             match try_dvec_from_row::<N>(r) {
@@ -298,15 +318,14 @@ pub fn load_matrix_from_str<N>(
                     data.push(parsed_row);
                 },
                 None => {
-                    println!("Error at line {}", i);
-                    return  Err("Could not parse row as numeric type");
+                    return Err(format!("Could not parse row {} as numeric type", i));
                 }
             }
             // println!("{}", i);
         }
     }
     match data.len() {
-        0 => Err("No rows were parsed"),
+        0 => Err("No rows were parsed".into()),
         _ => Ok((header, DMatrix::<N>::from_rows(&data[..])))
     }
 }

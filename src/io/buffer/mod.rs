@@ -1,5 +1,6 @@
 use nalgebra::*;
 use simba::scalar::RealField;
+use std::convert::TryInto;
 
 #[inline(always)]
 fn zip_rows_buffer_mut<'a, N : Scalar>(
@@ -144,6 +145,20 @@ impl<N> Buffer<N>
             Update::Full => self.data.slice_mut((0, 0), self.data.shape()),
             Update::Partial(up_off, up_sz) => self.data.slice_mut(up_off, up_sz)
         }
+    }
+
+    pub fn decode(&self, dec : &[u8]) -> Result<DMatrix<f32>, &'static str> {
+        let mut content = Vec::<f32>::new();
+        for w in dec.windows(4) {
+            let buffer : Result<[u8; 4], _> = w.try_into();
+            if let Ok(b) = buffer {
+                let u = u32::from_ne_bytes(b);
+                content.push(f32::from_bits(u))
+            } else {
+                return Err("Could not parse buffer as array");
+            }
+        }
+        Ok(DMatrix::from_vec(self.data.nrows(), self.data.ncols(), content))
     }
 
 }

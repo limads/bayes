@@ -4,6 +4,7 @@ use bayes::gsl::vector_double::*;
 use bayes::gsl::matrix_double::*;
 use bayes::gsl::utils::*;
 use bayes::distr::*;
+use bayes::sim::Histogram;
 
 const EPS : f64 = 10E-8;
 
@@ -158,5 +159,14 @@ fn categorical() {
     }
 }
 
-
-
+#[test]
+fn histogram() {
+    // Perfect uniform distribution draw.
+    let sample = DVector::from_iterator(100, (0..100).map(|s| s as f64));
+    let hist = Histogram::build(&sample);
+    println!("Mean = {}", hist.mean());
+    println!("Median = {}", hist.median());
+    println!("Variance = {}", hist.var());
+    println!("Full = {:?}", hist.full(5, false));
+    //assert!(hist.mean() == hist.median());
+}

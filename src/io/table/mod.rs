@@ -12,13 +12,15 @@ use nalgebra::*;
 use std::str::FromStr;
 use std::io::Read;
 use std::fmt::{self, Display};
+use nalgebra::storage::Storage;
+use std::default::Default;
 
 pub mod csv;
 
 // #[cfg(feature = "sql")]
 pub mod sql;
 
-//use sql::*;
+pub use sql::*;
 
 #[derive(Clone, Copy)]
 pub enum ColumnType {
@@ -28,6 +30,19 @@ pub enum ColumnType {
     Float,
     Boolean,
     Numeric
+}
+
+pub enum NullAction {
+    IgnoreRow,
+    Error
+}
+
+impl Default for NullAction {
+
+    fn default() -> Self {
+        NullAction::Error
+    }
+
 }
 
 impl Display for ColumnType {
@@ -123,30 +138,68 @@ pub struct Table {
 
 impl Table {
 
-    pub fn from_reader<R>(mut reader : R) -> Result<Self, String>
+    pub fn from_reader<R>(mut reader : R, null : NullAction) -> Result<Self, String>
         where R : Read
     {
         let mut content = String::new();
         reader.read_to_string(&mut content).map_err(|e| format!("{}", e) )?;
-        let tbl : Table = content.parse().map_err(|e| format!("{}", e) )?;
+        let tbl : Table = Self::load_with_action(&content[..], null)?;
         Ok(tbl)
     }
 
-    fn load_from_file(mut f : File) -> Result<Self, String> {
+    fn load_from_file(mut f : File, null : NullAction) -> Result<Self, String> {
         let mut content = String::new();
         f.read_to_string(&mut content).map_err(|e| format!("{}", e) )?;
         let source = TableSource::File(f);
-        let mut tbl : Table = content.parse().map_err(|e| format!("{}", e) )?;
+        let mut tbl : Table = Self::load_with_action(&content[..], null)?;
         tbl._source = source;
         Ok(tbl)
     }
 
-    pub fn open<P>(path : P) -> Result<Self, String>
+    pub fn open<P>(path : P, null : NullAction) -> Result<Self, String>
         where P : AsRef<Path>
     {
         let f = File::open(path).map_err(|e| format!("{}", e) )?;
-        Self::load_from_file(f)
+        Self::load_from_file(f, null)
     }
+
+    pub fn build<C, S>(
+        columns : &[&str],
+        data : &Matrix<f64, Dynamic, C, S>
+    ) -> Result<Self, &'static str>
+        where
+            C : Dim,
+            S : Storage<f64, Dynamic, C>
+    {
+        let cols : Vec<DVector<f64>> = data.column_iter().map(|c| c.clone_owned()).collect();
+        let packed_data = DMatrix::from_columns(&cols[..]);
+        if packed_data.ncols() != columns.len() {
+            return Err("Invalid column dimensions");
+        }
+        let mut col_names = Vec::new();
+        col_names.extend(columns.iter().map(|c| c.to_string()));
+        let col_types : Vec<_> = (0..packed_data.ncols()).map(|_| ColumnType::Double ).collect();
+        Ok(Self {
+            col_names,
+            col_types,
+            _source : TableSource::Unknown,
+            data : packed_data
+        })
+    }
+
+    fn load_with_action(s : &str, action : NullAction) -> Result<Self, String> {
+        let (opt_header, data) = csv::load_matrix_from_str(s, action)?;
+        let col_names = opt_header.ok_or(format!("Unable to parse header"))?;
+        let col_types : Vec<ColumnType> =
+            (0..col_names.len()).map(|_| ColumnType::Double ).collect();
+        Ok(Self {
+            _source : TableSource::Unknown,
+            col_types,
+            col_names,
+            data
+        })
+    }
+
 
     pub fn save(&mut self) -> Result<(), String> {
         unimplemented!()
@@ -318,16 +371,7 @@ impl FromStr for Table {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let (opt_header, data) = csv::load_matrix_from_str(s)?;
-        let col_names = opt_header.ok_or(format!("Unable to parse header"))?;
-        let col_types : Vec<ColumnType> =
-            (0..col_names.len()).map(|_| ColumnType::Double ).collect();
-        Ok(Self {
-            _source : TableSource::Unknown,
-            col_types,
-            col_names,
-            data
-        })
+        Self::load_with_action(s, Default::default())
     }
 
 }
