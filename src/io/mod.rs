@@ -2,7 +2,13 @@
 /// Support csv files or relational databases.
 pub mod table;
 
-/// Load data from generic 8-bit buffers such as images or temporal streams.
-pub mod buffer;
+/// Load data from generic 8-bit time stream buffers
+pub mod seq;
 
+/// Load data from generic 8-bit image buffers
+pub mod surf;
+
+pub use seq::*;
+
+pub use surf::*;
 

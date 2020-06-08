@@ -20,6 +20,6 @@ pub mod spline;
 pub mod polynomial;
 
 /// Utilities for interpolating time series and surfaces, offered by GSL. (Work in progress)
-pub mod interpolation;
+pub mod interp;
 
 

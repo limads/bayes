@@ -5,6 +5,7 @@ use bayes::gsl::matrix_double::*;
 use bayes::gsl::utils::*;
 use bayes::distr::*;
 use bayes::sim::Histogram;
+use bayes::io::{Sequence, Surface};
 
 const EPS : f64 = 10E-8;
 
@@ -161,7 +162,7 @@ fn categorical() {
 
 #[test]
 fn histogram() {
-    // Perfect uniform distribution draw.
+    // Generate histogram to reproduced sample uniform distribution
     let sample = DVector::from_iterator(100, (0..100).map(|s| s as f64));
     let hist = Histogram::build(&sample);
     println!("Mean = {}", hist.mean());
@@ -169,4 +170,20 @@ fn histogram() {
     println!("Variance = {}", hist.var());
     println!("Full = {:?}", hist.full(5, false));
     //assert!(hist.mean() == hist.median());
+}
+
+#[test]
+fn sequence() {
+    let mut s : Sequence<'_, f32> = Sequence::new(&[0, 1, 0]);
+    println!("{}", s.extract());
+    s.reposition(1,2);
+    println!("{}", s.extract());
+}
+
+#[test]
+fn surface() {
+    let mut s : Surface<'_, f32> = Surface::new(&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 3);
+    println!("{}", s.extract());
+    s.reposition((2,1),(2,2));
+    println!("{}", s.extract());
 }

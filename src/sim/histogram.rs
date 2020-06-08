@@ -28,8 +28,7 @@ impl Histogram {
     pub fn build<S>(sample : &Matrix<f64, Dynamic, U1, S>) -> Self
         where S : Storage<f64, Dynamic, U1>
     {
-        println!("sample = {}", sample);
-        assert!(sample.nrows() > 5);
+        assert!(sample.nrows() > 5, "Sample too small to build histogram");
         let mut sample_c = sample.clone_owned();
         let mut sample_vec : Vec<_> = sample_c.data.into();
         sample_vec.sort_unstable_by(|s1, s2| s1.partial_cmp(s2).unwrap_or(Ordering::Equal) );
@@ -48,8 +47,8 @@ impl Histogram {
         for i in 1..(ord_sample.nrows() - 1) {
             acc += ord_sample[i];
             acc_sq += ord_sample[i].powf(2.);
-            println!("sample:{}", ord_sample[i]);
-            println!("acc: {}", acc);
+            //println!("sample:{}", ord_sample[i]);
+            //println!("acc: {}", acc);
             if i as f64 / n as f64 > (curr_bin as f64)*prob_intv {
                 bounds[curr_bin] = (ord_sample[i-1] + ord_sample[i]) / 2.;
                 curr_bin += 1;
@@ -81,31 +80,66 @@ impl Histogram {
         (self.bounds[p_ix] + self.bounds[p_ix - 1]) / 2.
     }
 
-    /// Returns cumulative probability up to the informed value.
-    pub fn prob(&self, value : f64) -> f64 {
-        assert!(value < self.bounds[self.bounds.nrows() - 1], "Value should be < sample maximum");
-        let b_ix = self.bounds.iter().position(|b| *b > value).unwrap();
+    /// Returns cumulative probability up to the informed value, by starting
+    /// the search over the accumulated bounds at the informed value, and returning
+    /// the number of iterations performed.
+    fn prob_bounded(&self, value : f64, lower_bound : usize) -> (f64, usize) {
+        assert!(value <= self.bounds[self.bounds.nrows() - 1], "Value should be < sample maximum");
+        let diff_ix = self.bounds.rows(lower_bound, self.bounds.nrows() - lower_bound)
+            .iter().position(|b| *b >= value).unwrap();
         //(self.bounds[b_ix] - self.bounds[0]) / self.full_interval
-        (b_ix as f64) / self.bounds.nrows() as f64
+        ((lower_bound+diff_ix) as f64 * self.prob_intv, diff_ix)
     }
 
-    /// Returns (bin center, probabilities) pair when the full interval is
+    /// Returns cumulative probability up to the informed value, performing a full serch
+    /// over the histogram.
+    fn prob(&self, value : f64, bound : usize) -> f64 {
+        self.prob_bounded(value, 0).0
+    }
+
+    /// Returns (bin right bound, probabilities) pair when the full interval is
     /// partitioned into nbin intervals.
     pub fn full(&self, nbins : usize, cumul : bool) -> (DVector<f64>, DVector<f64>) {
+        assert!(nbins > 3);
         let interval = self.full_interval / nbins as f64;
         let mut values = DVector::from_iterator(
             nbins,
-            (0..(nbins)).map(|b| self.bounds[0] + (b as f64)*interval + interval/2.)
+            (1..(nbins+1)).map(|b| self.bounds[0] + (b as f64)*interval )
         );
-        let mut prob = values.map(|v| self.prob(v));
-        if !cumul {
+        let mut curr_bound = 0;
+        let cumul_prob = values.map(|v| {
+            let (p,nd) = self.prob_bounded(v, curr_bound);
+            curr_bound += nd;
+            p
+        });
+        //println!("prob: {}", cumul_prob);
+        if cumul {
+            (values, cumul_prob)
+        } else {
+            let mut prob = DVector::zeros(cumul_prob.nrows());
+            prob[0] = cumul_prob[0];
             for i in 1..prob.nrows() {
-                prob[i] -= prob.iter().take(i-1).fold(0.0, |ps, p| ps + p);
+                prob[i] = cumul_prob[i] - cumul_prob[i-1];
             }
+            (values, prob)
         }
-        (values, prob)
     }
 
+}
+
+/// Useful to represent the joint distribution of pairs of non-parametric
+/// posterior parameters and to calculate pair-wise statistics for them, such
+/// as their covariance and correlation.
+pub struct SurfaceHistogram {
+    cols : Vec<Histogram>
+}
+
+/// Surface histogram, marginalized over the vertical
+/// and horizontal dimensions. Useful to calculate the
+/// covariance between marginal posterior estimates.
+pub struct MarginalHistogram {
+    bottom : Histogram,
+    right : Histogram
 }
 
 
