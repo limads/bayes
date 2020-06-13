@@ -89,7 +89,14 @@ impl Distribution for Categorical {
     }
 
     fn cov(&self) -> Option<DMatrix<f64>> {
-        None
+        let d = self.mean().nrows();
+        let mut m = DMatrix::zeros(d, d);
+        m.set_diagonal(&DVector::from_element(d, 1.));
+        Some(m)
+    }
+
+    fn cov_inv(&self) -> Option<DMatrix<f64>> {
+        self.cov()
     }
 
 }
@@ -140,13 +147,13 @@ impl ExponentialFamily<Dynamic> for Categorical
         &self.log_part
     }
 
-    fn update_grad(&mut self, _eta : DVectorSlice<'_, f64>) {
+    /*fn update_grad(&mut self, _eta : DVectorSlice<'_, f64>) {
         unimplemented!()
     }
 
     fn grad(&self) -> &DVector<f64> {
         unimplemented!()
-    }
+    }*/
 
     fn link_inverse<S>(eta : &Matrix<f64, Dynamic, U1, S>) -> DVector<f64>
         where S : Storage<f64, Dynamic, U1>

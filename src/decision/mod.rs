@@ -95,8 +95,6 @@ impl<'a> DecisionBoundary<'a> {
 /// BayesFactor can be used to compare posteriors to arbitrary analytical
 /// distributions (Null or saturated); or to compare the same posterior
 /// with itself at different values by comparing their conditional log-posteriors.
-/// A peak detection problem, for example, can be formulated
-/// as:
 ///
 /// ```rust
 /// // let bf = m1.compare(m2);

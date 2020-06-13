@@ -230,6 +230,10 @@ impl Distribution for Wishart {
         None
     }
 
+    fn cov_inv(&self) -> Option<DMatrix<f64>> {
+        None
+    }
+
 }
 
 impl Posterior for Wishart {
@@ -280,13 +284,13 @@ impl ExponentialFamily<U1> for Wishart
         unimplemented!()
     }
 
-    fn update_grad(&mut self, _eta : DVectorSlice<'_, f64>) {
+    /*fn update_grad(&mut self, _eta : DVectorSlice<'_, f64>) {
         unimplemented!()
     }
 
     fn grad(&self) -> &DVector<f64> {
         unimplemented!()
-    }
+    }*/
 
     fn link_inverse<S>(_eta : &Matrix<f64, Dynamic, U1, S>) -> DVector<f64>
         where S : Storage<f64, Dynamic, U1>

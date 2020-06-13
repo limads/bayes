@@ -1,9 +1,11 @@
 use nalgebra::*;
 use nalgebra::storage::*;
 use std::cmp::Ordering;
+use super::*;
 
 /// One-dimensional histogram, useful for representing univariate marginal distributions
 /// of sampled posteriors non-parametrically. Retrieved by indexing a Sample structure.
+/// The histogram resolution is a linear function of the sample size.
 pub struct Histogram {
 
     ord_sample : DVector<f64>,
@@ -125,21 +127,66 @@ impl Histogram {
         }
     }
 
+    pub fn subsample(&self, nbins : usize) -> Histogram {
+        let (full, probs) = self.full(nbins, false);
+        let n = full.nrows();
+        let mut sample = Vec::new();
+        for (x, p) in full.iter().zip(probs.iter()) {
+            sample.extend((0..(n as f64 * p) as usize).map(|_| x ));
+        }
+        Self::build(&DVector::from_vec(sample))
+    }
+
 }
 
 /// Useful to represent the joint distribution of pairs of non-parametric
 /// posterior parameters and to calculate pair-wise statistics for them, such
 /// as their covariance and correlation.
 pub struct SurfaceHistogram {
-    cols : Vec<Histogram>
+    comm_domain : DVector<f64>,
+    joint_prob : DMatrix<f64>,
 }
 
-/// Surface histogram, marginalized over the vertical
-/// and horizontal dimensions. Useful to calculate the
-/// covariance between marginal posterior estimates.
+impl SurfaceHistogram {
+
+    pub fn build(a : Histogram, b : Marginal) -> Self {
+        /*let n = b.len();
+        let mut cols = Vec::new();
+        for i in 0..n {
+            cols.push(b[i])
+        }*/
+        //Self{ bottom : a.subsample(n), cols }
+        unimplemented!()
+    }
+
+    pub fn quantile(pa : f64, pb : f64) -> (f64, f64) {
+        /*let qa = self.quantile(pa);
+        let ix = self.comm_domain.position(|b| b >= qa).unwrap();
+        self.cols[ix].quantile(pb);
+        (pa, pb)*/
+        unimplemented!()
+    }
+
+    pub fn prob(pa : f64, pb : f64) -> f64 {
+        /*let x = self.quantile(pa);
+        self.bottom.prob(p) **/
+        unimplemented!()
+    }
+
+}
+
+/// Pair of marginal histograms.
 pub struct MarginalHistogram {
     bottom : Histogram,
     right : Histogram
+}
+
+impl MarginalHistogram {
+
+    pub fn build(a : Histogram, b : Histogram) -> Self {
+        Self{ bottom : a, right : b}
+    }
+
 }
 
 

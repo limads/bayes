@@ -47,7 +47,7 @@ pub struct Poisson {
 
     log_part : DVector<f64>,
 
-    eta_traj : Option<EtaTrajectory>,
+    eta_traj : Option<RandomWalk>,
 
     sampler : Vec<rand_distr::Poisson<f64>>,
 
@@ -99,13 +99,13 @@ impl ExponentialFamily<U1> for Poisson
         &self.log_part
     }
 
-    fn update_grad(&mut self, _eta : DVectorSlice<'_, f64>) {
+    /*fn update_grad(&mut self, _eta : DVectorSlice<'_, f64>) {
         unimplemented!()
     }
 
     fn grad(&self) -> &DVector<f64> {
         unimplemented!()
-    }
+    }*/
 
     fn link_inverse<S>(eta : &Matrix<f64, Dynamic, U1, S>) -> DVector<f64>
         where S : Storage<f64, Dynamic, U1>
@@ -164,10 +164,7 @@ impl Distribution for Poisson
 
     fn log_prob(&self, y : DMatrixSlice<f64>) -> f64 {
         assert!(y.ncols() == 1);
-        let eta = match self.current() {
-            Some(eta) => eta,
-            None => self.eta.rows(0, self.eta.nrows())
-        };
+        let eta = self.eta.rows(0, self.eta.nrows());
         let factor_lp = match &self.factor {
             PoissonFactor::Conjugate(g) => {
                 g.log_prob(self.suf_lambda.as_ref().unwrap().slice((0,0), (1,2)))
@@ -191,6 +188,11 @@ impl Distribution for Poisson
     fn cov(&self) -> Option<DMatrix<f64>> {
         None
     }
+
+    fn cov_inv(&self) -> Option<DMatrix<f64>> {
+        None
+    }
+
 
 }
 
@@ -304,7 +306,7 @@ impl Estimator<Gamma> for Poisson {
 
 }
 
-impl RandomWalk for Poisson {
+/*impl RandomWalk for Poisson {
 
     fn current<'a>(&'a self) -> Option<DVectorSlice<'a, f64>> {
         self.eta_traj.as_ref().and_then(|eta_traj| {
@@ -336,8 +338,7 @@ impl RandomWalk for Poisson {
             Some(Sample::new(t_cols))
         })
     }
-
-}
+}*/
 
 impl Default for Poisson {
 

@@ -203,7 +203,7 @@ impl<'a, C> DWTPlan<C>
         Ok(())
     }
 
-    pub fn iter_levels<S>(
+    pub fn iter_levels(
         &'a self
     ) -> DWTIteratorBase<&'a Matrix<f64, Dynamic, C, VecStorage<f64, Dynamic, C>>> {
         DWTIteratorBase::<&'a Matrix<f64, Dynamic, C, VecStorage<f64, Dynamic, C>>>::new_ref(&self.buf)

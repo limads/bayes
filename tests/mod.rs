@@ -5,7 +5,7 @@ use bayes::gsl::matrix_double::*;
 use bayes::gsl::utils::*;
 use bayes::distr::*;
 use bayes::sim::Histogram;
-use bayes::io::{Sequence, Surface};
+//use bayes::io::{Sequence, Surface};
 
 const EPS : f64 = 10E-8;
 
@@ -172,7 +172,7 @@ fn histogram() {
     //assert!(hist.mean() == hist.median());
 }
 
-#[test]
+/*#[test]
 fn sequence() {
     let mut s : Sequence<'_, f32> = Sequence::new(&[0, 1, 0]);
     println!("{}", s.extract());
@@ -186,4 +186,4 @@ fn surface() {
     println!("{}", s.extract());
     s.reposition((2,1),(2,2));
     println!("{}", s.extract());
-}
+}*/

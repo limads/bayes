@@ -86,6 +86,10 @@ pub trait Distribution
     /// with independent scale parameters.
     fn cov(&self) -> Option<DMatrix<f64>>;
 
+    /// Returns the inverse-covariance (precision) for multivariate
+    /// distributinos; Returns None for univariate distributions.
+    fn cov_inv(&self) -> Option<DMatrix<f64>>;
+
     /// Evaluates the log-probability of the sample y with respect to the current
     /// parameter state. This method just dispatches to a sufficient statistic log-probability
     /// or to a conditional log-probability evaluation depending on the conditioning factors
@@ -198,13 +202,34 @@ pub trait ExponentialFamily<C>
     /// alone. This method updates this term for every parameter update.
     fn update_log_partition<'a>(&'a mut self, eta : DVectorSlice<'_, f64>);
 
-    /// The gradient of an exponential-family distribution is a linear function
-    /// of the sufficient statistic (constant) and the currently set natural parameter.
-    fn update_grad(&mut self, eta : DVectorSlice<'_, f64>);
+    // The gradient of an exponential-family distribution is a linear function
+    // of the sufficient statistic (constant) and the currently set natural parameter.
+    // fn update_grad(&mut self, eta : DVectorSlice<'_, f64>);
 
     /// Retrieves the gradient of self, with respect to the currently set natural
     /// parameter and sufficient statistic.
-    fn grad(&self) -> &DVector<f64>;
+    fn grad(&self, y : DMatrixSlice<'_, f64>) -> DVector<f64> {
+        match y.ncols() {
+            1 => {
+                let v = self.var();
+                assert!(v.nrows() == v.ncols());
+                assert!(v.nrows() == 1);
+                let mut diff = y.column(0).clone_owned() - self.mean();
+                diff.unscale_mut(v[(0)]);
+                diff
+            },
+            d => {
+                let cov_inv = self.cov_inv().unwrap();
+                assert!(cov_inv.nrows() == cov_inv.ncols());
+                assert!(cov_inv.nrows() == self.mean().nrows());
+                let yt = y.transpose();
+                let yt_scaled = cov_inv.clone() * yt;
+                let m_scaled = cov_inv * self.mean();
+                let ys = yt_scaled.column_sum();
+                yt_scaled - m_scaled
+            }
+        }
+    }
 
     /// Function that captures the distribution invariances to
     /// location (first derivative) and scale (second derivative).

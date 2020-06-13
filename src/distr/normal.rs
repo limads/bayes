@@ -49,7 +49,7 @@ pub struct Normal {
 
     log_part : DVector<f64>,
 
-    eta_traj : Option<EtaTrajectory>,
+    eta_traj : Option<RandomWalk>,
 
     /// Holds [log(1/sigma^2); 1/sigma^2], against which
     /// any scale factors (if present) are evaluated.
@@ -182,13 +182,13 @@ impl ExponentialFamily<U1> for Normal
         unimplemented!()
     }
 
-    fn update_grad(&mut self, _eta : DVectorSlice<'_, f64>) {
+    /*fn update_grad(&mut self, _eta : DVectorSlice<'_, f64>) {
         unimplemented!()
     }
 
     fn grad(&self) -> &DVector<f64> {
         unimplemented!()
-    }
+    }*/
 
 }
 
@@ -221,6 +221,10 @@ impl Distribution for Normal
     }
 
     fn cov(&self) -> Option<DMatrix<f64>> {
+        None
+    }
+
+    fn cov_inv(&self) -> Option<DMatrix<f64>> {
         None
     }
 
@@ -390,7 +394,7 @@ impl Estimator<Normal> for Normal {
 
 }
 
-impl RandomWalk for Normal {
+/*impl RandomWalk for Normal {
 
     fn current<'a>(&'a self) -> Option<DVectorSlice<'a, f64>> {
         self.eta_traj.as_ref().and_then(|eta_traj| {
@@ -410,7 +414,7 @@ impl RandomWalk for Normal {
         self.eta_traj.as_mut().unwrap().step_increment(diff_eta);
     }
 
-    fn marginal(&self) -> Option<Sample> {
+    fn marginal(&self) -> Option<Marginal> {
         self.eta_traj.as_ref().and_then(|eta_traj| {
             let cols : Vec<DVector<f64>> = eta_traj.traj.clone()
                 .column_iter().take(eta_traj.pos).map(|col| Self::link(&col) ).collect();
@@ -418,8 +422,7 @@ impl RandomWalk for Normal {
             Some(Sample::new(t_cols))
         })
     }
-
-}
+}*/
 
 impl Display for Normal {
 

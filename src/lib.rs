@@ -1,6 +1,5 @@
 //! This create offers composable abstractions to build
-//! probabilistic models and inference algorithms
-//! operating on those models.
+//! probabilistic models and inference algorithms.
 //!
 //! The trait [Distribution](distr/trait.Distribution.html) offer the basic random sampling and
 //! calculation of summary statistic functionality for the typical parametric
@@ -45,5 +44,5 @@ mod mkl;
 pub mod gsl;
 
 /// Utilities to load and save data into/from dynamically-allocated matrices.
-pub mod io;
+pub mod sample;
 

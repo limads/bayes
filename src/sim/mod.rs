@@ -16,6 +16,10 @@ pub mod metropolis;
 
 pub use metropolis::*;
 
+pub mod marginal;
+
+pub use marginal::*;
+
 /// A sequence of natural parameter iterations. The distribution at the current node
 /// holds the parameter trajectory of all distributions at the parent nodes, which during
 /// optimization or posterior sampling are considered as conditioned or unconditional priors.
@@ -23,7 +27,7 @@ pub use metropolis::*;
 /// corresponding posterior entry, which can be retrieved via node.approximate() or node.marginal().
 /// TODO rename to RandomWalk
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EtaTrajectory {
+pub struct RandomWalk {
 
     pub pos : usize,
 
@@ -33,7 +37,7 @@ pub struct EtaTrajectory {
 
 }
 
-impl EtaTrajectory {
+impl RandomWalk {
 
     pub fn new(start : DVectorSlice<'_, f64>) -> Self {
         let mut traj = DMatrix::zeros(start.nrows(), 1000);
@@ -70,33 +74,8 @@ impl EtaTrajectory {
     }
 }
 
-/// Sample is a collection of 1D posterior marginals, recovered via indexing.
-pub struct Sample {
 
-    /// Applies link function to eta_traj to get this field.
-    _theta_traj : DMatrix<f64>
-
-}
-
-impl Sample {
-
-    pub fn new(_theta_traj : DMatrix<f64>) -> Self {
-        Self{ _theta_traj }
-    }
-
-}
-
-impl Index<usize> for Sample {
-
-    type Output = Histogram;
-
-    fn index(&self, _ix: usize) -> &Self::Output {
-        unimplemented!()
-    }
-
-}
-
-/// RandomWalk is implemented by distributions who may
+/*/// RandomWalk is implemented by distributions who may
 /// maintain a history of changes in the natural parameter
 /// scale of its parent(s) node(s).
 /// TODO move to posterior trait.
@@ -123,11 +102,11 @@ pub trait RandomWalk
     /// Use the implementor trajectory as a non-parametric representation
     /// of a marginal probability distribution. Applies any necessary transformations to
     /// the eta trajectory so that the trajectory is now represented with respect to theta.
-    fn marginal(&self) -> Option<Sample>;
+    fn marginal(&self) -> Option<Marginal>;
 
     /*/// Runtime description for the implementor.
     fn description() -> SourceDistribution;*/
 
-}
+}*/
 
 

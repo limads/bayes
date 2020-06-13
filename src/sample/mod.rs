@@ -118,6 +118,8 @@ impl From<File> for TableSource {
 
 }
 
+/// Load data from tabular sources to in-memory double precision matrices.
+/// Support csv files or relational databases.
 /// Wraps a column-major double precision numeric data matrix,
 /// which can be indexed by column name or position.
 /// Keeps run-time types associated with each column
@@ -125,7 +127,7 @@ impl From<File> for TableSource {
 /// CSV output. May or may not own a database connection
 /// or maintain an open file for conveniently updating
 /// its internal state or the remote source state.
-pub struct Table {
+pub struct Sample {
 
     col_names : Vec<String>,
 
@@ -136,14 +138,14 @@ pub struct Table {
     _source : TableSource
 }
 
-impl Table {
+impl Sample {
 
     pub fn from_reader<R>(mut reader : R, null : NullAction) -> Result<Self, String>
         where R : Read
     {
         let mut content = String::new();
         reader.read_to_string(&mut content).map_err(|e| format!("{}", e) )?;
-        let tbl : Table = Self::load_with_action(&content[..], null)?;
+        let tbl : Sample = Self::load_with_action(&content[..], null)?;
         Ok(tbl)
     }
 
@@ -151,7 +153,7 @@ impl Table {
         let mut content = String::new();
         f.read_to_string(&mut content).map_err(|e| format!("{}", e) )?;
         let source = TableSource::File(f);
-        let mut tbl : Table = Self::load_with_action(&content[..], null)?;
+        let mut tbl : Sample = Self::load_with_action(&content[..], null)?;
         tbl._source = source;
         Ok(tbl)
     }
@@ -366,7 +368,7 @@ impl Table {
 
 }
 
-impl FromStr for Table {
+impl FromStr for Sample {
 
     type Err = String;
 
@@ -376,7 +378,7 @@ impl FromStr for Table {
 
 }
 
-impl Display for Table {
+impl Display for Sample {
 
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut header = String::new();

@@ -227,13 +227,13 @@ impl ExponentialFamily<Dynamic> for MultiNormal {
         unimplemented!()
     }
 
-    fn update_grad(&mut self, _eta : DVectorSlice<'_, f64>) {
+    /*fn update_grad(&mut self, _eta : DVectorSlice<'_, f64>) {
         unimplemented!()
     }
 
     fn grad(&self) -> &DVector<f64> {
         unimplemented!()
-    }
+    }*/
 
 }
 
@@ -277,6 +277,10 @@ impl Distribution for MultiNormal {
 
     fn cov(&self) -> Option<DMatrix<f64>> {
         Some(Self::invert_scale(&self.sigma_inv))
+    }
+
+    fn cov_inv(&self) -> Option<DMatrix<f64>> {
+        Some(self.sigma_inv.clone())
     }
 
     fn log_prob(&self, y : DMatrixSlice<f64>) -> f64 {

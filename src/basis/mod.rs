@@ -17,9 +17,54 @@ pub mod spline;
 /// Polynomial basis expansion to arbitrary degree. A polynomial
 /// basis expansion can be seen as a Taylor series approximation
 /// to a conditional expectation. (Work in progress)
-pub mod polynomial;
+pub mod poly;
 
 /// Utilities for interpolating time series and surfaces, offered by GSL. (Work in progress)
 pub mod interp;
+
+/// Load data from generic 8-bit time stream buffers
+pub mod seq;
+
+/// Load data from generic 8-bit image buffers
+pub mod surf;
+
+pub use seq::*;
+
+pub use surf::*;
+
+#[derive(PartialEq)]
+pub enum Encoding {
+    U8,
+    F32,
+    F64
+}
+
+#[inline(always)]
+fn convert_f32_slice(src : &[u8], dst : &mut [f32]) {
+    for (s, d) in src.iter().zip(dst.iter_mut()) {
+        *d = *s as f32;
+    }
+}
+
+#[inline(always)]
+fn convert_f64_slice(src : &[u8], dst : &mut [f64]) {
+    for (s, d) in src.iter().zip(dst.iter_mut()) {
+        *d = *s as f64;
+    }
+}
+
+#[inline(always)]
+fn convert_f32_slice_strided(src : &[u8], dst : &mut [f32], cstride : usize) {
+    for i in 0..dst.len() {
+        dst[i] = src[i*cstride] as f32
+    }
+}
+
+#[inline(always)]
+fn convert_f64_slice_strided(src : &[u8], dst : &mut [f64], cstride : usize) {
+    for i in 0..dst.len() {
+        dst[i] = src[i*cstride] as f64
+    }
+}
 
 

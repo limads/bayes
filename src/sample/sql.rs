@@ -4,7 +4,7 @@ use nalgebra::*;
 
 use super::*;
 
-impl Table {
+impl Sample {
 
     fn column_types(row : &Row) -> Option<Vec<ColumnType>> {
         let mut col_types = Vec::new();
