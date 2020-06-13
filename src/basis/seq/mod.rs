@@ -237,6 +237,7 @@ impl Sequence<f64> {
 }
 
 // cargo test --all-features -- sequence_fft --nocapture
+#[cfg(feature = "mkl")]
 #[test]
 fn sequence_decomposition() {
     let mut seq = Sequence::<f64>::new_empty(16);

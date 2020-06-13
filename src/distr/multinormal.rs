@@ -7,6 +7,7 @@ use std::f64::consts::PI;
 // use crate::sim::*;
 // use std::ops::MulAssign;
 use std::fmt::{self, Display};
+use std::default::Default;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 enum CovFunction {
@@ -20,19 +21,80 @@ struct LinearOp {
 
     pub scale : DMatrix<f64>,
 
+    pub scale_t : DMatrix<f64>,
+
     pub shift : DVector<f64>,
 
     pub lin_mu : DVector<f64>,
 
+    pub lin_scaled_mu : DVector<f64>,
+
     pub lin_sigma_inv : DMatrix<f64>,
 
-    pub transf_sigma_inv : Option<DMatrix<f64>>,
+    /*pub transf_sigma_inv : Option<DMatrix<f64>>,
 
     /// For situations when the covariance is a known
     /// function of the mean parameter vector, usually
     /// because we are making inferences conditional on an
     /// ML estimate of the scale parameter.
-    pub cov_func : CovFunction
+    pub cov_func : CovFunction*/
+}
+
+impl Default for LinearOp {
+
+    fn default() -> Self {
+        let scale = DMatrix::from_element(1,1,1.);
+        let scale_t = scale.clone();
+        let shift = DVector::from_element(1, 0.);
+        let lin_mu = shift.clone();
+        let lin_scaled_mu = shift.clone();
+        let lin_sigma_inv = scale.clone();
+        //let transf_sigma_inv = None;
+        //let cov_func = CovFunction::None;
+        Self {
+            scale,
+            scale_t,
+            shift,
+            lin_mu,
+            lin_sigma_inv,
+            lin_scaled_mu,
+            //transf_sigma_inv,
+            //cov_func
+        }
+    }
+
+}
+
+impl LinearOp {
+
+    pub fn new_from_shift(shift : DVector<f64>) -> Self {
+        let mut op : LinearOp = Default::default();
+        let mut scale = DMatrix::zeros(shift.nrows(), shift.nrows());
+        scale.set_diagonal(&DVector::from_element(shift.nrows(), 1.));
+        op.shift = shift;
+        op.scale_t = scale.clone().transpose();
+        op.scale = scale;
+        op
+    }
+
+    pub fn new_from_scale(scale : DMatrix<f64>) -> Self {
+        let mut op : LinearOp = Default::default();
+        op.shift = DVector::from_element(scale.nrows(), 0.);
+        op.scale_t = scale.clone().transpose();
+        op.scale = scale;
+        op
+    }
+
+    pub fn update(&mut self, mu : &DVector<f64>, sigma_inv : &DVector<f64>) {
+        self.lin_mu = self.scale.clone() * mu;
+        self.lin_sigma_inv = self.scale.clone() * sigma_inv * &self.scale_t;
+        self.lin_scaled_mu = self.lin_sigma_inv.clone() * &self.lin_mu
+    }
+
+    pub fn output(&self) -> (&DVector<f64>, &DMatrix<f64>) {
+        (&self.lin_mu, &self.lin_sigma_inv)
+    }
+
 }
 
 /// Multivariate normal parametrized by μ (px1) and Σ (pxp).
@@ -131,6 +193,28 @@ impl MultiNormal {
         norm
     }
 
+    pub fn scale(&mut self, scale : DMatrix<f64>) {
+        match self.op {
+            Some(ref mut op) => {
+                op.scale = scale;
+            },
+            None => {
+                self.op = Some(LinearOp::new_from_scale(scale));
+            }
+        }
+    }
+
+    pub fn shift(&mut self, shift : DVector<f64>) {
+        match self.op {
+            Some(ref mut op) => {
+                op.shift = shift;
+            },
+            None => {
+                self.op = Some(LinearOp::new_from_shift(shift));
+            }
+        }
+    }
+
     /*pub fn new(mu : DVector<f64>, w : Wishart) -> Self {
         Self { mu : mu, cov : Covariance::new_random(w), shift : None, scale : None }
     }
@@ -177,10 +261,18 @@ impl ExponentialFamily<Dynamic> for MultiNormal {
     }
 
     fn suf_log_prob(&self, t : DMatrixSlice<'_, f64>) -> f64 {
+        let scaled_mu = match self.op {
+            Some(ref op) => &(op.lin_scaled_mu),
+            None => &self.scaled_mu
+        };
+        let sigma_inv = match self.op {
+            Some(ref op) => &(op.lin_sigma_inv),
+            None => &self.sigma_inv
+        };
         let mut lp = 0.0;
-        lp += self.scaled_mu.dot(&t.column(0));
+        lp += scaled_mu.dot(&t.column(0));
         let t_cov = t.columns(1, t.ncols() - 1);
-        for (s_inv_row, tc_row) in self.sigma_inv.row_iter().zip(t_cov.row_iter()) {
+        for (s_inv_row, tc_row) in sigma_inv.row_iter().zip(t_cov.row_iter()) {
             lp += (-0.5) * s_inv_row.dot(&tc_row);
         }
         lp // + self.log_partition()

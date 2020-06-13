@@ -119,8 +119,10 @@ impl<N> Surface<N>
 
     pub fn copy_from_slices(&mut self, data : &[&[N]]) {
         let cvt = self.cvt.as_mut().unwrap();
-        for (mut row, s) in cvt.row_iter_mut().zip(data.iter()) {
-            row.copy_from_slice(s);
+        for (i, mut row) in cvt.row_iter_mut().enumerate() {
+            for (j, e) in row.iter_mut().enumerate() {
+                *e = data[i][j];
+            }
         }
     }
 
@@ -204,6 +206,34 @@ impl Surface<f32> {
 
 }
 
+impl<N> From<(Vec<N>, usize)> for Surface<N>
+        where N : Scalar + From<f32> + Copy + Debug + RealField
+{
+
+    fn from(data : (Vec<N>, usize)) -> Self {
+        let ncols = data.1;
+        let nrows = data.0.len() / ncols;
+        let dm = DMatrix::from_vec(nrows, ncols, data.0);
+        dm.into()
+    }
+
+}
+
+impl<N> From<DMatrix<N>> for Surface<N>
+    where N : Scalar + From<f32> + Copy + Debug + RealField
+{
+
+    fn from(data : DMatrix<N>) -> Self {
+        Self {
+            size : data.shape(),
+            cvt : Some(data),
+            method : Method::None(N::from(0.))
+        }
+    }
+
+}
+
+#[cfg(feature = "mkl")]
 #[test]
 fn surface_decomposition() {
     let mut surf = Surface::<f64>::new_empty(4,4);
