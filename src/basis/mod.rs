@@ -2,7 +2,7 @@
 /// provided via bindings to Intel MKL (requires that crate is compiled with
 /// feature 'mkl'. DWTs are provided via bindings to GSL. Both algorithms
 /// are called through a safe generic trait FrequencyBasis at the module root.
-pub mod frequency;
+pub mod freq;
 
 /// Principal components analysis basis reduction. The PCA is useful
 /// for reducing basis with too many dimensions relative to the
@@ -23,10 +23,10 @@ pub mod poly;
 pub mod interp;
 
 /// Load data from generic 8-bit time stream buffers
-pub mod seq;
+mod seq;
 
 /// Load data from generic 8-bit image buffers
-pub mod surf;
+mod surf;
 
 pub use seq::*;
 

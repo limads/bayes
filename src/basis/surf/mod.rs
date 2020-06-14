@@ -10,8 +10,8 @@ use std::fmt::Debug;
 #[cfg(feature="mkl")]
 use super::frequency::fft::mkl::FFTPlan;
 
-use crate::basis::frequency::FrequencyBasis;
-use super::frequency::dwt::gsl::*;
+use crate::basis::freq::FrequencyBasis;
+use super::freq::dwt::gsl::*;
 
 enum Method<N>
     where N : Scalar + From<f32> + Copy + Debug
@@ -165,6 +165,21 @@ impl Surface<f32> {
         }
     }
 
+    pub fn copy_from_raw_strided(&mut self, data : &[u8], stride : usize, enc : Encoding) {
+        if enc == Encoding::U8 {
+            let cvt = self.cvt.as_mut().unwrap();
+            for c in 0..cvt.ncols() {
+                convert_f32_slice_strided(
+                    data,
+                    cvt.column_mut(c).data.as_mut_slice(),
+                    stride
+                );
+            }
+        } else {
+            unimplemented!()
+        }
+    }
+
     pub fn copy_from_raw_transposed(&mut self, data : &[&[u8]], enc : Encoding) {
         if enc == Encoding::U8 {
             let cvt = self.cvt.as_mut().unwrap();
@@ -256,6 +271,21 @@ impl Surface<f64> {
                 for (j, e) in row.iter_mut().enumerate() {
                     *e = data[i][j] as f64;
                 }
+            }
+        } else {
+            unimplemented!()
+        }
+    }
+
+    pub fn copy_from_raw_strided(&mut self, data : &[u8], stride : usize, enc : Encoding) {
+        if enc == Encoding::U8 {
+            let cvt = self.cvt.as_mut().unwrap();
+            for c in 0..cvt.ncols() {
+                convert_f64_slice_strided(
+                    data,
+                    cvt.column_mut(c).data.as_mut_slice(),
+                    stride
+                );
             }
         } else {
             unimplemented!()

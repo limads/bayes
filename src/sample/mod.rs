@@ -202,12 +202,11 @@ impl Sample {
         })
     }
 
-
     pub fn save(&mut self) -> Result<(), String> {
         unimplemented!()
     }
 
-    pub fn take_data(self) -> DMatrix<f64> {
+    pub fn take_content(self) -> DMatrix<f64> {
         self.data
     }
 
@@ -364,6 +363,77 @@ impl Sample {
         self.col_types.iter_mut().skip(ix_range.0).take(ix_range.1)
             .for_each(|ct| *ct = col_type);
         Ok(())
+    }
+
+    /// Randomly shuffle the rows of the sample in-place.
+    pub fn shuffle(&mut self) {
+        unimplemented!()
+    }
+
+    /// Returns (self.at[0..col), [col..max_col)
+    pub fn split_columns(self, col : usize) -> (Sample, Sample) {
+        let (nrow, ncol) = self.data.shape();
+        let mut cols = self.col_names.clone();
+        let mut types = self.col_types.clone();
+        let mut data : Vec<f64> = self.data.data.into();
+        let s2_data = data.split_off(col*nrow);
+        let s2_cols = cols.split_off(col);
+        let s2_types = types.split_off(col);
+        let m1 = DMatrix::from_vec(nrow, col-1, data);
+        let m2 = DMatrix::from_vec(nrow, ncol - col, s2_data);
+        let s1 = Sample {
+            col_names : cols,
+            col_types : types,
+            data : m1,
+            _source : TableSource::Unknown
+        };
+        let s2 = Sample {
+            col_names : s2_cols,
+            col_types : s2_types,
+            data : m2,
+            _source : TableSource::Unknown
+        };
+        (s1, s2)
+    }
+
+    /// Returns self.rows[0..row), self.rows([row..max_row)
+    pub fn split_rows(self, row : usize) -> (Sample, Sample) {
+        let (nrow, ncol) = self.data.shape();
+        let mut cols = self.col_names.clone();
+        let mut types = self.col_types.clone();
+        let mut m_data = self.data;
+        m_data.transpose_mut();
+        let mut data_vec : Vec<f64> = m_data.data.into();
+        let s2_vec = data_vec.split_off(ncol*row);
+        let mut s1_data = DMatrix::from_vec(ncol, row - 1, data_vec);
+        let mut s2_data = DMatrix::from_vec(ncol, nrow - row, s2_vec);
+        s1_data.transpose_mut();
+        s2_data.transpose_mut();
+        let s1 = Sample {
+            col_names : cols.clone(),
+            col_types : types.clone(),
+            data : s1_data,
+            _source : TableSource::Unknown
+        };
+        let s2 = Sample {
+            col_names : cols,
+            col_types : types,
+            data : s2_data,
+            _source : TableSource::Unknown
+        };
+        (s1, s2)
+    }
+
+    pub fn nrows(&self) -> usize {
+        self.data.nrows()
+    }
+
+    pub fn ncols(&self) -> usize {
+        self.data.ncols()
+    }
+
+    pub fn shape(&self) -> (usize, usize) {
+        self.data.shape()
     }
 
 }

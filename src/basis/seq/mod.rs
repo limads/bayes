@@ -3,16 +3,17 @@ use simba::scalar::RealField;
 use std::convert::TryInto;
 use std::sync::{Arc, Mutex};
 use nalgebra::storage::*;
-use super::frequency::dwt::gsl::*;
+use super::freq::dwt::gsl::*;
 use std::marker::PhantomData;
-use crate::basis::frequency::FrequencyBasis;
+use crate::basis::freq::FrequencyBasis;
 use std::cmp::PartialEq;
 use std::fmt::Debug;
 use nalgebra::storage::*;
 use super::*;
+use crate::sample::*;
 
 #[cfg(feature="mkl")]
-use super::frequency::fft::mkl::FFTPlan;
+use super::freq::fft::mkl::FFTPlan;
 
 enum Method<N>
     where N : Scalar + From<f32> + Copy + Debug
@@ -171,6 +172,14 @@ impl<N> From<DVector<N>> for Sequence<N>
             cvt : Some(data),
             method : Method::None(N::from(0.))
         }
+    }
+
+}
+
+impl From<Sample> for Vec<Sequence<f64>> {
+
+    fn from(sample : Sample) -> Vec<Sequence<f64>> {
+        unimplemented!()
     }
 
 }

@@ -3,7 +3,7 @@ use crate::gsl::wavelet::{self, *};
 use crate::gsl::wavelet2d::{self};
 use nalgebra::storage::*;
 use super::iter::*;
-use crate::basis::frequency::*;
+use crate::basis::freq::*;
 
 #[derive(Clone)]
 pub enum Basis {

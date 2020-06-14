@@ -31,6 +31,8 @@ struct LinearOp {
 
     pub lin_sigma_inv : DMatrix<f64>,
 
+    pub lin_log_part : DVector<f64>,
+
     /*pub transf_sigma_inv : Option<DMatrix<f64>>,
 
     /// For situations when the covariance is a known
@@ -58,6 +60,7 @@ impl Default for LinearOp {
             lin_mu,
             lin_sigma_inv,
             lin_scaled_mu,
+            lin_log_part : DVector::zeros(1)
             //transf_sigma_inv,
             //cov_func
         }
@@ -215,6 +218,13 @@ impl MultiNormal {
         }
     }
 
+    fn multinormal_log_part(mu : DVectorSlice<'_, f64>, cov : &DMatrix<f64>) -> f64 {
+        let sigma_lu = LU::new(cov.clone());
+        let sigma_det = sigma_lu.determinant();
+        let p_mu_cov = -0.25 * mu.clone().transpose() * cov * &mu;
+        p_mu_cov[0] - 0.5*sigma_det.ln()
+    }
+
     /*pub fn new(mu : DVector<f64>, w : Wishart) -> Self {
         Self { mu : mu, cov : Covariance::new_random(w), shift : None, scale : None }
     }
@@ -275,7 +285,8 @@ impl ExponentialFamily<Dynamic> for MultiNormal {
         for (s_inv_row, tc_row) in sigma_inv.row_iter().zip(t_cov.row_iter()) {
             lp += (-0.5) * s_inv_row.dot(&tc_row);
         }
-        lp // + self.log_partition()
+        println!("log part = {}", self.log_partition()[0]);
+        lp + self.log_partition()[0]
     }
 
     fn log_partition<'a>(&'a self) -> &'a DVector<f64> {
@@ -289,11 +300,21 @@ impl ExponentialFamily<Dynamic> for MultiNormal {
     /// has half the log of the determinant of the covariance (scaled by -2) subtracted from it.
     fn update_log_partition<'a>(&'a mut self, eta : DVectorSlice<'_, f64>) {
         // TODO update eta parameter here.
-        let cov = Self::invert_scale(&self.sigma_inv) /* * -2.*/;
-        let sigma_lu = LU::new(cov.clone());
-        let sigma_det = sigma_lu.determinant();
-        let p_eta_cov = -0.25 * eta.clone().transpose() * cov * &eta;
-        self.log_part = DVector::from_element(1, p_eta_cov[0] - 0.5*sigma_det.ln())
+        let cov = Self::invert_scale(&self.sigma_inv);
+        let log_part = Self::multinormal_log_part(eta, &cov);
+        self.log_part = DVector::from_element(1, log_part);
+        if let Some(ref mut op) = self.op {
+            // The new lin_mu should have already been set at self.set_parameter()
+            let lin_mu = op.lin_mu.clone_owned();
+            let lin_sigma_inv = op.lin_sigma_inv.clone_owned();
+            let lin_cov = Self::invert_scale(&lin_sigma_inv);
+            let lin_log_part = Self::multinormal_log_part(lin_mu.rows(0, lin_mu.nrows()), &lin_cov);
+            op.lin_log_part = DVector::from_element(1, lin_log_part);
+        }
+        //let sigma_lu = LU::new(cov.clone());
+        //let sigma_det = sigma_lu.determinant();
+        //let p_eta_cov = -0.25 * eta.clone().transpose() * cov * &eta;
+        //self.log_part = DVector::from_element(1, p_eta_cov[0] - 0.5*sigma_det.ln())
     }
 
     // eta = [sigma_inv*mu,-0.5*sigma_inv] -> [mu|sigma]
@@ -341,7 +362,8 @@ impl Distribution for MultiNormal {
     /// into self. Only after the new covariance is set to self, call self.update_log_partition().
     fn set_parameter(&mut self, p : DVectorSlice<'_, f64>, _natural : bool) {
         self.mu.copy_from(&p.column(0));
-        if let Some(ref mut _op) = self.op {
+        if let Some(ref mut op) = self.op {
+            op.lin_mu = &op.scale * p.clone_owned();
             /*match op.cov_func {
                 CovFunction::Log => {
                     // op.transf_sigma_inv = Some(self.sigma_inv[(0, 0)] * op.scale.clone() * op.scale.clone().transpose());
@@ -353,6 +375,7 @@ impl Distribution for MultiNormal {
             op.lin_mu = op.scale.clone() * p.column(0);
             op.lin_sigma_inv = op.scale.clone() * self.sigma_inv * op.scale.clone().transpose();*/
         }
+        self.update_log_partition(p);
     }
 
     fn mean<'a>(&'a self) -> &'a DVector<f64> {

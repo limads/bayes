@@ -84,22 +84,14 @@ fn gamma() {
     }
 }
 
-#[test]
-fn multinormal() {
-    let mu = DVector::from_element(5, 0.0);
-    let mut sigma = DMatrix::from_element(5, 5, 0.0);
-    sigma.set_diagonal(&DVector::from_element(5, 1.));
-    let mn : MultiNormal = MultiNormal::new(mu.clone(), sigma.clone());
-    let lu = Cholesky::new(sigma).unwrap();
+fn gsl_multinormal_logprob(mu : &DVector<f64>, sigma : &DMatrix<f64>) -> f64 {
+    let mut gsl_prob : f64 = 0.0;
+    let lu = Cholesky::new(sigma.clone()).unwrap();
     let lower = lu.l();
-    //println!("{}", lower);
     unsafe {
         let lower_gsl : gsl_matrix = lower.into();
-        //let mu : [f64; 5] = [0., 0., 0., 0., 0.];
         let ws_orig = DVector::<f64>::zeros(5);
         let mut ws : gsl_vector = ws_orig.into();
-        let mut gsl_prob : f64 = 0.0;
-
         let mu_vec : gsl_vector = mu.clone().into();
         let x_vec : gsl_vector = mu.clone().into();
         let ans = gsl_ran_multivariate_gaussian_pdf(
@@ -112,10 +104,23 @@ fn multinormal() {
         if ans != 0 {
             panic!("Error calculating multivariate density");
         }
-        let x = DMatrix::<f64>::from_iterator(1, 5, mu.iter().map(|x| *x));
-        // println!("Prob: {}", gsl_prob);
-        assert!((gsl_prob - mn.prob(x.slice((0,0), (x.nrows(), x.ncols())))).abs() < EPS);
     }
+    gsl_prob
+}
+
+#[test]
+fn multinormal() {
+    let mu = DVector::from_element(5, 0.0);
+    let mut sigma = DMatrix::from_element(5, 5, 0.0);
+    sigma.set_diagonal(&DVector::from_element(5, 2.));
+    sigma.row_mut(0).copy_from_slice(&[1.0, 0.5, 0.0, 0.0, 0.0]);
+    sigma.row_mut(1).copy_from_slice(&[0.5, 1.0, 0.0, 0.0, 0.0]);
+    let gsl_prob = gsl_multinormal_logprob(&mu, &sigma);
+    let mn : MultiNormal = MultiNormal::new(mu.clone(), sigma);
+    let x = DMatrix::<f64>::from_iterator(1, 5, mu.iter().map(|x| *x));
+    println!("GSL Prob: {}", gsl_prob);
+    println!("Bayes Prob: {}",  mn.prob(x.slice((0,0), (x.nrows(), x.ncols()))));
+    assert!((gsl_prob - mn.prob(x.slice((0,0), (x.nrows(), x.ncols())))).abs() < EPS);
 }
 
 #[test]

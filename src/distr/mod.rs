@@ -197,6 +197,9 @@ pub trait ExponentialFamily<C>
     /// according to a given number of samples.
     fn base_measure(y : DMatrixSlice<'_, f64>) -> DVector<f64>;
 
+    // TODO change signature to
+    // log_partition(&self)->f64 and just set internal (cached) log_partition
+    // at the muting set_parameter method.
     /// The unnormalized log-probability is always defined as the inner product of a sufficient
     /// statistic with the natural parameter minus a term dependent on the parameter
     /// alone. This method updates this term for every parameter update.
