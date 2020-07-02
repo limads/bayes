@@ -56,10 +56,10 @@ bindgen /usr/include/gsl/gsl_randist.h -o src/gsl/randist.rs \
 	--whitelist-type "size_t.*|gsl_ran.*|gsl_rng.*" --whitelist-function "gsl_ran|gsl_cdf.*"
 rustfmt src/gsl/randist.rs --force
 sed -i '1s;^;use crate::gsl::vector_double::*\;\nuse crate::gsl::matrix_double::*\;\nuse crate::gsl::block_double::*\;use crate::gsl::rng;\n\n;' src/gsl/randist.rs
-use crate::gsl::vector_double::*;
-use crate::gsl::matrix_double::*;
-use crate::gsl::block_double::*;
-use crate::gsl::rng::*;
+#use crate::gsl::vector_double::*;
+#use crate::gsl::matrix_double::*;
+#use crate::gsl::block_double::*;
+#use crate::gsl::rng::*;
 
 #bindgen /usr/include/gsl/gsl_matrix_double.h -o src/gsl/matrix_double.rs \
 #	--no-rustfmt-bindings --no-layout-tests --no-derive-copy --no-derive-debug \
@@ -108,6 +108,16 @@ bindgen /usr/include/gsl/gsl_wavelet2d.h -o src/gsl/wavelet2d_src.rs \
 rustfmt src/gsl/wavelet2d_src.rs --force
 sed '1s;^;use crate::gsl::vector_double::*\;\nuse crate::gsl::matrix_double::*\;\nuse crate::gsl::wavelet::*;\n\n;' src/gsl/wavelet2d_src.rs > src/gsl/wavelet2d.rs
 rm src/gsl/wavelet2d_src.rs
+
+bindgen /usr/include/gsl/gsl_bspline.h -o src/gsl/bspline_src.rs \
+    --no-layout-tests --no-derive-copy --no-derive-debug --no-rustfmt-bindings \
+    --no-recursive-whitelist \
+    --whitelist-type "gsl_bspline.*" \
+    --whitelist-function "gsl_bspline.*" \
+    --whitelist-var "gsl_bspline.*"
+rustfmt src/gsl/bspline_src.rs --force
+sed '1s;^;use crate::gsl::vector_double::*\;\n\n;' src/gsl/bspline_src.rs > src/gsl/bpsline.rs
+rm src/gsl/bspline_src.rs
 
 bindgen /usr/include/gsl/gsl_sf_gamma.h -o src/gsl/gamma.rs \
     --no-layout-tests --no-derive-copy --no-derive-debug --no-rustfmt-bindings \

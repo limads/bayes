@@ -1,6 +1,8 @@
 use postgres::{self, row::Row, Client, /*types::FromSql, types::ToSql,*/ types::Type };
 use sqlparser::dialect::PostgreSqlDialect;
 use nalgebra::*;
+use rusqlite;
+use std::convert::TryFrom;
 
 use super::*;
 
@@ -149,7 +151,7 @@ impl Sample {
                         }
                     };
                     let full_nrows = valid_data.nrows();
-                    let trim_data = valid_data.remove_rows(ix, full_nrows);
+                    let trim_data = valid_data.remove_rows(ix, full_nrows - ix);
                     Ok(Self {
                         _source : TableSource::Postgre(client),
                         data : trim_data,
@@ -177,7 +179,86 @@ impl Sample {
     }
 }
 
+fn define_columns(row : &rusqlite::Row) -> Result<Vec<ColumnType>, String> {
+    let mut cols = Vec::new();
+    for ix in 0..row.column_names().len() {
+        if let Ok(opt_value) = row.get::<usize, i64>(ix) {
+            cols.push(ColumnType::Integer);
+        } else {
+            if let Ok(opt_value) = row.get::<usize, f64>(ix) {
+                cols.push(ColumnType::Double);
+            } else {
+                return Err(format!("Could not parse column {} as double", ix));
+            }
+        }
+    }
+    Ok(cols)
+}
 
+impl<'a> TryFrom<rusqlite::Rows<'a>> for Sample {
+
+    type Error = String;
+
+    fn try_from(mut rows : rusqlite::Rows<'a>) -> Result<Sample, String> {
+        let mut max_rows = 500;
+        let columns : Vec<String> = rows.column_names().unwrap()
+            .iter()
+            .map(|n| n.to_string())
+            .collect();
+        /*let mut all_ok = true;
+        rows.columns().unwrap().iter().for_each(|c| {
+            match c.decl_type() {
+                Some("integer") | Some("int") => types.push(ColumnType::Integer),
+                Some("real") => types.push(ColumnType::Double),
+                _ => { all_ok = false; }
+            }
+        });
+        if !all_ok {
+            return Err(format!("Column could not be parsed"));
+        }*/
+        let ncols = columns.len();
+        let mut data = DMatrix::zeros(max_rows, ncols);
+        let mut curr_row = 0;
+        let mut types = Vec::new();
+        while let Ok(Some(row)) = rows.next() {
+            if curr_row == 0 {
+                types = define_columns(&row)?;
+            }
+            for c in 0..ncols {
+                match types[c] {
+                    ColumnType::Integer => {
+                        if let Ok(vi) = row.get::<usize, i32>(c) {
+                            data[(curr_row, c)] = vi as f64;
+                        } else {
+                            return Err(format!("Could not parse value at {}, {} as valid integer", curr_row, c));
+                        }
+                    },
+                    ColumnType::Double => {
+                        if let Ok(vd) = row.get::<usize, f64>(c) {
+                            data[(curr_row, c)] = vd;
+                        } else {
+                            return Err(format!("Could not parse value at {}, {} as valid double", curr_row, c));
+                        }
+                    },
+                    _ => panic!("Invalid columm type")
+                }
+            }
+            curr_row += 1;
+            if curr_row == (max_rows-1) {
+                max_rows += 500;
+                data = data.clone().insert_rows(max_rows-1, 500, 0.0);
+            }
+        }
+        let trim_data = data.remove_rows(curr_row, max_rows - curr_row);
+        Ok(Self {
+            _source : TableSource::Unknown,
+            data : trim_data,
+            col_names : columns,
+            col_types : types,
+        })
+    }
+
+}
 
 
 

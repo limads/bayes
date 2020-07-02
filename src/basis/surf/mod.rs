@@ -10,8 +10,8 @@ use std::fmt::Debug;
 #[cfg(feature="mkl")]
 use super::frequency::fft::mkl::FFTPlan;
 
-use crate::basis::freq::FrequencyBasis;
-use super::freq::dwt::gsl::*;
+use crate::signal::FrequencyBasis;
+use crate::signal::dwt::gsl::*;
 
 enum Method<N>
     where N : Scalar + From<f32> + Copy + Debug
@@ -165,6 +165,7 @@ impl Surface<f32> {
         }
     }
 
+    /// Copy data from a raw memory contiguous u8 buffer.
     pub fn copy_from_raw_strided(&mut self, data : &[u8], stride : usize, enc : Encoding) {
         if enc == Encoding::U8 {
             let cvt = self.cvt.as_mut().unwrap();

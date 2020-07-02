@@ -21,8 +21,9 @@ pub mod distr;
 /// (Expectation Maximization; work in progress).
 pub mod optim;
 
-/// Basis transformations useful to model non-linear processes,
-/// moslty via bindings to GSL and MKL (work in progress).
+/// Basis expansion and reduction techniques useful to model non-linear processes
+/// or highly-dimensional data. Functionality is offered moslty via bindings to
+/// GSL and MKL (work in progress).
 pub mod basis;
 
 /// Supports the derivation of optimized decision rules based on comparison
@@ -46,3 +47,10 @@ pub mod gsl;
 /// Utilities to load and save data into/from dynamically-allocated matrices.
 pub mod sample;
 
+/// Utilities to load time series data into dynamically-allocated matrices and perform
+/// frequency decompositions.
+pub mod signal;
+
+/// Utilities to load spatial data into dynamically-allocated matrices and
+/// perform frequency decompositions in two dimensions.
+pub mod image;

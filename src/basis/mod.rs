@@ -1,36 +1,27 @@
-/// Frequency and time/spatial-frequency basis transformation. FFTs are
-/// provided via bindings to Intel MKL (requires that crate is compiled with
-/// feature 'mkl'. DWTs are provided via bindings to GSL. Both algorithms
-/// are called through a safe generic trait FrequencyBasis at the module root.
-pub mod freq;
+use nalgebra::*;
 
-/// Principal components analysis basis reduction. The PCA is useful
-/// for reducing basis with too many dimensions relative to the
-/// number of data points. (Work in progress)
-pub mod pca;
+/// Basis reductions based on decomposition of the empirical covariance matrix.
+/// Those transformations project samples to the orthogonal axis that preserve
+/// global variance (PCA); or preserve within/between-class variance (LDA).
+pub mod cov;
 
-/// Spline basis expansion algorithm. Splines are local polynomials
-/// with smoothness constraints that are useful to approximate
-/// non-linear conditional expectations. (Work in progress)
-pub mod spline;
+/*/// Polynomial basis expansion to arbitrary degree, eiter globally (Polynomial)
+/// or locally (Spline). A polynomial basis expansion can be seen as a nth
+/// degree Taylor series approximation to a conditional expectation.
+/// Spline basis expansion are similar, but defined more locally over a domain,
+/// but have smoothness constraints at the region boundaries, and can be used to
+/// build flexible non-linear conditional expectations. (Work in progress)
+pub mod poly;*/
 
-/// Polynomial basis expansion to arbitrary degree. A polynomial
-/// basis expansion can be seen as a Taylor series approximation
-/// to a conditional expectation. (Work in progress)
-pub mod poly;
+// Load data from generic 8-bit time stream buffers
+// mod seq;
 
-/// Utilities for interpolating time series and surfaces, offered by GSL. (Work in progress)
-pub mod interp;
+// Load data from generic 8-bit image buffers
+// mod surf;
 
-/// Load data from generic 8-bit time stream buffers
-mod seq;
+// pub use seq::*;
 
-/// Load data from generic 8-bit image buffers
-mod surf;
-
-pub use seq::*;
-
-pub use surf::*;
+// pub use surf::*;
 
 #[derive(PartialEq)]
 pub enum Encoding {
@@ -39,32 +30,94 @@ pub enum Encoding {
     F64
 }
 
-#[inline(always)]
-fn convert_f32_slice(src : &[u8], dst : &mut [f32]) {
-    for (s, d) in src.iter().zip(dst.iter_mut()) {
-        *d = *s as f32;
+/*/// Generic basis transformation trait.
+pub trait Transform<N, C>
+    where
+        N : Scalar,
+        C : Dim,
+        Coefficients : Iterator<Item = Matrix<N, Dynamic, C, SliceStorage<N, Dynamic, C>>>
+{
+
+    type Coefficients;
+
+    /// Updates the basis coefficients with the informed data.
+    fn update(&mut self, dt : Matrix<f64, Dynamic, C, S>);
+
+    /// Iterate over column vectors of V (PCA;LDA) or over complex
+    /// sinusoids (FFT) or over wavelets (DWT).
+    fn basis(&self) -> Vec<Matrix<N, Dynamic, C, SliceStorage<N, Dynamic, C>>>;
+
+    /// Iterate over eigenvalues of the decomposition (PCA/LDA) or over
+    /// complex coefficients at a vector or matrix (FFT) or over the real
+    /// coefficient windows (DWT). Returns single result for PCA/LDA (Option).
+    /// Return groups of coefficients for splines, depending on the region
+    /// the spline is centered at (Vec).
+    fn coefficients(&self) -> Coefficients;
+
+    /// Return an iterator over mutable coefficient groups.
+    fn coefficients_mut(&mut self) -> Vec<Matrix<N, Dynamic, C, SliceStorageMut<N, Dynamic, C>>>;
+
+}
+
+pub struct FFT {
+
+    back : Vec<DMatrix<f64>>
+}
+
+impl FFT {
+
+    /// Self will decompose the signal at windows of size len.
+    /// Signal is shift-invariant within windows at the cost
+    /// of reduced spatial resolution. Larger window sizes
+    /// increase spatial resolution at each window at the cost
+    /// of not being able to examine short-scale temporal
+    /// changes. After setting the window, take FFT only of the
+    /// updated window, leaving past data at their old state.
+    pub fn update_window(&mut self, len : usize) {
+
+    }
+
+    pub fn update_all(&self) {
+
     }
 }
 
-#[inline(always)]
-fn convert_f64_slice(src : &[u8], dst : &mut [f64]) {
-    for (s, d) in src.iter().zip(dst.iter_mut()) {
-        *d = *s as f64;
-    }
+/// Trait shared by basis transformations that expands the dimensionality
+/// of input samples (poly::Polynomial; poly::Spline, poly::Interpolation)
+pub trait Expansion<C>
+    where
+        Self : Transform<C>,
+        C : Dim
+{
+
+    /// Recover back the original function at a higher dimensionality
+    /// by expanding the original signal given the informed parameters.
+    fn expand(&mut self) -> DMatrixSlice<'_, f64>;
+
 }
 
-#[inline(always)]
-fn convert_f32_slice_strided(src : &[u8], dst : &mut [f32], cstride : usize) {
-    for i in 0..dst.len() {
-        dst[i] = src[i*cstride] as f32
-    }
-}
+/// Trait shared by basis transformations that reduce dimensionality
+/// of input (eigen::PCA; eigen::LDA)
+pub trait Reduction<C>
+    where
+        Self : Transform<C>,
+        C : Dim
+{
 
-#[inline(always)]
-fn convert_f64_slice_strided(src : &[u8], dst : &mut [f64], cstride : usize) {
-    for i in 0..dst.len() {
-        dst[i] = src[i*cstride] as f64
-    }
-}
+    /// Recover back the original function at a lower dimensionality by
+    /// reducing the signal using the basis from ix up to length.
+    fn reduce(&mut self, ix : usize, length : usize) -> DMatrixSlice<'_, f64>;
+
+}*/
+
+/*pub trait Basis<B, C, R> {
+
+    fn coefficients() -> C;
+
+    fn basis() -> B;
+
+    fn recover(from : usize, to : usize) -> R;
+}*/
+
 
 

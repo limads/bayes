@@ -90,6 +90,11 @@ pub trait Distribution
     /// distributinos; Returns None for univariate distributions.
     fn cov_inv(&self) -> Option<DMatrix<f64>>;
 
+    fn corr(&self) -> Option<DMatrix<f64>> {
+        // D^{-1/2} self.cov { D^{-1/2} }
+        unimplemented!()
+    }
+
     /// Evaluates the log-probability of the sample y with respect to the current
     /// parameter state. This method just dispatches to a sufficient statistic log-probability
     /// or to a conditional log-probability evaluation depending on the conditioning factors

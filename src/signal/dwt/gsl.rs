@@ -3,7 +3,7 @@ use crate::gsl::wavelet::{self, *};
 use crate::gsl::wavelet2d::{self};
 use nalgebra::storage::*;
 use super::iter::*;
-use crate::basis::freq::*;
+use crate::signal::*;
 
 #[derive(Clone)]
 pub enum Basis {
@@ -25,7 +25,7 @@ pub struct DWTPlan<C>
     nrows : usize,
     ncols : usize,
     n_elems : usize,
-    buf : Matrix<f64, Dynamic, C, VecStorage<f64, Dynamic, C>>,
+    pub buf : Matrix<f64, Dynamic, C, VecStorage<f64, Dynamic, C>>,
     w_ptr : *mut gsl_wavelet,
     ws : *mut gsl_wavelet_workspace,
     basis : Basis

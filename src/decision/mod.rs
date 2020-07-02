@@ -84,6 +84,10 @@ impl<'a> DecisionBoundary<'a> {
         unimplemented!()
     }
 
+    fn _auc() -> f64 {
+        unimplemented!()
+    }
+
     /// Returns the actual estimated error rate from the informed sample. This quantity is
     /// supposed to be as close to
     fn _error_rate(&'a self) -> ErrorRate {

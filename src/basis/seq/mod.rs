@@ -3,9 +3,9 @@ use simba::scalar::RealField;
 use std::convert::TryInto;
 use std::sync::{Arc, Mutex};
 use nalgebra::storage::*;
-use super::freq::dwt::gsl::*;
+use crate::signal::dwt::gsl::*;
 use std::marker::PhantomData;
-use crate::basis::freq::FrequencyBasis;
+use crate::signal::FrequencyBasis;
 use std::cmp::PartialEq;
 use std::fmt::Debug;
 use nalgebra::storage::*;
@@ -13,7 +13,7 @@ use super::*;
 use crate::sample::*;
 
 #[cfg(feature="mkl")]
-use super::freq::fft::mkl::FFTPlan;
+use super::signal::fft::mkl::FFTPlan;
 
 enum Method<N>
     where N : Scalar + From<f32> + Copy + Debug
@@ -256,20 +256,5 @@ fn sequence_decomposition() {
     }
 }
 
-/*
-pub fn decode(&self, dec : &[u8]) -> Result<DMatrix<f32>, &'static str> {
-        let mut content = Vec::<f32>::new();
-        for w in dec.windows(4) {
-            let buffer : Result<[u8; 4], _> = w.try_into();
-            if let Ok(b) = buffer {
-                let u = u32::from_ne_bytes(b);
-                content.push(f32::from_bits(u))
-            } else {
-                return Err("Could not parse buffer as array");
-            }
-        }
-        Ok(DMatrix::from_vec(self.data.nrows(), self.data.ncols(), content))
-    }
-*/
 
 

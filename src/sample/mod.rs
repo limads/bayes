@@ -8,6 +8,7 @@ use std::convert::AsRef;
 use sqlparser::parser::Parser;
 use sqlparser::ast::Statement;
 use nalgebra::*;
+use nalgebra::storage::*;
 // use rust_decimal::Decimal;
 use std::str::FromStr;
 use std::io::Read;
@@ -51,7 +52,7 @@ impl Display for ColumnType {
         match self {
             ColumnType::Integer => write!(f, "integer"),
             ColumnType::Long => write!(f, "bigint"),
-            ColumnType::Double => write!(f, "double precision"),
+            ColumnType::Double => write!(f, "real"), // or double precision for PostgreSql
             ColumnType::Float => write!(f, "real"),
             ColumnType::Boolean => write!(f, "bool"),
             ColumnType::Numeric => write!(f, "decimal"),
@@ -165,13 +166,28 @@ impl Sample {
         Self::load_from_file(f, null)
     }
 
-    pub fn build<C, S>(
+    /// Builds a new sample by associating names to individual columns
+    /// arranged over a slice.
+    pub fn from_columns<S>(
+        columns : &[&str],
+        data : &[Matrix<f64, Dynamic, U1, S>]
+    ) -> Result<Self, &'static str>
+        where
+            S : ContiguousStorage<f64, Dynamic, U1>
+    {
+        let m = DMatrix::from_columns(data);
+        Self::from_matrix(columns, &m)
+    }
+
+    /// Builds a new sample by associating names to the columns
+    /// of a memory-contiguous dynamically-allocated matrix.
+    pub fn from_matrix<C, S>(
         columns : &[&str],
         data : &Matrix<f64, Dynamic, C, S>
     ) -> Result<Self, &'static str>
         where
             C : Dim,
-            S : Storage<f64, Dynamic, C>
+            S : ContiguousStorage<f64, Dynamic, C>
     {
         let cols : Vec<DVector<f64>> = data.column_iter().map(|c| c.clone_owned()).collect();
         let packed_data = DMatrix::from_columns(&cols[..]);
@@ -365,12 +381,14 @@ impl Sample {
         Ok(())
     }
 
-    /// Randomly shuffle the rows of the sample in-place.
-    pub fn shuffle(&mut self) {
+    /// Randomly shuffle the rows of the sample in-place. Consider using
+    /// self.draw_rows() for a better performing alternative.
+    pub fn shuffle_rows(&mut self) {
         unimplemented!()
     }
 
-    /// Returns (self.at[0..col), [col..max_col)
+    /// Returns (self.at[0..col), [col..max_col). Since columns are contiguous
+    /// in memory, splitting them is a very cheap operation.
     pub fn split_columns(self, col : usize) -> (Sample, Sample) {
         let (nrow, ncol) = self.data.shape();
         let mut cols = self.col_names.clone();
@@ -396,7 +414,12 @@ impl Sample {
         (s1, s2)
     }
 
-    /// Returns self.rows[0..row), self.rows([row..max_row)
+    /// Returns self.rows[0..row), self.rows([row..max_row). This can
+    /// be an expensive operation for large samples, since both
+    /// new samples need to be moved into new locations to guarantee
+    /// their columns will be contiguous. Consider always splitting over
+    /// columns first (if applicable); or best just using self.clone_rows()
+    /// if just one of the partitions will be required.
     pub fn split_rows(self, row : usize) -> (Sample, Sample) {
         let (nrow, ncol) = self.data.shape();
         let mut cols = self.col_names.clone();
@@ -422,6 +445,28 @@ impl Sample {
             _source : TableSource::Unknown
         };
         (s1, s2)
+    }
+
+    /// Clone the informed columns into a new sample,
+    /// presering the relative column order and the full row sequence.
+    /// If the original column order will not be required anymore,
+    /// consider using self.split_columns for a better-performing alternative.
+    pub fn clone_columns(&self, cols : &[usize]) -> Sample {
+        unimplemented!()
+    }
+
+    /// Clone the informed rows into a new sample, preserving
+    /// the relative row order and the full column sequence.
+    pub fn clone_rows(&self, rows : &[usize]) -> Sample {
+        unimplemented!()
+    }
+
+    /// Clone n rows from this sample, in random order.
+    /// If replace=true, those rows can be a part of future draws; if replace=false,
+    /// future draws will ignore those rows. If replace=false there are less than n
+    /// rows that weren't sampled yet, returns None; Returns Some(sample) otherwise.
+    pub fn draw_rows(&mut self, n : usize, replace : bool) -> Option<Sample> {
+        unimplemented!()
     }
 
     pub fn nrows(&self) -> usize {
@@ -462,6 +507,80 @@ impl Display for Sample {
     }
 
 }
+
+/*
+// Gives standard column names A..Z
+impl From<DMatrix<f64>> for Sample {
+
+}
+
+// Also implement TryInto versions, converting from bool, i32, etc.
+
+/// Converts from a slice of columns, receiving standard column names.
+impl<T> From<&[&[T]]> for Sample
+    where T : Into<f64>
+{
+
+}
+
+/// Converts from a slice of rows, receiving standard column names.
+impl From<&[(T)]> for Sample
+    where T : Into<f64>
+{
+
+}
+
+/// Converts from a slice of rows, receiving standard column names.
+impl From<&[(T, T)]> for Sample
+    where T : Into<f64>
+{
+
+}
+
+/// Converts from a slice of rows, receiving standard column names.
+impl From<&[(T, T, T)]> for Sample
+    where T : Into<f64>
+{
+
+}
+
+/// Converts from a slice of rows, receiving standard column names.
+impl From<&[(T, T, T, T)]> for Sample
+    where T : Into<f64>
+{
+
+}
+
+/// Converts from a slice of rows, receiving standard column names.
+impl From<&[(T, T, T, T, T)]> for Sample
+    where T : Into<f64>
+{
+
+}
+
+/// Converts from named columns
+impl From<HashMap<&str, &[T]>> for Sample
+    where T : Into<f64>
+{
+
+}
+
+/// Converts from named columns
+impl From<HashMap<&str, Vec<T>>> for Sample {
+
+}
+
+/// Converts from named columns
+impl From<HashMap<String, &[T]>> for Sample {
+
+}
+
+/// Converts from named columns
+impl From<HashMap<String, Vec<T>>> for Sample {
+
+}
+
+*/
 
 /*impl<I> Index<I> for Table
     where

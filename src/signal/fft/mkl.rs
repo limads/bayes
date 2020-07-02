@@ -7,7 +7,7 @@ use nalgebra::*;
 use nalgebra::base::storage::Storage;
 use nalgebra::base::storage::ContiguousStorage;
 use std::fmt::Debug;
-use crate::basis::frequency::*;
+use super::super::*;
 //use nalgebra::storage::*;
 
 /// A structure which is generic over the second dimension
@@ -34,7 +34,7 @@ pub struct FFTPlan<N, C>
     // type Precision = S,
     // input_dims : Dim<I>,
 
-    forward_buffer : Matrix<Complex<N>, Dynamic, C, VecStorage<Complex<N>, Dynamic, C>>,
+    pub forward_buffer : Matrix<Complex<N>, Dynamic, C, VecStorage<Complex<N>, Dynamic, C>>,
 
     backward_buffer : Matrix<N, Dynamic, C, VecStorage<N, Dynamic, C>>,
 

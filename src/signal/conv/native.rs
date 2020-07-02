@@ -1,4 +1,4 @@
-use crate::basis::freq::conv::iter::*;
+use crate::signal::conv::iter::*;
 use nalgebra::*;
 
 pub trait Convolve {

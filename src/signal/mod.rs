@@ -1,15 +1,29 @@
 use nalgebra::*;
 use nalgebra::storage::*;
 
-/// Wrapper type to the Fast-Fourier transforms provided by MKL
+// Wrapper type to the Fast-Fourier transforms provided by MKL
 #[cfg(feature = "mkl")]
 pub mod fft;
 
-/// Wrapper type to the Wavelet transforms provided by GSL
+#[cfg(feature = "mkl")]
+pub use fft::*;
+
+// Wrapper type to the Wavelet transforms provided by GSL
 pub mod dwt;
+
+// mod dwt;
+
+pub use dwt::*;
 
 /// Convolution routines.
 pub mod conv;
+
+/// Utilities for interpolating time series and surfaces, offered by GSL. (Work in progress)
+pub mod interp;
+
+pub mod sampling;
+
+use sampling::*;
 
 /// Generic trait for frequency or spatio/temporal-frequency domain transformations.
 /// The input data to the try_forward/forward methods must be a matrix or vector
@@ -114,4 +128,85 @@ pub trait FrequencyBasis<M, N, C>
 
 }
 
+/// Signals are types which holds dynamically-allocated
+/// data which is read by re-sampling a source slice.
+/// The implementor should know how to re-sample this slice
+/// by using its own stride information and the user-supplied
+/// step. The implementor might read the step and decide
+/// at runtime to do a scalar copy/conversion in case of size
+/// n>1; or do a vectorized copy/conversion in case of size n=1.
+/// Specialized vectorized (simd) calls can be written for all
+/// possible (N,M) pairs.
+pub trait Signal<M,N>
+    where
+        M : Into<N>
+{
+
+    fn resample(&mut self, src : &[M], step : usize);
+
+}
+
+impl Signal<u8, f64> for DVector<f32> {
+
+    fn resample(&mut self, src : &[u8], step : usize) {
+        if step == 1 {
+            convert_f32_slice(
+                &src,
+                self.data.as_mut_slice()
+            );
+        } else {
+            let ncols = self.ncols();
+            assert!(src.len() / step == self.nrows(), "Dimension mismatch");
+            subsample_convert_f32(&src, self.data.as_mut_slice(), ncols, step, false);
+        }
+    }
+
+}
+
+impl Signal<u8, f64> for DVector<f64> {
+
+    fn resample(&mut self, src : &[u8], step : usize) {
+        if step == 1 {
+            convert_f64_slice(
+                &src,
+                self.data.as_mut_slice()
+            );
+        } else {
+            let ncols = self.ncols();
+            assert!(src.len() / step == self.nrows(), "Dimension mismatch");
+            subsample_convert_f64(&src, self.data.as_mut_slice(), ncols, step, false);
+        }
+    }
+
+}
+
+/// Basis reductions for signals (samples with temporal or spatial autocorrelation).
+/// FFTs are provided via bindings to Intel MKL (requires that crate is compiled with
+/// feature 'mkl'. DWTs are provided via bindings to GSL. Both algorithms
+/// are called through a safe generic trait FrequencyBasis at the module root.
+/// Also contain interpolation utilities for signals that are not sampled homogeneously,
+/// to satisfy the FFT/DWT equal sample spacing restriction.
+pub trait Transform<'a, M, N, C>
+    where
+        M: Scalar,
+        N : Scalar,
+        C : Dim
+{
+
+    fn forward<S>(&'a mut self, s : &Matrix<M, Dynamic, C, S>) -> &'a Matrix<N, Dynamic, C, VecStorage<N, Dynamic, C>>
+        where S : ContiguousStorage<M, Dynamic, C>;
+
+    fn backward(&'a mut self) -> &'a Matrix<M, Dynamic, C, VecStorage<M, Dynamic, C>>;
+
+    fn partial_backward<S>(&'a mut self, n : usize) -> MatrixSlice<'a, M, Dynamic, C, U1, Dynamic>;
+
+    fn coefficients(&'a self) -> &'a Matrix<N, Dynamic, C, VecStorage<N, Dynamic, C>>;
+
+    fn coefficients_mut(&'a mut self) -> &'a mut Matrix<N, Dynamic, C, VecStorage<N, Dynamic, C>>;
+
+    fn domain(&'a self) -> Option<&'a Matrix<M, Dynamic, C, VecStorage<M, Dynamic, C>>>;
+
+    fn domain_mut(&'a mut self) -> Option<&'a mut Matrix<M, Dynamic, C, VecStorage<M, Dynamic, C>>>;
+
+}
 

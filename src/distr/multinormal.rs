@@ -225,6 +225,33 @@ impl MultiNormal {
         p_mu_cov[0] - 0.5*sigma_det.ln()
     }
 
+    /// Returns the reduced multivariate normal [ix, ix+n) by marginalizing over
+    /// the remaining indices [0, ix) and [ix+n,p). This requires a simple copy
+    /// of the corresponding entries. The scale and shift matrices are also
+    /// sliced at the respective entries.
+    pub fn marginal(&self, ix : usize, n : usize) -> MultiNormal {
+        let size = n - ix;
+        let mut marg = self.clone();
+        // Modify mu
+        // Modify sigma
+        // Modify scale factors
+        marg
+    }
+
+    /// Returns the reduced multivariate normal [0, n) by conditioning
+    /// over entries [n,p).
+    pub fn conditional(&self, n : usize) -> MultiNormal {
+        unimplemented!()
+    }
+
+    /// Changes self by assuming joint normality with another
+    /// independent distribution (extends self to have a block-diagonal
+    /// covariance composed of the covariance of self (top-left block)
+    /// with the covariance of other (bottom-right block).
+    pub fn joint(&mut self, other : MultiNormal) {
+        unimplemented!()
+    }
+
     /*pub fn new(mu : DVector<f64>, w : Wishart) -> Self {
         Self { mu : mu, cov : Covariance::new_random(w), shift : None, scale : None }
     }
@@ -285,8 +312,11 @@ impl ExponentialFamily<Dynamic> for MultiNormal {
         for (s_inv_row, tc_row) in sigma_inv.row_iter().zip(t_cov.row_iter()) {
             lp += (-0.5) * s_inv_row.dot(&tc_row);
         }
-        println!("log part = {}", self.log_partition()[0]);
-        lp + self.log_partition()[0]
+        let log_part = match self.op {
+            Some(ref op) => &op.lin_log_part,
+            None => &self.log_partition()
+        };
+        lp + log_part[0]
     }
 
     fn log_partition<'a>(&'a self) -> &'a DVector<f64> {
@@ -468,6 +498,16 @@ impl Mul<f64, Output=MultiNormal> for MultiNormal {
 impl Add<DVector<f64>, Output=MultiNormal for MultiNormal {
 
 }
+
+// Add and subtract covariances.
+impl Add<MultiNormal> for MultiNormal {
+
+}
+
+impl Sub<MultiNormal> for MultiNormal {
+
+}
+
 
 */
 
