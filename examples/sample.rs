@@ -1,8 +1,8 @@
-use bayes::sample::Sample;
+use bayes::sample::Table;
 use std::default::Default;
 
 fn main() {
-    let tbl = Sample::open("examples/table.csv", Default::default()).unwrap();
+    let tbl = Table::open("examples/table.csv", Default::default()).unwrap();
     println!("CSV representation:\n");
     println!("{}", tbl);
     println!("SQL representation:\n");

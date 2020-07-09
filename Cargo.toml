@@ -13,7 +13,7 @@ readme = "README.md"
 description = "Composable abstractions to build probabilistic models and inference algorithms"
 
 [dependencies]
-nalgebra = { version = "0.21.0", features = ["serde-serialize"] }
+nalgebra = { version = "0.21.0", features = ["serde-serialize", "sparse"] }
 simba="0.1.2"
 petgraph = "0.5.0"
 serde = { version="1.0.111", features=["derive"] }

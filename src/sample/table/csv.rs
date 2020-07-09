@@ -193,13 +193,14 @@ pub fn try_parse_col_vectors<N>(
     }
 }*/
 
-/// Column loader generic over primitive type.
-fn try_parse_num<T>(col : &Vec<String>) -> Option<Vec<T>>
+/// Column loader generic over primitive type. If failed, return the entries
+/// which could not be parsed to numeric types.
+fn try_parse_num<T>(col : &Vec<String>) -> Result<Vec<T>, (Vec<T>, Vec<usize>)>
     where T : FromStr + From<i32> + Scalar + From<f32>
 {
     let mut parsed = Vec::<T>::new();
-    let mut all_parsed = true;
-    for s in col.iter() {
+    let mut not_parsed = Vec::new();
+    for (i, s) in col.iter().enumerate() {
         // println!("Found entry {}", s);
         if let Ok(d) = (*s).parse::<T>() {
             parsed.push(d);
@@ -215,19 +216,19 @@ fn try_parse_num<T>(col : &Vec<String>) -> Option<Vec<T>>
                         if *s == "FALSE" || *s == "false" || *s == "f" {
                             parsed.push(T::from(0.0));
                         } else {
-                            all_parsed = false;
+                            not_parsed.push(i);
                         }
                     }
                 }
             } else {
-                all_parsed = false;
+                not_parsed.push(i);
             }
         }
     }
-    if all_parsed {
-        Some(parsed)
+    if not_parsed.len() == 0 {
+        Ok(parsed)
     } else {
-        None
+        Err((parsed, not_parsed))
     }
 }
 
@@ -237,10 +238,10 @@ fn try_parse_num<T>(col : &Vec<String>) -> Option<Vec<T>>
     Some( DVector::<N>::from_vec(try_parse_col::<N>(col)?))
 }*/
 
-fn try_dvec_from_row<N>(row : &Vec<String>) -> Option<RowDVector<N>>
+fn try_dvec_from_row<N>(row : &Vec<String>) -> Result<RowDVector<N>, (Vec<N>, Vec<usize>)>
     where N : Scalar + FromStr + From<i32> + From<f32>
 {
-    Some( RowDVector::<N>::from_vec(try_parse_num::<N>(row)?))
+    Ok( RowDVector::<N>::from_vec(try_parse_num::<N>(row)?))
 }
 
 /*/// Keep this one!
@@ -305,7 +306,7 @@ pub fn load_matrix_from_str<N>(
     let mut data : Vec<RowDVector<N>> = Vec::new();
     for (i, r) in rows.iter().enumerate() {
         if i == 0 {
-            if let Some(h) = try_dvec_from_row::<N>(r) {
+            if let Ok(h) = try_dvec_from_row::<N>(r) {
                 data.push(h);
             } else {
                 if let NullAction::Error = null_action {
@@ -314,10 +315,10 @@ pub fn load_matrix_from_str<N>(
             }
         } else {
             match try_dvec_from_row::<N>(r) {
-                Some(parsed_row) => {
+                Ok(parsed_row) => {
                     data.push(parsed_row);
                 },
-                None => {
+                Err(_) => {
                     return Err(format!("Could not parse row {} as numeric type", i));
                 }
             }

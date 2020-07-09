@@ -6,7 +6,7 @@ use std::convert::TryFrom;
 
 use super::*;
 
-impl Sample {
+impl Table {
 
     fn column_types(row : &Row) -> Option<Vec<ColumnType>> {
         let mut col_types = Vec::new();
@@ -143,6 +143,9 @@ impl Sample {
                             }
                             valid_data
                         },
+                        (NullAction::Impute(_), _) => {
+                            unimplemented!()
+                        },
                         (NullAction::Error, 0) => {
                             data
                         },
@@ -195,11 +198,11 @@ fn define_columns(row : &rusqlite::Row) -> Result<Vec<ColumnType>, String> {
     Ok(cols)
 }
 
-impl<'a> TryFrom<rusqlite::Rows<'a>> for Sample {
+impl<'a> TryFrom<rusqlite::Rows<'a>> for Table {
 
     type Error = String;
 
-    fn try_from(mut rows : rusqlite::Rows<'a>) -> Result<Sample, String> {
+    fn try_from(mut rows : rusqlite::Rows<'a>) -> Result<Table, String> {
         let mut max_rows = 500;
         let columns : Vec<String> = rows.column_names().unwrap()
             .iter()

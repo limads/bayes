@@ -2,7 +2,7 @@
 
 # About
 
-This is a **work-in-progress** crate that will offer composable abstractions to build probabilistic models and inference algorihtms. Two reference algorithms will be implemented in the short term: the `optim::ExpectMax` (general-purpose posterior mode-finding via expectation maximization) and `sim::Metropolis` (Metropolis-Hastings posterior sampler). Adaptive estimation from conjugate pairs will also be provided (see examples for the `distr::Normal`, `distr::Poisson` and `distr::Binomial` structs). 
+This is a **work-in-progress** crate that will offer composable abstractions to build probabilistic models and inference algorithms. Two reference algorithms will be implemented in the short term: the `optim::ExpectMax` (general-purpose posterior mode-finding via expectation maximization) and `sim::Metropolis` (Metropolis-Hastings posterior sampler). Adaptive estimation from conjugate pairs will also be provided (see examples for the `distr::Normal`, `distr::Poisson` and `distr::Binomial` structs). 
 
 Most of the functionality is being implemented using the linear algebra abstractions from the [nalgebra](https://crates.io/crates/nalgebra) crate. Certain optimization, sampling and basis expansion algorithms are provided via [GNU GSL](https://www.gnu.org/software/gsl/doc/html/intro.html) (Required system dependency) and [Intel MKL](https://software.intel.com/content/www/us/en/develop/tools/math-kernel-library.html), (Optional system dependency; by switching the cargo feature `features=["mkl"]`).
 
@@ -50,7 +50,7 @@ This conditioning operation is defined for implementors of `Conditional<Factor>`
 
 - A mixture and its discrete categorical factor.
 
-Deep probabilistic graphs can in principle be built as long as the neighboring elements have valid `Conditional<Factor>` implementations; although their usability for any given problem is determined by the inference algorithm implementation.
+More complex probabilistic graphs can in principle be built as long as the neighboring elements have valid `Conditional<Factor>` implementations; although their usability for any given problem is determined by the inference algorithm implementation.
 
 Conditioning takes ownership of the conditioning factor, which can be recovered via:
 
@@ -75,7 +75,7 @@ Certain inference algorithms (usually satisfying a conjugate structure) can be u
 ```rust
 let y = DMatrix::from_column_slice(3, 1, &[0., 1., 0.]);
 let bern = Bernoulli::new(3, None).condition(Beta::new(1,1));
-let posterior : Option<&Beta> = b.fit(&y);
+let posterior : Result<&Beta,_> = b.fit(&y);
 ```
 
 ## General-purpose inference (planned)

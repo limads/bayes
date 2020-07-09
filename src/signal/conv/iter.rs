@@ -171,6 +171,7 @@ impl<N, S> ChunkIterate<N, S> for Matrix<N, Dynamic, Dynamic, S>
     ) -> PatchIterator<N, S, Dynamic, Dynamic> {
         let step_v = Dim::from_usize(sz.0);
         let step_h = Dim::from_usize(sz.1);
+        println!("matrix size: {:?}; window size: {:?}", self.shape(), sz);
         if self.nrows() % sz.0 != 0 || self.ncols() % sz.1 != 0 {
             panic!("Matrix size should be a multiple of window size");
         }

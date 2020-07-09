@@ -244,7 +244,8 @@ impl<'a, N, C> FFTPlan<N, C>
     ) -> Matrix<Complex<N>,Dynamic,C,VecStorage<Complex<N>, Dynamic, C>> {
         let out_dims : (usize, usize) =
             (input_dims.0 / 2 + 1, input_dims.1);
-        let zero_cplx : Complex<N> = Complex::<N>::new(N::from(0.0), N::from(0.0));
+        let zero_cplx : Complex<N> = //Complex::<N>::new(N::from(0.0), N::from(0.0));
+            Complex::<N>{ re : N::from(0.0), im : N::from(0.0) };
         let cplx_vec : Vec<Complex<N>> = vec![zero_cplx; (out_dims.0)*(out_dims.1)];
         let vs = VecStorage::new(Dim::from_usize(out_dims.0), Dim::from_usize(out_dims.1), cplx_vec);
         Matrix::<Complex<N>,Dynamic,C,VecStorage<Complex<N>,Dynamic,C>>::from_data(vs)

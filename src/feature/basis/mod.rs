@@ -1,9 +1,44 @@
 use nalgebra::*;
+use nalgebra::storage::*;
 
 /// Basis reductions based on decomposition of the empirical covariance matrix.
 /// Those transformations project samples to the orthogonal axis that preserve
 /// global variance (PCA); or preserve within/between-class variance (LDA).
 pub mod cov;
+
+/// Basis reductions based on frequency-domain expansions such as the Fourier
+/// and Wavelet decompositions.
+pub mod freq;
+
+/// Basis reductions for signals (samples with temporal or spatial autocorrelation).
+/// FFTs are provided via bindings to Intel MKL (requires that crate is compiled with
+/// feature 'mkl'. DWTs are provided via bindings to GSL. Both algorithms
+/// are called through a safe generic trait FrequencyBasis at the module root.
+/// Also contain interpolation utilities for signals that are not sampled homogeneously,
+/// to satisfy the FFT/DWT equal sample spacing restriction.
+pub trait Basis<'a, M, N, C>
+    where
+        M: Scalar,
+        N : Scalar,
+        C : Dim
+{
+
+    fn forward<S>(&'a mut self, s : &Matrix<M, Dynamic, C, S>) -> &'a Matrix<N, Dynamic, C, VecStorage<N, Dynamic, C>>
+        where S : ContiguousStorage<M, Dynamic, C>;
+
+    fn backward(&'a mut self) -> &'a Matrix<M, Dynamic, C, VecStorage<M, Dynamic, C>>;
+
+    fn partial_backward<S>(&'a mut self, n : usize) -> MatrixSlice<'a, M, Dynamic, C, U1, Dynamic>;
+
+    fn coefficients(&'a self) -> &'a Matrix<N, Dynamic, C, VecStorage<N, Dynamic, C>>;
+
+    fn coefficients_mut(&'a mut self) -> &'a mut Matrix<N, Dynamic, C, VecStorage<N, Dynamic, C>>;
+
+    fn domain(&'a self) -> Option<&'a Matrix<M, Dynamic, C, VecStorage<M, Dynamic, C>>>;
+
+    fn domain_mut(&'a mut self) -> Option<&'a mut Matrix<M, Dynamic, C, VecStorage<M, Dynamic, C>>>;
+
+}
 
 /*/// Polynomial basis expansion to arbitrary degree, eiter globally (Polynomial)
 /// or locally (Spline). A polynomial basis expansion can be seen as a nth
@@ -23,12 +58,12 @@ pub mod poly;*/
 
 // pub use surf::*;
 
-#[derive(PartialEq)]
+/*#[derive(PartialEq)]
 pub enum Encoding {
     U8,
     F32,
     F64
-}
+}*/
 
 /*/// Generic basis transformation trait.
 pub trait Transform<N, C>
@@ -119,5 +154,14 @@ pub trait Reduction<C>
     fn recover(from : usize, to : usize) -> R;
 }*/
 
+/*/// Trait shared by all feature extraction algorithms.
+pub trait Feature<N, C> {
+
+    fn set_extraction<F>(f : F)
+        where F : Fn(DMatrix<N>)->DMatrix<N>;
+
+    fn extract(&mut self) -> DMatrix<N>;
+
+}*/
 
 
