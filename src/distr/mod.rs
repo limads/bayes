@@ -54,7 +54,7 @@ pub use vonmises::*;
 /// log-probability methods are dependent not only on the current parameter vector,
 /// but also on the state of any applied conditioning factors.
 pub trait Distribution
-    where Self : Debug + Display //+ Sized
+where Self : Debug + Display //+ Sized
 {
 
     /// Returns the expected value of the distribution, which is a function of
@@ -277,7 +277,6 @@ pub trait Estimator<D>
 
 }
 
-
 /// Implemented by distributions which can have their
 /// log-probability evaluated with respect to a random sample directly.
 /// Implemented by Normal, Poisson and Bernoulli. Other distributions
@@ -301,12 +300,14 @@ pub trait Likelihood<C>
         BayesFactor::new(&self, &other)
     }
 
-    /// Returns the mean maximum likelihood estimate and its standard error.
-    fn mle(y : DMatrixSlice<'_, f64>) -> (f64, f64) {
-        (Self::mean_mle(y), Self::se_mle(y))
-    }
+    /// Returns the distribution with the parameters set to its
+    /// gaussian approximation (mean and standard error).
+    fn mle(y : DMatrixSlice<'_, f64>) -> Self;
+    //{
+    //    (Self::mean_mle(y), Self::se_mle(y))
+    //}
 
-    /// Returns a mean estimate using maximum likelihood estimation.
+    /*/// Returns a mean estimate using maximum likelihood estimation.
     fn mean_mle(y : DMatrixSlice<'_, f64>) -> f64;
 
     /// Returns a variance estimate using maximum likelihood estimation.
@@ -319,7 +320,7 @@ pub trait Likelihood<C>
     fn se_mle(y : DMatrixSlice<'_, f64>) -> f64 {
         let n = y.nrows() as f64;
         (Self::var_mle(y) / n).sqrt()
-    }
+    }*/
 
     fn visit_factors<F>(&mut self, f : F) where F : Fn(&mut dyn Posterior);
 
@@ -363,6 +364,20 @@ pub trait Likelihood<C>
         }
     }
 }
+
+/*/// Return (mean, var) pair over a sample.
+fn univariate_mle(y : DMatrixSlice<'_, f64>) -> (f64, f64) {
+    assert!(y.ncols() == 1);
+    let mle = y.iter().fold(0.0, |ys, y| {
+        assert!(*y == 0. || *y == 1.); ys + y
+    }) / (y.nrows() as f64);
+    mle
+}
+
+fn var_mle(y : DMatrixSlice<'_, f64>) -> f64 {
+    let m = Self::mean_mle(y);
+    m * (1. - m)
+}*/
 
 pub trait Posterior
     where Self : Debug + Display + Distribution

@@ -252,6 +252,14 @@ impl MultiNormal {
         unimplemented!()
     }
 
+    pub fn linear_mle(x : &DMatrix<f64>, y : &DVector<f64>) -> Self {
+        let n = x.nrows() as f64;
+        let ols = ls::OLS::estimate(&y, &x);
+        let mu = ols.beta;
+        let cov = (x.clone().transpose() * x).scale(ols.err.unwrap().sum() / n);
+        Self::new(mu, cov)
+    }
+
     /*pub fn new(mu : DVector<f64>, w : Wishart) -> Self {
         Self { mu : mu, cov : Covariance::new_random(w), shift : None, scale : None }
     }
@@ -472,12 +480,310 @@ impl Posterior for MultiNormal {
 
 }
 
+impl Likelihood<Dynamic> for MultiNormal {
+
+    /// Returns the distribution with the parameters set to its
+    /// gaussian approximation (mean and standard error).
+    fn mle(y : DMatrixSlice<'_, f64>) -> Self {
+        let n = y.nrows() as f64;
+        let suf = Self::sufficient_stat(y);
+        let mut mu : DVector<f64> = suf.column(0).clone_owned();
+        mu.unscale_mut(n);
+        let mut sigma = suf.remove_column(0);
+        sigma.unscale_mut(n);
+        Self::new(mu, sigma)
+    }
+
+    fn visit_factors<F>(&mut self, f : F) where F : Fn(&mut dyn Posterior) {
+        if let Some(ref mut loc) = self.loc_factor {
+            f(loc.as_mut());
+            loc.visit_post_factors(&f as &dyn Fn(&mut dyn Posterior));
+        }
+        if let Some(ref mut scale) = self.scale_factor {
+            f(scale);
+            scale.visit_post_factors(&f as &dyn Fn(&mut dyn Posterior));
+        }
+    }
+}
+
 impl Display for MultiNormal {
 
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "MNorm({})", self.mu.nrows())
     }
 
+}
+
+mod utils {
+
+    use nalgebra::*;
+    //use num_traits::identities::Zero;
+
+    /// Append a constant term to a predictor matrix. Modify to prepend_intercept.
+    pub fn append_intercept<N : Scalar + From<f64>>(x : DMatrix<N>) -> DMatrix<N> {
+        x.insert_column(0, N::from(1.0))
+    }
+
+    pub fn remove_intercept<N : Scalar + From<f64>>(x : DMatrix<N>) -> DMatrix<N> {
+        x.remove_column(0)
+    }
+
+    /// Generates a matrix with a single intercept column.
+    pub fn intercept_from_dim(dim : usize) -> DMatrix::<f64> {
+        DMatrix::<f64>::from_element(dim, 1, 1.0)
+    }
+
+    /// Summed squared error
+    pub fn sse(errors : DVector<f64>) -> f64 {
+        errors.iter().fold(0.0, |err, e| (err + e).powf(2.0) )
+    }
+
+    pub fn append_or_intercept(x : Option<DMatrix<f64>>, nrows : usize) -> DMatrix<f64> {
+        match x {
+            Some(m) => append_intercept(m),
+            None => intercept_from_dim(nrows)
+        }
+    }
+
+    /*/// Given a multivariate parameter vector which actually refers to
+    /// independent parameter columns of a d-variate random vector,
+    /// pack it into a matrix
+    pub fn pack_param_matrix<N>(b : &DVector<N>, d : usize) -> DMatrix<N>
+    where
+        N : Scalar + Zero
+    {
+        let p = b.nrows() / d;
+        let mut b_mat = DMatrix::zeros(p, d);
+        for j in 0..d {
+            b_mat.column_mut(j).copy_from(&b.slice((j*d, 0), (p, 1)));
+        }
+        b_mat
+    }*/
+
+}
+
+/// Least squares algorithms
+mod ls {
+
+    use super::*;
+
+    /// Ordinary least square estimation.
+    #[derive(Debug)]
+    pub struct OLS {
+        pub beta : DVector<f64>,
+        pub err : Option<DVector<f64>>
+    }
+
+    impl OLS {
+
+        /// Carry estimation based on a prediction vector an a cross-products matrix.
+        pub fn estimate_from_cp(xy : &DVector<f64>, xx : &DMatrix<f64>) -> Self {
+            let xx_qr = xx.clone().qr();
+            let beta = xx_qr.solve(&xy).unwrap();
+            Self { beta, err : None }
+        }
+
+        pub fn estimate(y : &DVector<f64>, x : &DMatrix<f64>) -> Self {
+            let xx = x.clone().transpose() * x;
+            let xy = x.clone().transpose() * y;
+            let mut est = Self::estimate_from_cp(&xy, &xx);
+            let err = (x.clone() * &est.beta) - y;
+            est.err = Some(err);
+            est
+        }
+
+    }
+
+    /// Weighted Least squares algorithm, which estimates
+    /// the minimum squared error estimate weighting each
+    /// sample by its corresponding entry in the inverse-diagonal
+    /// covariance (diagonal precision)
+    #[derive(Debug)]
+    pub struct WLS {
+
+        pub ols: OLS,
+
+        prec_diag : DVector<f64>,
+
+        //err : DVector<f64>
+    }
+
+    impl WLS {
+
+        pub fn estimate_from_cov(
+            y : &DVector<f64>,
+            cov_diag : &DVector<f64>,
+            x : &DMatrix<f64>
+        ) -> Self {
+            let prec_diag = cov_diag.map(|c| 1. / c );
+            Self::estimate_from_prec(&y, &prec_diag, &x)
+        }
+
+        pub fn estimate_from_prec(
+            y : &DVector<f64>,
+            prec_diag : &DVector<f64>,
+            x : &DMatrix<f64>
+        ) -> Self {
+            let prec = DMatrix::<f64>::from_diagonal(&prec_diag);
+            let xwx = x.clone().transpose() * &prec * x;
+            let xwy = x.clone().transpose() * &prec * y;
+            let ols = OLS::estimate_from_cp(&xwy, &xwx);
+            Self{ ols, prec_diag : prec_diag.clone() }
+        }
+
+    }
+
+    /*/// Generalized Least squares algorithm. GLS generalizes WLS for
+    /// non-diagonal covariances (estimation under any error covariance).
+    #[derive(Debug)]
+    pub struct GLS {
+
+        pub ols : OLS,
+
+        /// Lower cholesky factor of precision
+        chol_prec : DMatrix<f64>
+
+        // cov : DMatrix<f64>,
+
+        // pub x_star : DMatrix<f64>,
+
+        // y_star : DVector<f64>,
+
+        // low_inv : DMatrix<f64>
+
+    }
+
+    impl GLS {
+
+        fn chol_fact(sigma : DMatrix<f64>) -> Result<DMatrix<f64>, &'static str> {
+            let sigma_chol = Cholesky::new(sigma)
+                .ok_or("Impossible to calculate cholesky decomposition of covariance matrix")?;
+            let low = sigma_chol.l();
+            let low_inv = QR::new(low).try_inverse()
+                .ok_or("Not possible to invert lower-triangular Cholesky factor of covariance matrix")?;
+            Ok(low_inv)
+        }
+
+        pub fn estimate_from_prec(
+            y : DVector<f64>,
+            prec : DMatrix<f64>,
+            x : DMatrix<f64>
+        ) -> Self {
+
+        }
+
+        pub fn estimate_from_cov(
+            y : DVector<f64>,
+            cov : DMatrix<f64>,
+            x : DMatrix<f64>
+        ) -> Self {
+            let x = x.unwrap_or(DMatrix::from_element(y.nrows(), 1, 1.));
+            let chol_prec = Self::chol_fact(cov.clone()).unwrap();
+            let x_star = (chol_prec.clone() * x.clone().transpose()).transpose();
+            let y_star = (chol_prec.clone() * y.clone().transpose()).transpose();
+            let ols = OLS::estimate(&y_star, &x_star)?;
+            Ok(Self { ols, cov, x_star, y_star, low_inv })
+        }
+    }*/
+}
+
+/*mod estimation {
+
+    use super::*;
+
+    /// Returns the normalized data, and the mean and variance normalization factors.
+    pub fn normalize(data : &DMatrix<f32>) -> (DMatrix<f32>, DVector<f32>, DVector<f32>) {
+        let ncols = data.ncols();
+        let mut means = DVector::<f32>::from_element(ncols, 0.0);
+        let mut vars = DVector::<f32>::from_element(ncols, 0.0);
+        let norm_cols : Vec<DVector<f32>> =
+            data.column_iter().zip(means.iter_mut()).zip(vars.iter_mut())
+                .map(|((col, m), v)| {
+                let (mean, var) = mean_variance(&col.into());
+                *m = mean;
+                *v = var;
+                (col.add_scalar(-mean)) / var
+            }).collect();
+        let norm_data = DMatrix::<f32>::from_columns(&norm_cols[..]);
+        (norm_data, means, vars)
+    }
+
+    /*/// Weighted least squares estimation. Assumes elements are centered and
+    /// correctly scaled.
+    /// augment_elems : Augment the responses matrix using those factors.
+    /// Response matrix will be assumed to assume value of zero over those elements.
+    /// (useful for certain Bayesian estimation procedures).
+    /// weights : Vector with the diagonal of the weights matrix.
+    /// Returns: Parameter matrix, residual matrix.
+    /// Perhaps pass augmentationt to a separate routine that takes a regularization
+    /// factor as parameter (functionality of WLS does not depend on whether elements
+    /// are augment or not, as long as they are normalized).
+    pub fn wls(
+        predictors : &DMatrix<f32>,
+        responses : &DVector<f32>,
+        augment_elems : Option<&DMatrix<f32>>,
+        weights : Option<&DVector<f32>>,
+    ) -> Result<(DVector<f32>, DVector<f32>),&'static str> {
+        let mut predictors = predictors.clone();
+        let mut responses = responses.clone();
+        if let Some(mut aug) = augment_elems {
+            let mut aug = aug.clone();
+            let mut predictors = predictors.clone().insert_rows(predictors.nrows(), aug.nrows(), 0.0);
+            let responses = responses.clone().insert_rows(responses.clone().nrows(), aug.nrows(), 0.0);
+            predictors.row_iter_mut()
+                .skip(responses.nrows())
+                .zip(aug.row_iter_mut())
+                .map(|(mut r1, r2)| r1 = r2.into());
+        }
+
+        let cross_prods = match weights {
+            Some(w) => {
+                predictors.clone().transpose() *
+                    DMatrix::<f32>::from_diagonal(&w) *
+                    predictors.clone()
+            },
+            None => {
+                predictors.clone().transpose() * predictors.clone()
+            }
+        };
+
+        let cross_qr = cross_prods.qr();
+        let dep_prods = predictors.clone() * responses.clone();
+        if let Some(params) = cross_qr.solve(&dep_prods) {
+            let residuals = (predictors * params.clone()) - responses;
+            Ok((params, residuals))
+        } else {
+            Err("Error solving QR decomposition")
+        }
+    }*/
+}*/
+
+#[test]
+pub fn gls() {
+    let (x, y) = data_pair();
+    let yc = y.add_scalar(-y.mean());
+    let dist = yc.clone() * yc.clone().transpose();
+    //println!("{}", dist);
+    //let cov = dist.clone().transpose() * dist;
+    let mut cov = DMatrix::zeros(y.nrows(), y.nrows());
+    cov.set_diagonal(&DVector::from_element(y.nrows(), 1.));
+    cov = cov.scale(5.);
+    let ols_est = OLS::estimate(y.clone(), Some(x.clone()));
+    let est = GLS::estimate(yc, cov, Some(x));
+    //assert!(ols_est == ident_est)
+    println!("{:?}", est)
+}
+
+#[test]
+fn wls() {
+    let y : DVector<f64> = DVector::from_vec(vec![1.0, 2.2, 3.1, 4.9, 4.43]);
+    let x : DMatrix<f64> = DMatrix::from_vec(5,2,
+        vec![1.0, 1.0, 1.0, 1.0, 1.0, 4.2, 1.3, 2.7, 0.4, 3.06]
+    );
+    let ols = OLS::estimate(y.clone(), Some(x.clone()));
+    let var = DVector::from_element(y.nrows(), 1.);
+    let wls = WLS::estimate(y.clone(), var.clone(), x.clone());
+    //println!("{}", var.)
 }
 
 /*/// This is valid only for independent normals. But since .condition(.)
@@ -506,8 +812,15 @@ impl Add<MultiNormal> for MultiNormal {
 
 impl Sub<MultiNormal> for MultiNormal {
 
-}
+}*/
 
 
-*/
+/*pub fn flatten_matrix(m : DMatrix<f64>) -> Vec<Vec<f64>> {
+    let mut rows = Vec::new();
+    for _ in 0..m.nrows() {
+        let v : Vec<f64> = m.remove_row(0).data.into();
+        rows.push(v);
+    }
+    rows
+}*/
 

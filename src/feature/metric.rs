@@ -12,6 +12,8 @@ pub trait Metric
 where Self : Sized
 {
 
+    fn dim(&self) -> usize;
+
     fn within<S>(a : S) -> Self
     where S : Into<DMatrix<f64>> + Clone
     {
@@ -26,19 +28,29 @@ where Self : Sized
     /// elements are being compared to themselves at the i==j entries.
     fn full(&self) -> DMatrix<f64>;
 
-    /// Return a sparse matrix containing the n-smallest distances.
+    /// Return a matrix with the n distances closest to the informed point.
     /// The row index correspond to the observation index at left set;
     /// the column index correspond to the observation index at the
     /// right set. The implementor should guarantee that if a pair-wise
     /// comparison is being made (Self::within), the comparison of an
     /// element with itself is not returned (the sparse matrix will never
     /// have an element in the diagonal).
-    fn closest(&self, n : usize) -> CsMatrix<f64>;
+    fn closest_to(&self, pt : &[f64], n : usize) -> CsMatrix<f64>;
+
+    /// Return a sparse matrix containing the n-smallest distances.
+    fn smallest(&self, n : usize) -> CsMatrix<f64> {
+        let mut pt : Vec<f64> = Vec::new();
+        pt.extend((0..self.dim()).map(|_| 0.0 ));
+        self.closest_to(&pt[..], n)
+    }
+
+    // TODO add provided method for histogram.
 }
 
 /// Represents an upper triangular matrix of euclidian distances
 pub struct Euclidian {
-
+    dim : usize,
+    dst : DMatrix<f64>
 }
 
 pub struct Manhattan {
@@ -58,7 +70,11 @@ impl Metric for Manhattan {
         unimplemented!()
     }
 
-    fn closest(&self, n : usize) -> CsMatrix<f64> {
+    fn dim(&self) -> usize {
+        unimplemented!()
+    }
+
+    fn closest_to(&self, pt : &[f64], n : usize) -> CsMatrix<f64> {
         unimplemented!()
     }
 
@@ -66,17 +82,33 @@ impl Metric for Manhattan {
 
 impl Metric for Euclidian {
 
+    fn dim(&self) -> usize {
+        self.dim
+    }
+
     fn between<S>(a : S, b : S) -> Self
         where S : Into<DMatrix<f64>>
     {
-        unimplemented!()
+        let a : DMatrix<f64> = a.into();
+        let b : DMatrix<f64> = b.into();
+        assert!(a.ncols() == b.ncols());
+        let mut dst = DMatrix::zeros(a.nrows(), b.ncols());
+        for (i, row_a) in a.row_iter().enumerate() {
+            for (j, row_b) in b.row_iter().enumerate() {
+                dst[(i, j)] = row_a.iter()
+                    .zip(row_b.iter())
+                    .fold(0.0, |sum, p| sum + (p.0.powf(2.) - p.1.powf(2.)).abs() as f64)
+                    .sqrt();
+            }
+        }
+        Self{ dst, dim : a.ncols() }
     }
 
     fn full(&self) -> DMatrix<f64> {
-        unimplemented!()
+        self.dst.clone()
     }
 
-    fn closest(&self, n : usize) -> CsMatrix<f64> {
+    fn closest_to(&self, pt : &[f64], n : usize) -> CsMatrix<f64> {
         unimplemented!()
     }
 

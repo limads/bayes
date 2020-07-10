@@ -198,7 +198,11 @@ impl ExponentialFamily<U1> for Bernoulli
 
 impl Likelihood<U1> for Bernoulli {
 
-    fn mean_mle(y : DMatrixSlice<'_, f64>) -> f64 {
+    fn mle(y : DMatrixSlice<'_, f64>) -> Self {
+        unimplemented!()
+    }
+
+    /*fn mean_mle(y : DMatrixSlice<'_, f64>) -> f64 {
         assert!(y.ncols() == 1);
         let mle = y.iter().fold(0.0, |ys, y| {
             assert!(*y == 0. || *y == 1.); ys + y
@@ -209,7 +213,7 @@ impl Likelihood<U1> for Bernoulli {
     fn var_mle(y : DMatrixSlice<'_, f64>) -> f64 {
         let m = Self::mean_mle(y);
         m * (1. - m)
-    }
+    }*/
 
     fn visit_factors<F>(&mut self, f : F) where F : Fn(&mut dyn Posterior) {
         match self.factor {

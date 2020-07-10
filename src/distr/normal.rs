@@ -277,7 +277,7 @@ impl Posterior for Normal {
 
 impl Likelihood<U1> for Normal {
 
-    fn mean_mle(y : DMatrixSlice<'_, f64>) -> f64 {
+    /*fn mean_mle(y : DMatrixSlice<'_, f64>) -> f64 {
         let mle = y.iter().fold(0.0, |ys, y| ys + y) / (y.nrows() as f64);
         mle
     }
@@ -285,6 +285,10 @@ impl Likelihood<U1> for Normal {
     fn var_mle(y : DMatrixSlice<'_, f64>) -> f64 {
         let n = y.nrows() as f64;
         y.iter().fold(0.0, |ys, y| ys + y.powf(2.) / n)
+    }*/
+
+    fn mle(y : DMatrixSlice<'_, f64>) -> Self {
+        unimplemented!()
     }
 
     fn visit_factors<F>(&mut self, f : F) where F : Fn(&mut dyn Posterior) {
@@ -423,6 +427,20 @@ impl Estimator<Normal> for Normal {
         })
     }
 }*/
+
+pub mod utils {
+
+    pub fn univariate_mle(data : &[f64]) -> (f64, f64) {
+        let (sum, sum_sq) = data.iter()
+            .fold((0.0, 0.0), |accum, d| {
+                (accum.0 + d, accum.1 + d.powf(2.))
+            });
+        let n = data.len() as f64;
+        let mean = sum / (n as f64);
+        (mean, sum_sq / (n as f64) - mean.powf(2.))
+    }
+
+}
 
 impl Display for Normal {
 

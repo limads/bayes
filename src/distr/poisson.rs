@@ -250,7 +250,11 @@ impl Conditional<Gamma> for Poisson {
 
 impl Likelihood<U1> for Poisson {
 
-    fn mean_mle(y : DMatrixSlice<'_, f64>) -> f64 {
+    fn mle(y : DMatrixSlice<'_, f64>) -> Self {
+        unimplemented!()
+    }
+
+    /*fn mean_mle(y : DMatrixSlice<'_, f64>) -> f64 {
         assert!(y.ncols() == 1);
         let mle = y.iter().fold(0.0, |ys, y| ys + y) / (y.nrows() as f64);
         mle
@@ -258,7 +262,7 @@ impl Likelihood<U1> for Poisson {
 
     fn var_mle(y : DMatrixSlice<'_, f64>) -> f64 {
         Self::mean_mle(y)
-    }
+    }*/
 
     fn visit_factors<F>(&mut self, f : F) where F : Fn(&mut dyn Posterior) {
         match self.factor {
