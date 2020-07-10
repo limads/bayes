@@ -8,6 +8,7 @@ use std::f64::consts::PI;
 // use std::ops::MulAssign;
 use std::fmt::{self, Display};
 use std::default::Default;
+use std::ops::{SubAssign, MulAssign};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 enum CovFunction {
@@ -239,9 +240,66 @@ impl MultiNormal {
     }
 
     /// Returns the reduced multivariate normal [0, n) by conditioning
-    /// over entries [n,p).
-    pub fn conditional(&self, n : usize) -> MultiNormal {
-        unimplemented!()
+    /// over entries [n,p) at the informed value.
+    pub fn conditional(&self, value : DVector<f64>) -> MultiNormal {
+        let mut cond = self.marginal(0, value.nrows());
+        cond.cond_update(&self, value);
+        cond
+    }
+
+    fn update_cond_mean(
+        &mut self,
+        partial_sigma_inv : &DMatrix<f64>,
+        upper_cross_cov : &DMatrixSlice<'_,f64>,
+        marg_mu : DVectorSlice<'_, f64>,
+        fix_mu : DVectorSlice<'_, f64>,
+        mut value : DVector<f64>,
+    ) {
+        value.sub_assign(&fix_mu);
+        let mu_off_scaled = partial_sigma_inv.clone() * value;
+        let final_mu_off = upper_cross_cov * mu_off_scaled;
+        self.mu.copy_from(&marg_mu);
+        self.mu.sub_assign(&final_mu_off);
+    }
+
+    fn update_cond_cov(
+        &mut self,
+        partial_sigma_inv : &DMatrix<f64>,
+        marg_sigma : DMatrixSlice<'_, f64>,
+        upper_cross_cov : DMatrixSlice<'_,f64>,
+        lower_cross_cov : DMatrixSlice<'_,f64>
+    ) {
+        let mut sigma_off = upper_cross_cov.clone_owned();
+        sigma_off *= partial_sigma_inv;
+        sigma_off *= lower_cross_cov;
+        //self.sigma.copy_from(&marg_sigma);
+        let mut sigma : DMatrix<f64> = marg_sigma.clone_owned();
+        sigma.sub_assign(&sigma_off);
+        self.sigma_inv = Self::invert_scale(&sigma);
+    }
+
+    /// Updates the internal state of self to reflect the conditional distribution
+    /// of the joint parameter when the values joint[value.len()..n]
+    /// are held fixed at the informed value.
+    pub fn cond_update(&mut self, joint : &MultiNormal, mut value : DVector<f64>) {
+        let fix_n = value.nrows();
+        let cond_n = joint.mu.nrows() - fix_n;
+        let marg_mu = joint.mu.rows(0, cond_n);
+        let sigma = Self::invert_scale(&joint.sigma_inv);
+        let marg_sigma = sigma.slice((0, 0), (cond_n, cond_n));
+        let partial_sigma : DMatrix<f64> = sigma
+            .slice((cond_n, cond_n), (fix_n, fix_n))
+            .clone_owned();
+        let partial_sigma_inv = Self::invert_scale(&partial_sigma);
+        let upper_cross_cov = sigma
+            .slice((0, cond_n), (cond_n, fix_n));
+        let lower_cross_cov = sigma
+            .slice((cond_n, 0), (fix_n, cond_n));
+        let fix_mu = joint.mu.rows(cond_n, fix_n);
+        self.update_cond_mean(&partial_sigma_inv, &upper_cross_cov, marg_mu, fix_mu, value);
+        self.update_cond_cov(&partial_sigma_inv, marg_sigma, upper_cross_cov, lower_cross_cov);
+        self.op = None;
+        self.scaled_mu = self.sigma_inv.clone() * &self.mu;
     }
 
     /// Changes self by assuming joint normality with another
@@ -413,6 +471,7 @@ impl Distribution for MultiNormal {
             op.lin_mu = op.scale.clone() * p.column(0);
             op.lin_sigma_inv = op.scale.clone() * self.sigma_inv * op.scale.clone().transpose();*/
         }
+        self.scaled_mu = self.sigma_inv.clone() * &self.mu;
         self.update_log_partition(p);
     }
 
@@ -635,6 +694,10 @@ mod ls {
 
     /*/// Generalized Least squares algorithm. GLS generalizes WLS for
     /// non-diagonal covariances (estimation under any error covariance).
+    /// This covariance has an n x n structure and represents the possible
+    /// correlations of all observations of dimensionality 1 with themselves. The solution is:
+    /// Multiply X and y by the Cholesky factor of this matrix; Then solve OLS for the standardized
+    /// quantities. The same equation for WLS can be applied here.
     #[derive(Debug)]
     pub struct GLS {
 
