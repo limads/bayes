@@ -79,8 +79,8 @@ where
 
 impl<N> Signal<u8> for DMatrix<N>
 where
-    N : Scalar + Copy + From<u8> + From<f32> + Add<Output=N> + Mul<Output=N>,
-    //u8 : From<N>
+    N : Scalar + Copy + From<u8> + /*Into<u8> +*/ From<f32> + Add<Output=N> + Mul<Output=N>,
+    f64 : From<N>
 {
 
     fn downsample(&mut self, src : &[u8], sampling : Sampling) {
@@ -91,13 +91,25 @@ where
             .take(self.nrows())
             .map(|r| &r[sampling.offset.1..(sampling.offset.1+self.ncols()*sampling.step)] )
             .collect();
-        println!("{:?}", rows);
+        //println!("{:?}", rows);
         copy_from_slices(self, &rows, sampling.step);
     }
 
     fn upsample(&self, dst : &mut [u8], sampling : Sampling) {
-        unimplemented!()
+        if sampling.step == 1 {
+            write_matrix_to_slice(
+                &self,
+                dst,
+                sampling.size,
+                sampling.offset,
+                None,
+                None
+            );
+        } else {
+            unimplemented!()
+        }
     }
+
 }
 
 #[cfg(test)]
@@ -122,4 +134,13 @@ mod test {
         img4.downsample(&source[..], Sampling{ offset : (0, 0), size : (4, 4), step : 1});
         println!("img4 = {}", img4);
     }
+
+    #[test]
+    fn image_upsample() {
+        let img : DMatrix<f32> = DMatrix::from_fn(4, 4, |i, j| (i*4 + j) as f32);
+        let mut dst : [u8; 16] = [0; 16];
+        img.upsample(&mut dst, Sampling{ offset : (0, 0), size : (4, 4), step : 1});
+        println!("{:?}", dst);
+    }
+
 }

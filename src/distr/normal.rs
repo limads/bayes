@@ -132,6 +132,9 @@ impl ExponentialFamily<U1> for Normal
         DVector::from_element(y.nrows(),  1. / (2.*PI).sqrt())
     }
 
+    // TODO if there is a constant scale factor, the sufficient statistic
+    // is the sample sum. If there is a random scale factor (gamma) the sufficient
+    // statistic is the 2-dimensional vector [sum(x) sum(x^2)]
     fn sufficient_stat(y : DMatrixSlice<'_, f64>) -> DMatrix<f64> {
         assert!(y.ncols() == 1);
         let mut suf = DMatrix::zeros(2, 1);
@@ -379,8 +382,11 @@ impl Estimator<Normal> for Normal {
 
     fn fit<'a>(&'a mut self, y : DMatrix<f64>) -> Result<&'a Normal, &'static str> {
         let prec1 = 1. / self.var()[0];
-        match self.loc_factor {
-            Some(ref mut norm) => {
+        match (&mut self.loc_factor, &mut self.scale_factor) {
+            (Some(ref mut norm), Some(ref mut gamma)) => {
+                unimplemented!()
+            },
+            (Some(ref mut norm), None) => {
                 assert!(norm.mean().len() == 1, "Length of mean vector should be one");
                 let n = y.nrows() as f64;
                 let ys = y.column(0).sum();
@@ -392,7 +398,7 @@ impl Estimator<Normal> for Normal {
                 norm.set_scale(var_out);
                 Ok(&(*norm))
             },
-            _ => Err("Distribution does not have a conjugate factor")
+            _ => Err("Distribution does not have a conjugate location factor")
         }
     }
 
@@ -445,7 +451,7 @@ pub mod utils {
 impl Display for Normal {
 
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Norm({})", self.mu.nrows())
+        write!(f, "Norm({}, {})", self.mean()[0], self.var()[0] )
     }
 
 }

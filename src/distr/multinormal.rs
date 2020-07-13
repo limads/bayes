@@ -240,10 +240,13 @@ impl MultiNormal {
     }
 
     /// Returns the reduced multivariate normal [0, n) by conditioning
-    /// over entries [n,p) at the informed value.
+    /// over entries [n,p) at the informed value. This operation condition
+    /// on a user-supplied constant and has nothing to do with the
+    /// Conditional<Distribution> trait, which is used for conditioning over
+    /// other random variables.
     pub fn conditional(&self, value : DVector<f64>) -> MultiNormal {
         let mut cond = self.marginal(0, value.nrows());
-        cond.cond_update(&self, value);
+        cond.cond_update_from(&self, value);
         cond
     }
 
@@ -281,7 +284,7 @@ impl MultiNormal {
     /// Updates the internal state of self to reflect the conditional distribution
     /// of the joint parameter when the values joint[value.len()..n]
     /// are held fixed at the informed value.
-    pub fn cond_update(&mut self, joint : &MultiNormal, mut value : DVector<f64>) {
+    pub fn cond_update_from(&mut self, joint : &MultiNormal, mut value : DVector<f64>) {
         let fix_n = value.nrows();
         let cond_n = joint.mu.nrows() - fix_n;
         let marg_mu = joint.mu.rows(0, cond_n);
@@ -346,6 +349,9 @@ impl ExponentialFamily<Dynamic> for MultiNormal {
     }
 
     /// Returs the matrix [sum(yi) | sum(yi yi^T)]
+    /// TODO if there is a constant scale factor, the sufficient statistic
+    /// is the sample row-sum. If there is a random scale factor (wishart) the sufficient
+    /// statistic is the matrix [rowsum(x)^T sum(x x^T)]
     fn sufficient_stat(y : DMatrixSlice<'_, f64>) -> DMatrix<f64> {
         /*let r_sum = y.row_sum();
         let cross_p = y.clone_owned().transpose() * &y;
@@ -563,6 +569,32 @@ impl Likelihood<Dynamic> for MultiNormal {
             scale.visit_post_factors(&f as &dyn Fn(&mut dyn Posterior));
         }
     }
+}
+
+impl Estimator<MultiNormal> for MultiNormal {
+
+    fn fit<'a>(&'a mut self, y : DMatrix<f64>) -> Result<&'a MultiNormal, &'static str> {
+        let n = y.nrows() as f64;
+        match (&mut self.loc_factor, &mut self.scale_factor) {
+            (Some(ref mut norm_prior), Some(ref mut gamma_prior)) => {
+                unimplemented!()
+            },
+            (Some(ref mut norm_prior), None) => {
+                let suf = Self::sufficient_stat((&y).into());
+                let mut mu_mle : DVector<f64> = suf.column(0).clone_owned();
+                mu_mle.unscale_mut(n);
+                let scaled_mu_mle = (self.sigma_inv.clone() * mu_mle).scale(n);
+                let w_sum_prec = norm_prior.sigma_inv.clone() + self.sigma_inv.scale(n);
+                let w_sum_cov = Self::invert_scale(&w_sum_prec);
+                norm_prior.mu = w_sum_cov * (norm_prior.scaled_mu.clone() + scaled_mu_mle);
+                norm_prior.sigma_inv = w_sum_prec;
+                norm_prior.scaled_mu = norm_prior.sigma_inv.clone() * &norm_prior.mu;
+                Ok(&(*norm_prior))
+            },
+            _ => Err("Distribution does not have a conjugate location factor")
+        }
+    }
+
 }
 
 impl Display for MultiNormal {
@@ -821,9 +853,12 @@ mod ls {
     }*/
 }*/
 
-#[test]
+/*#[test]
 pub fn gls() {
-    let (x, y) = data_pair();
+    let y : DVector<f64> = DVector::from_vec(vec![1.0, 2.2, 3.1, 4.9, 4.43]);
+    let x : DMatrix<f64> = DMatrix::from_vec(5,2,
+        vec![1.0, 1.0, 1.0, 1.0, 1.0, 4.2, 1.3, 2.7, 0.4, 3.06]
+    );
     let yc = y.add_scalar(-y.mean());
     let dist = yc.clone() * yc.clone().transpose();
     //println!("{}", dist);
@@ -847,7 +882,7 @@ fn wls() {
     let var = DVector::from_element(y.nrows(), 1.);
     let wls = WLS::estimate(y.clone(), var.clone(), x.clone());
     //println!("{}", var.)
-}
+}*/
 
 /*/// This is valid only for independent normals. But since .condition(.)
 /// takes ownership of a value, there is no way a user will build

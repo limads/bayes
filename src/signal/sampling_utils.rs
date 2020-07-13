@@ -86,6 +86,11 @@ where
     }
 }
 
+// From trait cannot be used for f32/f64->u8 casting, which is why
+// we need to do cast to a f64 first then cast to a u8 (this lossy cast
+// can only be done with concerete types). The alternative would be to
+// cast into f32, but then we could not implement the Signal<T> trait in
+// a generic way for floating-point containers.
 pub fn write_matrix_to_slice<N>(
     dm : &DMatrix<N>,
     buf : &mut [u8],
@@ -95,19 +100,19 @@ pub fn write_matrix_to_slice<N>(
     scale : Option<N>
 ) -> ()
 where
-    N : Scalar + Into<u8> + Add<Output=N> + Mul<Output=N> + From<f32> + Copy,
-    u8 : From<N>
+    N : Scalar + Add<Output=N> + Mul<Output=N> + From<f32> + Copy,
+    f64 : From<N>
 {
     let rows = buf.chunks_mut(buf_dims.1).skip(start.0).take(dm.nrows());
     let offset = offset.unwrap_or(N::from(0.0));
     let scale = scale.unwrap_or(N::from(1.0));
-    if start.0 + dm.nrows() < buf_dims.0 && start.1 + dm.ncols() < buf_dims.1 {
+    if start.0 + dm.nrows() <= buf_dims.0 && start.1 + dm.ncols() <= buf_dims.1 {
         for (i, r) in rows.enumerate() {
             r[(start.1)..(start.1 + dm.ncols())]
                 .iter_mut()
                 .zip(dm.row(i).iter())
                 .for_each(|(b, f)|{
-                    *b = u8::from((*f + offset) * scale);
+                    *b = f64::from(((*f + offset) * scale)) as u8;
                 });
         }
     } else {
@@ -180,8 +185,8 @@ where
     assert!(data.len() > 1);
     let sz = data[0].len();
     assert!(sz / step == d.ncols());
-    println!("row slices passed = {}", data.len());
-    println!("current size = {}", d.nrows());
+    //println!("row slices passed = {}", data.len());
+    //println!("current size = {}", d.nrows());
     assert!(data.len() == d.nrows());
     for d in data.iter().skip(1) {
         assert!(d.len() == sz);
