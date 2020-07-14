@@ -100,7 +100,7 @@ impl Table {
 
     fn load_postgre(mut client : Client, sql : &str, max : usize, null : NullAction) -> Result<Self, String> {
         let dialect = PostgreSqlDialect {};
-        let ast = Parser::parse_sql(&dialect, sql.to_string()).map_err(|e| format!("{}", e))?;
+        let ast = Parser::parse_sql(&dialect, &sql[..]).map_err(|e| format!("{}", e))?;
         if ast.len() != 1 {
             return Err(format!("Multiple statements passed"));
         }
