@@ -73,7 +73,7 @@ impl Distribution for Categorical {
         self.theta.map(|theta| theta * (1. - theta))
     }
 
-    fn log_prob(&self, y : DMatrixSlice<f64>) -> f64 {
+    fn log_prob(&self, y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>) -> f64 {
         let t  = Self::sufficient_stat(y.rows(0, y.nrows()));
         let factor_lp = match &self.factor {
             Some(dir) => {
@@ -97,25 +97,6 @@ impl Distribution for Categorical {
 
     fn cov_inv(&self) -> Option<DMatrix<f64>> {
         self.cov()
-    }
-
-}
-
-impl Posterior for Categorical {
-
-    fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>) {
-        match &mut self.factor {
-            Some(ref mut d) => (Some(d as &mut dyn Posterior), None),
-            None => (None, None)
-        }
-    }
-
-    fn set_approximation(&mut self, _m : MultiNormal) {
-        unimplemented!()
-    }
-
-    fn approximation(&self) -> Option<&MultiNormal> {
-        unimplemented!()
     }
 
 }

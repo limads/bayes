@@ -14,19 +14,37 @@ mod sampling_utils;
 use sampling_utils::*;
 
 /// Signals are types which holds dynamically-allocated
-/// data which is read by re-sampling a source slice.
+/// data which is read by re-sampling a source slice (raw data
+/// comming from a sensor or a network service, for example).
 /// The implementor should know how to re-sample this slice
 /// by using its own stride information and the user-supplied
-/// step. The implementor might read the step and decide
+/// sampling configuration. The implementor might read the step and decide
 /// at runtime to do a scalar copy/conversion in case of size
 /// n>1; or do a vectorized copy/conversion in case of size n=1.
 /// Specialized vectorized (simd) calls can be written for all
 /// possible (N,M) pairs.
 ///
 /// Signals have a source S from which data is downsampled
-/// and into which data is upsampled. N is the scalar type
+/// and into which data might be upsampled. N is the scalar type
 /// at the (downsampled) destination. downsampling/upsampling with step 1
 /// is can use a simple vectorized conversion.
+///
+/// In contrast to Sample implementors, signals do not interface directly
+/// with probabilistic graphs. Since they have a natural ordering, they cannot
+/// have their samples interchanged and keep the same meaning. Samples are
+/// compressed into sufficient statistic as they are distributed over the probabilistic graph,
+/// signals do not. To transform a signal into a sample, some feature extraction algorithm
+/// must be applied first, to extract a scalar or vector-valued quantity
+/// which can be modelled probabilistically (such as Fourier/Wavelet/PCA/LDA
+/// coefficients or signal comparison metrics. Such feature-extraction algorithms
+/// can be described as part of a probabilistic model by changing the definition of the
+/// conditional expectation from scale: { n : N } to scale : feature : { algorithm : A : { params.. } }
+/// All parameters that characterize a feature extraction algorithm must be used at their
+/// construction, so users need to concern only with algorithm textual description.
+///
+/// Although signal samples cannot be interchanged, signals can meaningfully be
+/// circularly-shifted, since certain feature extraction algorithms are invariant
+/// to circular shifts.
 pub trait Signal<M>
     //where
     //    M : Into<N> + Copy + Scalar,
@@ -36,6 +54,8 @@ pub trait Signal<M>
     fn downsample(&mut self, src : &[M], sampling : Sampling);
 
     fn upsample(&self, src : &mut [M], sampling : Sampling);
+
+    fn circ_shift(by : (i32, i32));
 
 }
 
@@ -75,6 +95,10 @@ where
         unimplemented!()
     }
 
+    fn circ_shift(by : (i32, i32)) {
+        unimplemented!()
+    }
+
 }
 
 impl<N> Signal<u8> for DMatrix<N>
@@ -108,6 +132,10 @@ where
         } else {
             unimplemented!()
         }
+    }
+
+    fn circ_shift(by : (i32, i32)) {
+        unimplemented!()
     }
 
 }

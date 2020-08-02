@@ -79,7 +79,11 @@ pub struct Wishart {
     gamma_suf : DMatrix<f64>,
 
     /// Rotation factor rho = cos(theta), argument to the correlation function.
-    rot_fact : Option<VonMises>
+    rot_fact : Option<VonMises>,
+
+    rw : Option<RandomWalk>,
+
+    approx : Option<Box<MultiNormal>>
 
 }
 
@@ -202,7 +206,7 @@ impl Distribution for Wishart {
     /// Does not really use y because the value against which
     /// log_prob(.) is evaluated is a constant set at the same
     /// time the multivariate normal is updated (this is gamma_suf).
-    fn log_prob(&self, _y : DMatrixSlice<f64>) -> f64 {
+    fn log_prob(&self, _y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>) -> f64 {
         let rot_lp = if let Some(ref r) = self.rot_fact {
             match self.corr {
                 Correlation::Homogeneous(ref rho) | Correlation::Autoregressive(ref rho, _) |
@@ -247,12 +251,20 @@ impl Posterior for Wishart {
         }
     }
 
-    fn set_approximation(&mut self, _m : MultiNormal) {
-        unimplemented!()
+    fn approximation_mut(&mut self) -> Option<&mut MultiNormal> {
+        self.approx.as_mut().map(|apprx| apprx.as_mut())
     }
 
     fn approximation(&self) -> Option<&MultiNormal> {
-        unimplemented!()
+        self.approx.as_ref().map(|apprx| apprx.as_ref())
+    }
+
+    fn trajectory(&self) -> Option<&RandomWalk> {
+        self.rw.as_ref()
+    }
+
+    fn trajectory_mut(&mut self) -> Option<&mut RandomWalk> {
+        self.rw.as_mut()
     }
 
 }

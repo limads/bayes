@@ -1,6 +1,11 @@
 use crate::sample::Sample;
 use nalgebra::*;
 use nalgebra::sparse::CsMatrix;
+use std::collections::HashSet;
+
+/*/// Pair-wise metrics are calculated w.r.t. a pair of sample implementors
+/// of the same type.
+pub type Set<T : Sample> = HashSet<T>;*/
 
 /// A metric is a scalar value that captures the distance or dissimilarity between
 /// a pair of n-dimensional observations. If those observations are arranged into
@@ -8,6 +13,15 @@ use nalgebra::sparse::CsMatrix;
 /// of all observations within the sample. Metrics can also be calculated as the
 /// pair-wise comparison of all elements of a pair of sample implementors via the between(.)
 /// method.
+///
+/// Metrics are an important general-purpose dimensionality reduction algorithm, which
+/// always reduce the dimension from n to 1. The dissimilarity between an observation and
+/// a series of prototypes can be used for classification; the dissimilarity between the cartesian
+/// product of a pair of sets of observations can be used for matching and clustering. Clustering
+/// and Matching algorihtms are generic over the metric they use. Clustering algorithms take only
+/// the metric and output the clusters or interst; Matching algoritms take the metric and an optimizer
+/// (function of the observation match) and output the state of the optimizer that best satisfies
+/// all the pair-wise dissimilarities.
 pub trait Metric
 where Self : Sized
 {
@@ -20,6 +34,7 @@ where Self : Sized
         Self::between(a.clone(), a)
     }
 
+    // TODO use set here.
     fn between<S>(a : S, b : S) -> Self
     where S : Into<DMatrix<f64>>;
 
@@ -53,11 +68,11 @@ pub struct Euclidian {
     dst : DMatrix<f64>
 }
 
+/// Represents an upper triangular matrix of Manhattan distances
 pub struct Manhattan {
 
 }
 
-/// Represents an upper triangular matrix of Manhattan distances
 impl Metric for Manhattan {
 
     fn between<S>(a : S, b : S) -> Self

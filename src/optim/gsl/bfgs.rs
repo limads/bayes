@@ -1,13 +1,11 @@
 use crate::gsl::multimin::*;
 use nalgebra::*;
-// use crate::gsl::vector_double::*;
-// use crate::gsl::matrix_double::*;
 use std::ffi::c_void;
 use std::mem;
 use crate::gsl::utils::*;
 use super::*;
 
-unsafe extern "C" fn gradient<T : Sized>(
+unsafe extern "C" fn gradient<T : Sized + Clone>(
     p : *const gsl_vector,
     extra : *mut c_void,
     g : *mut gsl_vector
@@ -24,7 +22,7 @@ unsafe extern "C" fn gradient<T : Sized>(
     }
 }
 
-unsafe extern "C" fn obj_grad<T : Sized>(
+unsafe extern "C" fn obj_grad<T : Sized + Clone>(
     x : *const gsl_vector,
     extra : *mut c_void,
     f : *mut f64,
@@ -49,14 +47,27 @@ unsafe fn fetch_data_from_grad_minimizer<'a>(
 /// Solves a minimization problem,
 /// returing, if successful, the optimized parameter, the first derivative
 /// at the minimum, the minimum scalar value and the user_data struct
-/// back to the user.
-pub fn minimize_with_grad<T : Sized>(
+/// back to the user. If the matrices/vectors traj, grad and eval are supplied,
+/// writes the iteration states into them.
+pub fn minimize_with_grad<T : Sized + Clone>(
     params : DVector<f64>,
     user_data : T,
     fn_update : Box<dyn FnMut(&DVector<f64>, &mut T)->f64>,
     grad_update : Box<dyn FnMut(&DVector<f64>, &mut T)->DVector<f64>>,
-    max_iter : usize
-) -> Result<(DVector<f64>, DVector<f64>, f64, T), String> {
+    mut opt_traj : Option<&mut DMatrix<f64>>,
+    mut opt_grad : Option<&mut DMatrix<f64>>,
+    mut opt_eval : Option<&mut DVector<f64>>,
+    max_iter : usize,
+) -> Result<(DVector<f64>, DVector<f64>, f64, usize, T), String> {
+
+    // Verify if the memory arrays have adequate size.
+    if let (Some(traj), Some(grad), Some(eval)) = (&opt_traj, &opt_grad, &opt_eval) {
+        assert!(traj.ncols() == max_iter);
+        assert!(grad.ncols() == max_iter);
+        assert!(eval.nrows() == max_iter);
+    }
+
+    // Initialize the minimizer state.
     let n = params.nrows();
     let mut probl = MinProblem {
         user_data,
@@ -79,28 +90,54 @@ pub fn minimize_with_grad<T : Sized>(
         };
         let params_gsl : gsl_vector = params.into();
         let mut steps : Vec<OptimizationStep> = Vec::new();
-        gsl_multimin_fdfminimizer_set(
+        let init_status = gsl_multimin_fdfminimizer_set(
             minimizer,
             &mut fdf as *mut _,
             &params_gsl,
-            1.0,   // First step size
-            0.1    // Tolerance
+            1.0,     // First step size
+            0.1      // Tolerance (0.1 recommended by gsl)
         );
+        match GSLStatus::from_code(init_status) {
+            GSLStatus::Success => { },
+            status => return Err(format!("Error initializing minimizer: {:?}", status))
+        };
+        // Iterate over minimization steps. Return early if minimum is found.
         for i in 0..max_iter {
             let res = gsl_multimin_fdfminimizer_iterate(minimizer);
+
+            println!("Minimum: {}", gsl_multimin_fdfminimizer_minimum(minimizer));
+
             match GSLStatus::from_code(res) {
                 GSLStatus::EnoProg => {
-                    if i > 1 {
-                        let (user_x, user_g, obj) = fetch_data_from_grad_minimizer(&minimizer);
-                        println!("Converged in {} iterations", i);
-                        return Ok((DVector::from(user_x), DVector::from(user_g), obj, probl.user_data));
+                    if i == 0 {
+                        return Err(format!("Unable to improve on estimate at first iteration"));
                     } else {
-                        return Err(format!("Unable to improve estimate (Iteration {})", i));
+                        let (user_x, user_g, obj) = fetch_data_from_grad_minimizer(&minimizer);
+                        /*// TODO read actual state value from params_gsl.
+                        let user_x = DVectorSlice::slice_from_gsl(&params_gsl).clone_owned();
+                        let user_g = probl.user_grad.clone();
+                        let mut data = probl.user_data.clone();
+                        let obj = (probl.fn_update)(&user_x, &mut data);*/
+                        println!("Converged in {} iterations", i);
+                        println!("x = {}; g = {}; y = {}", user_x, user_g, obj);
+                        // gsl_multimin_fdfminimizer_free(minimizer);
+                        return Ok((DVector::from(user_x), DVector::from(user_g), obj, i, probl.user_data));
                     }
                 },
                 _ => { }
             }
             let (user_x, user_g, obj) = fetch_data_from_grad_minimizer(&minimizer);
+
+            if let Some(traj) = &mut opt_traj {
+                traj.column_mut(i).copy_from(&user_x);
+            }
+            if let Some(eval) = &mut opt_eval {
+                eval[i] = obj;
+            }
+            if let Some(grad) = &mut opt_grad {
+                grad.column_mut(i).copy_from(&user_g);
+            }
+
             let param_norm = user_x.norm();
             let jac_norm = user_g.norm();
             steps.push(OptimizationStep {
@@ -108,6 +145,7 @@ pub fn minimize_with_grad<T : Sized>(
                 jac_norm,
                 param_norm
             });
+
             // Stop when gradient magnitude is within 0.1% of parameter vector magnitude
             let g = gsl_multimin_fdfminimizer_gradient(minimizer);
             let res = gsl_multimin_test_gradient(g, 0.001 * param_norm);
@@ -115,15 +153,18 @@ pub fn minimize_with_grad<T : Sized>(
                 GSLStatus::Continue => { },
                 GSLStatus::Success => {
                     println!("Converged in {} iterations", i);
-                    return Ok((DVector::from(user_x), DVector::from(user_g), obj, probl.user_data));
+                    // gsl_multimin_fdfminimizer_free(minimizer);
+                    return Ok((DVector::from(user_x), DVector::from(user_g), obj, i, probl.user_data));
                 },
                 status => {
                     println!("Steps: {:?}", steps);
+                    // gsl_multimin_fdfminimizer_free(minimizer);
                     return Err(format!("Error (Iteration {}): {:?}", i, status));
                 }
             }
         }
         println!("Steps: {:?}", steps);
+        //gsl_multimin_fdfminimizer_free(minimizer);
         Err(String::from("Maximum number of iterations reached"))
     }
 }

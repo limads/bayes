@@ -7,6 +7,8 @@ use rand_distr;
 use rand;
 use std::default::Default;
 use std::fmt::{self, Display};
+use super::MultiNormal;
+use crate::sim::RandomWalk;
 
 /// A beta distribution yields ratios over the interval [0, 1], produced by taking the
 /// ratio of two independent gamma distributions: If u ~ Gamma(n/2, 0.5) and v ~ Gamma(m/2, 0.5)
@@ -32,7 +34,11 @@ pub struct Beta {
 
     log_part : DVector<f64>,
 
-    factor : Option<Box<Beta>>
+    factor : Option<Box<Beta>>,
+
+    rw : Option<RandomWalk>,
+
+    approx : Option<MultiNormal>
 
 }
 
@@ -169,7 +175,7 @@ impl Distribution for Beta
         DVector::from_element(1, a*b / (a + b).powf(2.) * (a + b + 1.))
     }
 
-    fn log_prob(&self, y : DMatrixSlice<f64>) -> f64 {
+    fn log_prob(&self, y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>) -> f64 {
         assert!(y.ncols() == 1);
         let t = Beta::sufficient_stat(y);
         self.suf_log_prob((&t).into())
@@ -224,12 +230,20 @@ impl Posterior for Beta {
         }
     }
 
-    fn set_approximation(&mut self, _m : MultiNormal) {
-        unimplemented!()
+    fn approximation_mut(&mut self) -> Option<&mut MultiNormal> {
+        self.approx.as_mut()
     }
 
     fn approximation(&self) -> Option<&MultiNormal> {
-        unimplemented!()
+        self.approx.as_ref()
+    }
+
+    fn trajectory(&self) -> Option<&RandomWalk> {
+        self.rw.as_ref()
+    }
+
+    fn trajectory_mut(&mut self) -> Option<&mut RandomWalk> {
+        self.rw.as_mut()
     }
 
 }
@@ -242,7 +256,9 @@ impl Default for Beta {
             mean : DVector::from_element(1, 0.5),
             log_part : DVector::from_element(1, 0.0),
             sampler : rand_distr::Beta::new(1., 1.).unwrap(),
-            factor : None
+            factor : None,
+            rw : None,
+            approx : None
         }
     }
 

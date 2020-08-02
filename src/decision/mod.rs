@@ -43,7 +43,14 @@ impl Default for ErrorRate {
 /// implements distribution, and so can be composed with other distributions inside a graph
 /// (behaving as a Bernoulli random varialble that decides if
 /// the left hand branch is best than the right hand branch given the informed error criterion).
-pub struct DecisionBoundary<'a> {
+///
+/// Decision is a Distribution and Likelihood implementor that behaves differently:
+/// All the data interfacing with it is passed through it to the next Likelihood implementor,
+/// and the internal (scalar) parameter value is determined by the log-likelihood evaluation
+/// of the factor. The log-likelihood of the factor is taken to be the logit of this element. This
+/// allows the user to use a familiar interface of sampling and parameter calculation for the decision
+/// process.
+pub struct Decision<'a> {
     // In the sample(.) forward pass through the graph, the samples from the left branch are transformed
     // via a user-defined function to the fixed Bernoulli parameters, and those parameters are used
     // to evaluate if the incoming transformed samples from the right branch satisfy the boundary
@@ -67,7 +74,7 @@ pub struct DecisionBoundary<'a> {
 
 }
 
-impl<'a> DecisionBoundary<'a> {
+impl<'a> Decision<'a> {
 
     /// Creates a new decision boundary over the informed sample,
     /// by trying to approach the ideal Error Rate as close as possible. If all missing criteria
@@ -96,9 +103,26 @@ impl<'a> DecisionBoundary<'a> {
 
 }
 
+/*impl Distribution for Decision {
+
+}
+
+impl Likelihood for Decision {
+
+    // This implementor just takes a series of binary outcomes
+    // and propagate them to the internal Bernoulli variable.
+    // If there are data-dependent factors that also implement Likelihood,
+    // The data is passed to this implementor without any loss.
+
+}*/
+
 /// BayesFactor can be used to compare posteriors to arbitrary analytical
 /// distributions (Null or saturated); or to compare the same posterior
 /// with itself at different values by comparing their conditional log-posteriors.
+/// It is built from a pair of distributions of the same kind, and outputs a Decision.
+/// The decision that is output as the comparison can be used as a component of a probabilistic graph,
+/// since decision behaves as a Bernoulli variable that uses the log-likelihood as its natural parameter
+/// (logit) value.
 ///
 /// ```rust
 /// // let bf = m1.compare(m2);
@@ -120,7 +144,7 @@ pub struct BayesFactor<'a, D, E>
 
     _b : &'a E,
 
-    _bound : DecisionBoundary<'a>
+    _bound : Decision<'a>
 }
 
 impl<'a, D,E> BayesFactor<'a, D, E>
@@ -134,7 +158,7 @@ impl<'a, D,E> BayesFactor<'a, D, E>
     pub fn best(
         &'a self,
         _y : &'a DMatrix<f64>,
-        _boundary : DecisionBoundary<'a>
+        _boundary : Decision<'a>
     ) -> bool {
         unimplemented!()
     }
@@ -159,7 +183,7 @@ impl<'a, D,E> BayesFactor<'a, D, E>
         _criterion : ErrorRate,
         _outcomes : DVector<f64>,
         _f : &'a dyn Fn(DMatrix<f64>)->DVector<f64>
-    ) -> DecisionBoundary<'a> {
+    ) -> Decision<'a> {
         unimplemented!()
     }
 

@@ -7,6 +7,7 @@ use serde::{Serialize, Deserialize};
 use serde::ser::{Serializer};
 use serde::de::Deserializer;
 use std::fmt::{self, Display};
+use crate::sim::RandomWalk;
 
 /// The Gamma is a distribution for inverse-scale or rate parameters. For a location parameter centered
 /// at alpha (shape), Gamma(alpha, beta) represents the random distribution of
@@ -35,7 +36,11 @@ pub struct Gamma {
 
     sampler : rand_distr::Gamma<f64>,
 
-    factor : Option<Box<Gamma>>
+    factor : Option<Box<Gamma>>,
+
+    rw : Option<RandomWalk>,
+
+    approx : Option<MultiNormal>
 }
 
 impl Gamma {
@@ -171,7 +176,7 @@ impl Distribution for Gamma
         DVector::from_element(1, self.ab[0] / self.ab[1].powf(2.))
     }
 
-    fn log_prob(&self, y : DMatrixSlice<f64>) -> f64 {
+    fn log_prob(&self, y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>) -> f64 {
         assert!(y.ncols() == 1, "Gamma sample should have single column");
         let suf = Self::sufficient_stat(y);
         self.suf_log_prob(suf.rows(0,suf.nrows()))
@@ -194,12 +199,20 @@ impl Posterior for Gamma {
         }
     }
 
-    fn set_approximation(&mut self, _m : MultiNormal) {
-        unimplemented!()
+    fn approximation_mut(&mut self) -> Option<&mut MultiNormal> {
+        self.approx.as_mut()
     }
 
     fn approximation(&self) -> Option<&MultiNormal> {
-        unimplemented!()
+        self.approx.as_ref()
+    }
+
+    fn trajectory(&self) -> Option<&RandomWalk> {
+        self.rw.as_ref()
+    }
+
+    fn trajectory_mut(&mut self) -> Option<&mut RandomWalk> {
+        self.rw.as_mut()
     }
 
 }
@@ -234,7 +247,9 @@ impl Default for Gamma {
             mean : DVector::from_element(1, 0.5),
             log_part : DVector::from_element(1, 0.0),
             sampler : rand_distr::Gamma::new(1., 1.).unwrap(),
-            factor : None
+            factor : None,
+            approx : None,
+            rw : None
         }
     }
 

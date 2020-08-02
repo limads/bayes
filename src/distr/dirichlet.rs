@@ -3,10 +3,15 @@ use nalgebra::*;
 use super::*;
 use serde::{Serialize, Deserialize};
 use std::fmt::{self, Display};
+use crate::sim::RandomWalk;
+use super::MultiNormal;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Dirichlet {
 
+    rw : Option<RandomWalk>,
+
+    approx : Option<MultiNormal>
 }
 
 impl Distribution for Dirichlet {
@@ -31,7 +36,7 @@ impl Distribution for Dirichlet {
         unimplemented!()
     }
 
-    fn log_prob(&self, _y : DMatrixSlice<f64>) -> f64 {
+    fn log_prob(&self, _y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>) -> f64 {
         unimplemented!()
     }
 
@@ -58,12 +63,20 @@ impl Posterior for Dirichlet {
         unimplemented!()
     }
 
-    fn set_approximation(&mut self, _m : MultiNormal) {
-        unimplemented!()
+    fn approximation_mut(&mut self) -> Option<&mut MultiNormal> {
+        self.approx.as_mut()
     }
 
     fn approximation(&self) -> Option<&MultiNormal> {
-        unimplemented!()
+        self.approx.as_ref()
+    }
+
+    fn trajectory(&self) -> Option<&RandomWalk> {
+        self.rw.as_ref()
+    }
+
+    fn trajectory_mut(&mut self) -> Option<&mut RandomWalk> {
+        self.rw.as_mut()
     }
 
 }

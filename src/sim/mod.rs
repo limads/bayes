@@ -25,7 +25,8 @@ pub use marginal::*;
 /// optimization or posterior sampling are considered as conditioned or unconditional priors.
 /// After optimization/simulation, this trajectory is used to build an approximation to the
 /// corresponding posterior entry, which can be retrieved via node.approximate() or node.marginal().
-/// TODO rename to RandomWalk
+///
+/// RandomWalk is the continuous analog of the MarkovChain structure.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RandomWalk {
 
@@ -69,7 +70,7 @@ impl RandomWalk {
         self.pos += 1;
     }
 
-    pub fn get<'a>(&'a self) -> DVectorSlice<'a, f64> {
+    pub fn state<'a>(&'a self) -> DVectorSlice<'a, f64> {
         self.traj.column(self.pos)
     }
 }

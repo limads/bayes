@@ -52,6 +52,12 @@ pub trait Sample<'a, O>
     /// Returns a block of observations from the implementor.
     fn observations(&'a self, from : usize, len : usize) -> Vec<O>;
 
+    /// If the implementor is wide, returns iterator over the rows.
+    fn units(&'a self) -> Option<Box<dyn Iterator<Item=&'a [f64]>>>;
+
+    /// If the implementor is tall, returns iterator over columns.
+    fn variables(&'a self) -> Option<Box<dyn Iterator<Item=&'a [f64]>>>;
+
     /// Erase all observations from the implementor, and re-populate
     /// it using the informed observations.
     fn repopulate(&mut self, obs : &[O]);

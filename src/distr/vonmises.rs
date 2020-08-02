@@ -4,12 +4,15 @@ use super::*;
 use serde::{Serialize, Deserialize};
 // use super::Gamma;
 use std::fmt::{self, Display};
+use crate::sim::RandomWalk;
+use super::MultiNormal;
 
 /// Exponential-family distribution defined over -π ≥ θ ≥ π, resulting
 /// from the observation of a periodic process.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VonMises {
-
+    approx : Option<Box<MultiNormal>>,
+    rw : Option<RandomWalk>
 }
 
 impl Distribution for VonMises
@@ -36,7 +39,7 @@ impl Distribution for VonMises
         unimplemented!()
     }
 
-    fn log_prob(&self, _y : DMatrixSlice<f64>) -> f64 {
+    fn log_prob(&self, _y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>) -> f64 {
         unimplemented!()
     }
 
@@ -60,12 +63,20 @@ impl Posterior for VonMises {
         unimplemented!()
     }
 
-    fn set_approximation(&mut self, _m : MultiNormal) {
-        unimplemented!()
+    fn approximation_mut(&mut self) -> Option<&mut MultiNormal> {
+        self.approx.as_mut().map(|apprx| apprx.as_mut())
     }
 
     fn approximation(&self) -> Option<&MultiNormal> {
-        unimplemented!()
+        self.approx.as_ref().map(|apprx| apprx.as_ref())
+    }
+
+    fn trajectory(&self) -> Option<&RandomWalk> {
+        self.rw.as_ref()
+    }
+
+    fn trajectory_mut(&mut self) -> Option<&mut RandomWalk> {
+        self.rw.as_mut()
     }
 
 }

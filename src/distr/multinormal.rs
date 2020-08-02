@@ -9,6 +9,8 @@ use std::f64::consts::PI;
 use std::fmt::{self, Display};
 use std::default::Default;
 use std::ops::{SubAssign, MulAssign};
+use std::convert::TryInto;
+use crate::sim::RandomWalk;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 enum CovFunction {
@@ -130,28 +132,14 @@ pub struct MultiNormal {
 
     log_part : DVector<f64>,
 
+    rw : Option<RandomWalk>,
+
     // Vector of scale parameters; against which the Wishart factor
     // can be updated. Will be none if there is no scale factor.
     // suff_scale : Option<DVector<f64>>
 }
 
 impl MultiNormal {
-
-    fn _from_approximation(mut eta : DMatrix<f64>, lp_traj : DVector<f64>) -> Self {
-        assert!(eta.ncols() == lp_traj.nrows());
-        let mu_approx = eta.column(eta.ncols()).clone_owned();
-        let eta_c = eta.clone();
-        let eta_iter = eta.column_iter_mut().skip(1).zip(eta_c.column_iter()).enumerate();
-        for (i, (mut eta_curr, eta_last)) in eta_iter {
-            eta_curr -= eta_last;
-            eta_curr.unscale_mut(lp_traj[i+1] - lp_traj[i]);
-        }
-        let eta = eta.remove_column(0);
-        let eta_t = eta_c.remove_column(0).transpose();
-        let prec_approx = eta * eta_t;
-        let sigma_approx = Self::invert_scale(&prec_approx);
-        MultiNormal::new(mu_approx, sigma_approx)
-    }
 
     pub fn invert_scale(s : &DMatrix<f64>) -> DMatrix<f64> {
         let s_qr = QR::<f64, Dynamic, Dynamic>::new(s.clone());
@@ -191,6 +179,7 @@ impl MultiNormal {
             scale_factor : None,
             op : None,
             log_part,
+            rw : None,
             scaled_mu : mu.clone()
         };
         norm.update_log_partition(mu.rows(0, mu.nrows()));
@@ -420,6 +409,9 @@ impl ExponentialFamily<Dynamic> for MultiNormal {
     }
 
     // eta = [sigma_inv*mu,-0.5*sigma_inv] -> [mu|sigma]
+    // N(mu|sigma) has link sigma^(-1/2) mu (the exponential form
+    // parametrized by a natural parameter eta requires the normal
+    // conditional on a realized scale factor).
     fn link_inverse<S>(_eta : &Matrix<f64, Dynamic, U1, S>) -> DVector<f64>
         where S : Storage<f64, Dynamic, U1>
     {
@@ -501,20 +493,20 @@ impl Distribution for MultiNormal {
         Some(self.sigma_inv.clone())
     }
 
-    fn log_prob(&self, y : DMatrixSlice<f64>) -> f64 {
+    fn log_prob(&self, y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>) -> f64 {
         let t = Self::sufficient_stat(y);
         let lp = self.suf_log_prob(t.slice((0, 0), (t.nrows(), t.ncols())));
         let loc_lp = match &self.loc_factor {
             Some(loc) => {
                 let mu_row : DMatrix<f64> = DMatrix::from_row_slice(self.mu.nrows(), 1, self.mu.data.as_slice());
-                loc.log_prob(mu_row.slice((0, 0), (0, self.mu.nrows())))
+                loc.log_prob(mu_row.slice((0, 0), (0, self.mu.nrows())), None)
             },
             None => 0.0
         };
         let scale_lp = match &self.scale_factor {
             Some(scale) => {
                 let sinv_diag : DVector<f64> = self.sigma_inv.diagonal().clone_owned();
-                scale.log_prob(sinv_diag.slice((0, 0), (sinv_diag.nrows(), 1)))
+                scale.log_prob(sinv_diag.slice((0, 0), (sinv_diag.nrows(), 1)), None)
             },
             None => 0.0
         };
@@ -535,12 +527,20 @@ impl Posterior for MultiNormal {
         (loc, scale)
     }
 
-    fn set_approximation(&mut self, _m : MultiNormal) {
-        unimplemented!()
+    fn approximation_mut(&mut self) -> Option<&mut MultiNormal> {
+        Some(self)
     }
 
     fn approximation(&self) -> Option<&MultiNormal> {
-        unimplemented!()
+        Some(self)
+    }
+
+    fn trajectory(&self) -> Option<&RandomWalk> {
+        self.rw.as_ref()
+    }
+
+    fn trajectory_mut(&mut self) -> Option<&mut RandomWalk> {
+        self.rw.as_mut()
     }
 
 }
@@ -573,21 +573,30 @@ impl Likelihood<Dynamic> for MultiNormal {
 
 impl Estimator<MultiNormal> for MultiNormal {
 
-    fn fit<'a>(&'a mut self, y : DMatrix<f64>) -> Result<&'a MultiNormal, &'static str> {
+    fn fit<'a>(&'a mut self, y : DMatrix<f64>, x : Option<DMatrix<f64>>) -> Result<&'a MultiNormal, &'static str> {
         let n = y.nrows() as f64;
         match (&mut self.loc_factor, &mut self.scale_factor) {
             (Some(ref mut norm_prior), Some(ref mut gamma_prior)) => {
                 unimplemented!()
             },
             (Some(ref mut norm_prior), None) => {
+                // Calculate sample centroid
                 let suf = Self::sufficient_stat((&y).into());
                 let mut mu_mle : DVector<f64> = suf.column(0).clone_owned();
                 mu_mle.unscale_mut(n);
+
+                // Scale centroid by precision of self
                 let scaled_mu_mle = (self.sigma_inv.clone() * mu_mle).scale(n);
+
+                // sum the weighted (precision-scaled) prior centroid with scaled sample centroid
                 let w_sum_prec = norm_prior.sigma_inv.clone() + self.sigma_inv.scale(n);
                 let w_sum_cov = Self::invert_scale(&w_sum_prec);
                 norm_prior.mu = w_sum_cov * (norm_prior.scaled_mu.clone() + scaled_mu_mle);
+
+                // substitute prior precision by scaled and summed precision
                 norm_prior.sigma_inv = w_sum_prec;
+
+                // substitute prior mean by scaled and summed mean
                 norm_prior.scaled_mu = norm_prior.sigma_inv.clone() * &norm_prior.mu;
                 Ok(&(*norm_prior))
             },
@@ -650,6 +659,37 @@ mod utils {
         }
         b_mat
     }*/
+
+}
+
+/// Converts to Normal if implementor has unique dimension.
+impl TryInto<Normal> for MultiNormal {
+
+    type Error = ();
+
+    fn try_into(self) -> Result<Normal,()> {
+        unimplemented!()
+    }
+}
+
+/// Converts to a sequence of normals (respecting parameter order)
+/// if covariance is diagonal.
+impl TryInto<Vec<Normal>> for MultiNormal {
+
+    type Error = ();
+
+    fn try_into(self) -> Result<Vec<Normal>, ()> {
+        unimplemented!()
+    }
+
+}
+
+/// Creates MultiNormal of dimension 1 from univariate normal.
+impl From<Normal> for MultiNormal {
+
+    fn from(n : Normal) -> MultiNormal {
+        unimplemented!()
+    }
 
 }
 

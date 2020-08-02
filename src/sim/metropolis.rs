@@ -12,7 +12,8 @@ use crate::distr::Estimator;
 /// the target distribution is used to build a decision rule to either re-sample at the current
 /// position or move the position at which draws are made. After many iterations,
 /// the accumulated samples generate a non-parametric representation
-/// of the marginal posterior distribution, from which summary statistics can be calculated.
+/// of the marginal posterior distribution, from which summary statistics can be calculated
+/// by averaging over sufficiently spaced draws.
 pub struct Metropolis<D>
     where
         D : Distribution
@@ -44,7 +45,36 @@ impl<D> Estimator<D> for Metropolis<D>
     where D : Distribution
 {
 
-    fn fit<'a>(&'a mut self, _y : DMatrix<f64>) -> Result<&'a D, &'static str> {
+    fn fit<'a>(&'a mut self, _y : DMatrix<f64>, x : Option<DMatrix<f64>>) -> Result<&'a D, &'static str> {
+        /*let mut lp = 0.0;
+        let f = |post_node : &mut dyn Posterior| {
+            f.trajectory_mut().unwrap().step();
+        };
+        // setting the approximation at a likelihood node should also set
+        // the approximation at all factors. Calling log_prob(.) over the
+        // approximation returns the log_prob(.) of the approximation plus
+        // of each approximation factor recursively.
+        let mut approx_lp = 0.0
+        let (left_fact, right_fact) = self.dyn_factors();
+        if let Some(left_fact) = left_fact {
+            approx_lp += left_fact.log_prob(y);
+        }
+        if let Some(right_fact) = rigth_fact {
+            approx_lp += rigth_fact.log_prob(y);
+        }
+        let target_lp = self.log_prob(y);
+        let metr_ratio = ...
+        let mut pos = 0;
+        let mut weights = DVector::from_element(max_iter, 0. as f64);
+        let w_incr = 1. / max_iter as f64;
+        for _ in 0..max_iter {
+            if metr_ratio >= 1.0 {
+                self.visit_factors(f);
+                pos += 1;
+            }
+            weights[pos] += w_incr;
+        }
+        let weigths = weights.remove_columns(pos, weights.nrows() - pos);*/
         unimplemented!()
     }
 

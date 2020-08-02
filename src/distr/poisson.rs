@@ -27,14 +27,13 @@ pub type PoissonFactor = UnivariateFactor<Gamma>;
 /// let y = poiss.sample();
 ///
 /// // Maximum likelihood estimate
-/// println!("{}", Poisson::mean_mle((&y).into()));
-/// let (mle,_) = Poisson::mle((&y).into());
+/// let mle = Poisson::mle((&y).into());
 ///
 /// // Bayesian conjugate estimate
 /// let mut poiss_cond = poiss.condition(Gamma::new(1.0,1.0));
-/// poiss_cond.fit(y);
+/// poiss_cond.fit(y, None);
 /// let post : Gamma = poiss_cond.take_factor().unwrap();
-/// assert!(post.mean()[0] - mle < 1E-3);
+/// assert!(post.mean()[0] - mle.mean()[0] < 1E-3);
 /// ```
 #[derive(Debug, Clone)]
 pub struct Poisson {
@@ -162,19 +161,22 @@ impl Distribution for Poisson
         self.lambda.clone()
     }
 
-    fn log_prob(&self, y : DMatrixSlice<f64>) -> f64 {
-        assert!(y.ncols() == 1);
+    fn log_prob(&self, y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>) -> f64 {
+        /*// assert!(y.ncols() == 1);
         let eta = self.eta.rows(0, self.eta.nrows());
         let factor_lp = match &self.factor {
             PoissonFactor::Conjugate(g) => {
-                g.log_prob(self.suf_lambda.as_ref().unwrap().slice((0,0), (1,2)))
+                assert!(y.ncols() == 1);
+                assert!(x.is_none());
+                g.log_prob(self.suf_lambda.as_ref().unwrap().slice((0,0), (1,2)), None)
             },
             PoissonFactor::CondExpect(m) => {
-                m.suf_log_prob(eta.slice((0,0), (eta.nrows(), 1)))
+                m.log_prob(eta.slice((0,1), (eta.nrows(), eta.ncols() - 1)), x)
             },
             PoissonFactor::Empty => 0.
         };
-        eta.dot(&y) - self.log_part[0] + factor_lp
+        eta.dot(&y.slice((0, 0), (y.nrows(), 1))) - self.log_part[0] + factor_lp*/
+        super::univariate_log_prob(y, x, &self.factor, &self.view_parameter(true), self.log_part[0], self.suf_lambda.clone())
     }
 
     fn sample_into(&self, mut dst : DMatrixSliceMut<'_,f64>) {
@@ -251,7 +253,8 @@ impl Conditional<Gamma> for Poisson {
 impl Likelihood<U1> for Poisson {
 
     fn mle(y : DMatrixSlice<'_, f64>) -> Self {
-        unimplemented!()
+        let lambda = y.sum() / y.nrows() as f64;
+        Self::new(1, Some(lambda))
     }
 
     /*fn mean_mle(y : DMatrixSlice<'_, f64>) -> f64 {
@@ -294,7 +297,7 @@ impl Likelihood<U1> for Poisson {
 
 impl Estimator<Gamma> for Poisson {
 
-    fn fit<'a>(&'a mut self, y : DMatrix<f64>) -> Result<&'a Gamma, &'static str> {
+    fn fit<'a>(&'a mut self, y : DMatrix<f64>, x : Option<DMatrix<f64>>) -> Result<&'a Gamma, &'static str> {
         match self.factor {
             PoissonFactor::Conjugate(ref mut gamma) => {
                 let n = y.nrows() as f64;

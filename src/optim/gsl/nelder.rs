@@ -1,8 +1,5 @@
 use crate::gsl::multimin::*;
 use nalgebra::*;
-// use crate::gsl::vector_double::*;
-// use crate::gsl::matrix_double::*;
-// use std::ffi::c_void;
 use crate::gsl::utils::*;
 use super::*;
 
@@ -16,7 +13,7 @@ unsafe fn fetch_data_from_minimizer(
     (end_param, minimum)
 }
 
-pub fn minimize<T : Sized>(
+pub fn minimize<T : Sized + Clone>(
     params : DVector<f64>,
     user_data : T,
     fn_update : Box<dyn FnMut(&DVector<f64>, &mut T)->f64>,

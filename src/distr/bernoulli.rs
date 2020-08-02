@@ -26,14 +26,15 @@ pub type BernoulliFactor = UnivariateFactor<Beta>;
 /// let y = bern.sample();
 ///
 /// // Maximum likelihood estimate
-/// let (mle, _) = Bernoulli::mle((&y).into());
+/// let mle = Bernoulli::mle((&y).into());
 ///
 /// // Bayesian conjugate estimate
 /// let mut bern_cond = bern.condition(Beta::new(1,1));
-/// bern_cond.fit(y);
+/// bern_cond.fit(y, None);
 /// let post : Beta = bern_cond.take_factor().unwrap();
-/// assert!(post.mean()[0] - mle < 1E-3);
+/// assert!(post.mean()[0] - mle.mean()[0] < 1E-3);
 /// ```
+///
 #[derive(Debug)]
 pub struct Bernoulli {
 
@@ -44,7 +45,7 @@ pub struct Bernoulli {
 
     factor : BernoulliFactor,
 
-    eta_traj : Option<RandomWalk>,
+    //eta_traj : Option<RandomWalk>,
 
     sampler : Vec<rand_distr::Bernoulli>,
 
@@ -84,7 +85,9 @@ impl Conditional<Beta> for Bernoulli {
 
     fn condition(mut self, b : Beta) -> Bernoulli {
         self.factor = BernoulliFactor::Conjugate(b);
-        self.suf_theta = Some(Beta::sufficient_stat(self.theta.slice((0, 0), (self.theta.nrows(), 1))));
+        self.suf_theta = Some(Beta::sufficient_stat(
+            self.theta.slice((0, 0), (self.theta.nrows(), 1))
+        ));
         // TODO update sampler vector
         self
     }
@@ -167,7 +170,9 @@ impl ExponentialFamily<U1> for Bernoulli
     }
 
     fn update_log_partition<'a>(&'a mut self, eta : DVectorSlice<'_, f64>) {
-        self.log_part.iter_mut().zip(eta.iter()).for_each(|(l,e)| { *l = (1. + e.exp()).ln(); } );
+        self.log_part.iter_mut()
+            .zip(eta.iter())
+            .for_each(|(l,e)| { *l = (1. + e.exp()).ln(); } );
     }
 
     fn log_partition<'a>(&'a self) -> &'a DVector<f64> {
@@ -183,13 +188,13 @@ impl ExponentialFamily<U1> for Bernoulli
     }*/
 
     fn link_inverse<S>(eta : &Matrix<f64, Dynamic, U1, S>) -> DVector<f64>
-        where S : Storage<f64, Dynamic, U1>
+    where S : Storage<f64, Dynamic, U1>
     {
         eta.map(|e| 1. / (1. + (-1.* e).exp() ) )
     }
 
     fn link<S>(theta : &Matrix<f64, Dynamic, U1, S>) -> DVector<f64>
-        where S : Storage<f64, Dynamic, U1>
+    where S : Storage<f64, Dynamic, U1>
     {
         theta.map(|p| (p / (1. - p)).ln() )
     }
@@ -199,7 +204,8 @@ impl ExponentialFamily<U1> for Bernoulli
 impl Likelihood<U1> for Bernoulli {
 
     fn mle(y : DMatrixSlice<'_, f64>) -> Self {
-        unimplemented!()
+        let prop = y.sum() / y.nrows() as f64;
+        Self::new(1, Some(prop))
     }
 
     /*fn mean_mle(y : DMatrixSlice<'_, f64>) -> f64 {
@@ -277,8 +283,9 @@ impl Likelihood<U1> for Bernoulli {
 
 impl Estimator<Beta> for Bernoulli {
 
-    fn fit<'a>(&'a mut self, y : DMatrix<f64>) -> Result<&'a Beta, &'static str> {
+    fn fit<'a>(&'a mut self, y : DMatrix<f64>, x : Option<DMatrix<f64>>) -> Result<&'a Beta, &'static str> {
         assert!(y.ncols() == 1);
+        assert!(x.is_none());
         match self.factor {
             BernoulliFactor::Conjugate(ref mut beta) => {
                 let n = y.nrows() as f64;
@@ -295,7 +302,7 @@ impl Estimator<Beta> for Bernoulli {
 }
 
 impl Distribution for Bernoulli
-    where Self : Sized
+where Self : Sized
 {
 
     fn set_parameter(&mut self, p : DVectorSlice<'_, f64>, natural : bool) {
@@ -343,19 +350,21 @@ impl Distribution for Bernoulli
         None
     }
 
-    fn log_prob(&self, y : DMatrixSlice<f64>) -> f64 {
-        assert!(y.ncols() == 1);
-        let eta = self.eta.rows(0, self.eta.nrows());
+    fn log_prob(&self, y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>) -> f64 {
+        // assert!(y.ncols() == 1);
+        /*let eta = self.eta.rows(0, self.eta.nrows());
         let factor_lp = match &self.factor {
             BernoulliFactor::Conjugate(b) => {
-                b.log_prob(self.suf_theta.as_ref().unwrap().slice((0,0), (1,2)))
+                assert!(y.ncols() == 1);
+                b.log_prob(self.suf_theta.as_ref().unwrap().slice((0,0), (1,2)), None)
             },
             BernoulliFactor::CondExpect(m) => {
-                m.suf_log_prob(eta.slice((0,0), (eta.nrows(), 1)))
+                m.log_prob(eta.slice((0,1), (eta.nrows(), eta.ncols() - 1)), x)
             },
             BernoulliFactor::Empty => 0.
         };
-        eta.dot(&y) - self.log_part[0] + factor_lp
+        eta.dot(&y.slice((0, 0), (y.nrows(), 1))) - self.log_part[0] + factor_lp*/
+        super::univariate_log_prob(y, x, &self.factor, &self.view_parameter(true), self.log_part[0], self.suf_theta.clone())
     }
 
     fn sample_into(&self, mut dst : DMatrixSliceMut<'_,f64>) {
@@ -428,7 +437,7 @@ impl Default for Bernoulli {
             theta : DVector::from_element(1, 0.5),
             eta : DVector::from_element(1, 0.0),
             factor : BernoulliFactor::Empty,
-            eta_traj : None,
+            //eta_traj : None,
             sampler : Vec::new(),
             log_part : DVector::from_element(1, (2.).ln()),
             suf_theta : None,

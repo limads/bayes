@@ -18,7 +18,7 @@ pub struct Interpolation {
 
 impl Interpolation {
 
-    pub fn new(modality : Modality, n : usize) -> Self {
+    pub fn new(modality : Modality) -> Self {
         unsafe {
             let acc = spline::gsl_interp_accel_alloc();
             let interp_type = match modality {
@@ -30,13 +30,13 @@ impl Interpolation {
         }
     }
 
-    fn interpolate(&mut self, x : &DVector<f64>, y : &DVector<f64>, n : usize) -> DVector<f64> {
+    pub fn interpolate(&mut self, x : &DVector<f64>, y : &DVector<f64>, n : usize) -> (DVector<f64>, DVector<f64>) {
         unsafe {
             let spline = spline::gsl_spline_alloc(self.interp_type, x.nrows());
             spline::gsl_spline_init (spline, &x[0] as *const f64, &y[0] as *const f64, x.nrows());
-            let out = interpolate(spline, self.acc, x.data.as_slice(), y.data.as_slice(), n).unwrap();
+            let (x_compl, out) = interpolate(spline, self.acc, x.data.as_slice(), y.data.as_slice(), n).unwrap();
             spline::gsl_spline_free(spline);
-            DVector::from_vec(out)
+            (DVector::from_vec(x_compl), DVector::from_vec(out))
         }
     }
 
@@ -68,7 +68,7 @@ fn interpolate(
     x : &[f64],
     y : &[f64],
     n : usize
-) -> Result<Vec<f64>, &'static str> {
+) -> Result<(Vec<f64>, Vec<f64>), &'static str> {
     if x.len() != y.len() {
         return Err("Incompatible lengths");
     }
@@ -77,11 +77,13 @@ fn interpolate(
     }
     unsafe {
         let step = define_step(x, n);
+        let mut x_compl = Vec::new();
         let mut interp = Vec::new();
         for i in 0..n {
-            interp.push(spline::gsl_spline_eval(spline, x[0] + step * (i as f64), acc));
+            x_compl.push(x[0] + step * (i as f64));
+            interp.push(spline::gsl_spline_eval(spline, x_compl[i], acc));
         }
-        Ok(interp)
+        Ok((x_compl, interp))
     }
 }
 
@@ -173,7 +175,7 @@ impl Interpolation2D {
         // We might want to interpolate values right at the edge, so we add a security measure.
         let x_dom = (x_dom.0 - 1., x_dom.1 + 1.);
         let y_dom = (y_dom.0 - 1., y_dom.1 + 1.);
-        println!("z data: {:?}", z);
+        // println!("z data: {:?}", z);
         unsafe {
             let spline2d_type = spline2d::gsl_interp2d_bilinear;
             let spline = spline2d::gsl_spline2d_alloc(spline2d_type, x_density + 1, y_density + 1);
@@ -186,15 +188,15 @@ impl Interpolation2D {
             let y_step = y_dom_ext / y_density as f64;
             let x_buf : Vec<_>= (0..(x_density+1)).map(|i| x_dom.0+(i as f64)*x_step ).collect();
             let y_buf : Vec<_>= (0..(y_density+1)).map(|i| y_dom.0+(i as f64)*y_step ).collect();
-            println!("X Buffer : {:?}", x_buf);
-            println!("Y Buffer : {:?}", y_buf);
+            // println!("X Buffer : {:?}", x_buf);
+            // println!("Y Buffer : {:?}", y_buf);
             //println!("{:?}", (x_step, y_step));
             let mut z_buf = vec![0.0; (x_density + 1) * (y_density + 1)];
             for ((x, y), z) in x.iter().zip(y.iter()).zip(z.iter()) {
-                //println!("Coords : {}, {}", x, y);
+                // println!("Coords : {}, {}", x, y);
                 let x_pos = ( ((*x /*- x_dom.0*/ ) / x_step).floor() as i32 ) as usize;
                 let y_pos = ( ((*y /*- y_dom.0*/ ) / y_step).floor() as i32 ) as usize;
-                println!("{} x {}", x_pos, y_pos);
+                // println!("{} x {}", x_pos, y_pos);
                 spline2d::gsl_spline2d_set(spline, &mut z_buf[0] as *mut f64, x_pos, y_pos, *z);
             }
             spline2d::gsl_spline2d_init(
@@ -205,8 +207,7 @@ impl Interpolation2D {
                 x_density + 1,
                 y_density + 1
             );
-            println!("interp initialized");
-
+            // println!("interp initialized");
             Ok(Self {
                 _spline2d_type : spline2d_type,
                 spline,
@@ -220,8 +221,8 @@ impl Interpolation2D {
     }
 
     pub fn interpolate_point(&self, x : f64, y : f64) -> f64 {
-        println!("x : {}, (Domain {:?})", x, self.x_dom);
-        println!("y : {}, (Domain {:?})", y, self.y_dom);
+        // println!("x : {}, (Domain {:?})", x, self.x_dom);
+        // println!("y : {}, (Domain {:?})", y, self.y_dom);
         if x > self.x_dom.0 && x < self.x_dom.1 {
             if y > self.y_dom.0 && y < self.y_dom.1 {
                 unsafe {

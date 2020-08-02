@@ -163,7 +163,7 @@ impl Table {
     }
 
     pub fn open<P>(path : P, null : NullAction) -> Result<Self, String>
-        where P : AsRef<Path>
+    where P : AsRef<Path>
     {
         let f = File::open(path).map_err(|e| format!("{}", e) )?;
         Self::load_from_file(f, null)
@@ -175,8 +175,8 @@ impl Table {
         columns : &[&str],
         data : &[Matrix<f64, Dynamic, U1, S>]
     ) -> Result<Self, &'static str>
-        where
-            S : ContiguousStorage<f64, Dynamic, U1>
+    where
+        S : ContiguousStorage<f64, Dynamic, U1>
     {
         let m = DMatrix::from_columns(data);
         Self::from_matrix(columns, &m)
@@ -366,7 +366,7 @@ impl Table {
 
     // Run-time checked column or column range access.
     pub fn at<I>(&self, ix : I) -> Option<DMatrixSlice<'_, f64>>
-        where I : Into<ColumnIndex>
+    where I : Into<ColumnIndex>
     {
         let ix_range = self.index_range(ix.into())?;
         Some(self.data.slice((0,ix_range.0), (self.data.nrows(), ix_range.1)))
@@ -376,7 +376,7 @@ impl Table {
     /// All data is stored as a continuous f64 buffer irrespective of
     /// the output types.
     pub fn cast_output<I>(&mut self, ix : I, col_type : ColumnType) -> Result<(), &'static str>
-        where I : Into<ColumnIndex>
+    where I : Into<ColumnIndex>
     {
         let ix_range = self.index_range(ix.into()).ok_or("Invalid index")?;
         self.col_types.iter_mut().skip(ix_range.0).take(ix_range.1)
@@ -510,6 +510,16 @@ impl<'a> Sample<'a, MatrixSlice<'a, f64, U1, Dynamic, U1, Dynamic>> for Table
         for (mut row, new_row) in self.data.row_iter_mut().zip(obs.iter()) {
             row.copy_from(&new_row);
         }
+    }
+
+    /// If the implementor is wide, returns iterator over the rows.
+    fn units(&'a self) -> Option<Box<dyn Iterator<Item=&'a [f64]>>> {
+        None
+    }
+
+    /// If the implementor is tall, returns iterator over columns.
+    fn variables(&'a self) -> Option<Box<dyn Iterator<Item=&'a [f64]>>> {
+        None
     }
 
 }

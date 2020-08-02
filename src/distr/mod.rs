@@ -4,6 +4,7 @@ use std::fmt::Debug;
 use std::ops::AddAssign;
 use crate::decision::BayesFactor;
 use std::fmt::Display;
+use crate::sim::RandomWalk;
 
 pub mod poisson;
 
@@ -53,6 +54,10 @@ pub use vonmises::*;
 /// on the current state of the parameter vector. The distribution sampling/
 /// log-probability methods are dependent not only on the current parameter vector,
 /// but also on the state of any applied conditioning factors.
+///
+/// Distributions of the bayes crate may carry scalar or vector-valued parameter values,
+/// which facilitate their use as conditional expectations and/or to represent multivariate
+/// sampling and calculation of log-probabilities.
 pub trait Distribution
 where Self : Debug + Display //+ Sized
 {
@@ -96,13 +101,14 @@ where Self : Debug + Display //+ Sized
     }
 
     /// Evaluates the log-probability of the sample y with respect to the current
-    /// parameter state. This method just dispatches to a sufficient statistic log-probability
+    /// parameter state, and optionally by transforming the random variable by the matrix x.
+    /// This method just dispatches to a sufficient statistic log-probability
     /// or to a conditional log-probability evaluation depending on the conditioning factors
     /// of the implementor. The samples at matrix y are assumed to be independent over rows (or at least
     /// conditionally-independent given the current factor graph). Univariate factors require that
     /// y has a single column; Multivariate factors require y has a number of columns equal to the
     /// distribution parameter vector.
-    fn log_prob(&self, y : DMatrixSlice<f64>) -> f64;
+    fn log_prob(&self, y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>) -> f64;
 
     /// Sample from the current distribution; If the sampling unit has multiple dimensions,
     /// they are represented over columns; If multiple units are sampled (if there are multiple
@@ -128,6 +134,11 @@ where Self : Debug + Display //+ Sized
 /// for factors that yield samples of same dimensionality (univariate or multivariate)
 /// and also can restrict potential exponential family factors to the respective
 /// conjugate priors.
+///
+/// This trait is used to build probability distributions that factor in a directed and tree-like structure,
+/// with a root likelihood node and branch/leaf nodes that are priors and hyperpriors (before inference)
+/// and posterior factors after inference. Undirected probabilistic relationships are implemented
+/// within dedicated structures (see MarkovChain and MarkovField).
 pub trait Conditional<D>
     where
         Self : Distribution + Sized,
@@ -149,12 +160,48 @@ pub trait Conditional<D>
 
 }
 
-// TODO load the sufficient stat as a field for conjugate.
+/// Univariate factors can either have a conjugate distribution
+/// factor (as all distribution implementors have) or a conditional
+/// expectation factor: The sampling and log-prob of the distribution
+/// holding this factor is calculated relative to a random draw from
+/// the parent MultiNormal distribution, which is interpreted as a
+/// set of natural parameters for each realization of this random variable.
 #[derive(Debug, Clone)]
-pub enum UnivariateFactor<D> {
+pub enum UnivariateFactor<D>
+where D : Distribution
+{
     Empty,
     CondExpect(MultiNormal),
+
+    // TODO load the sufficient stat as a field for conjugate.
     Conjugate(D)
+}
+
+fn univariate_log_prob<D>(
+    y : DMatrixSlice<f64>,
+    x : Option<DMatrixSlice<f64>>,
+    factor : &UnivariateFactor<D>,
+    eta : &DVector<f64>,
+    lp : f64,
+    suf_factor : Option<DMatrix<f64>>
+) -> f64
+where D : Distribution
+{
+    //let eta = self.view_parameter(true);
+    let eta_s = eta.rows(0, eta.nrows());
+    let factor_lp = match &factor {
+        UnivariateFactor::Conjugate(d) => {
+            assert!(y.ncols() == 1);
+            assert!(x.is_none());
+            let sf = suf_factor.unwrap();
+            d.log_prob(sf.slice((0,0), sf.shape()), None)
+        },
+        UnivariateFactor::CondExpect(m) => {
+            m.log_prob(eta_s.slice((0,1), (eta_s.nrows(), eta_s.ncols() - 1)), x)
+        },
+        UnivariateFactor::Empty => 0.
+    };
+    eta_s.dot(&y.slice((0, 0), (y.nrows(), 1))) - lp + factor_lp
 }
 
 /// Generic trait shared by all exponential-family distributions. Encapsulate
@@ -216,7 +263,7 @@ pub trait ExponentialFamily<C>
 
     /// Retrieves the gradient of self, with respect to the currently set natural
     /// parameter and sufficient statistic.
-    fn grad(&self, y : DMatrixSlice<'_, f64>) -> DVector<f64> {
+    fn grad(&self, y : DMatrixSlice<'_, f64>, x : Option<DMatrix<f64>>) -> DVector<f64> {
         match y.ncols() {
             1 => {
                 let v = self.var();
@@ -246,14 +293,20 @@ pub trait ExponentialFamily<C>
     /// but is a vector holding a single value for multivariate quantities, which are evaluated against a single parameter value.
     fn log_partition<'a>(&'a self) -> &'a DVector<f64>;
 
-    /// Normalized probability of the independent sample y.
+    /// Normalized probability of the independent sample y. Probabilities can only
+    /// be evaluated directly if the distribution does not have any factors. If the
+    /// distribution has any factors, only log_prob(.) (The unnormalized log-probability)
+    /// can be evaluated. What we can do is calculate the KL divergence between a factor-free
+    /// distribution A wrt. a factored distribution B by calling prob(.) over A and log_prob(.)
+    /// over B, which is useful for variational inference.
     fn prob(&self, y : DMatrixSlice<f64>) -> f64 {
+        // TODO assert self does not have factors.
         // (Assume self does not have any factor,
         // since log_prob will evaluate whole graph)
         let bm = Self::base_measure(y.clone());
         let mut unn_p = DVector::zeros(y.nrows());
         for (i, _) in y.row_iter().enumerate() {
-            unn_p[i] = self.log_prob(y.rows(i,1)).exp();
+            unn_p[i] = self.log_prob(y.rows(i,1), None).exp();
             //println!("lp = {}", unn_p[i]);
         }
         let p = bm.component_mul(&unn_p);
@@ -273,7 +326,7 @@ pub trait Estimator<D>
     /// Runs the inference algorithm for the informed sample matrix,
     /// returning a reference to the modified model (from which
     /// the posterior information of interest can be retrieved).
-    fn fit<'a>(&'a mut self, y : DMatrix<f64>) -> Result<&'a D, &'static str>;
+    fn fit<'a>(&'a mut self, y : DMatrix<f64>, x : Option<DMatrix<f64>>) -> Result<&'a D, &'static str>;
 
 }
 
@@ -282,6 +335,19 @@ pub trait Estimator<D>
 /// Implemented by Normal, Poisson and Bernoulli. Other distributions
 /// require that their log-probability be evaluated by using suf_log_prob(.)
 /// by passing the sufficient statistic calculated from the sample.
+///
+/// A full probabilistic graph is characterized by its outer factored
+/// element, which is a distribution that implements the Likelihood trait. The
+/// dimensionality of the data received by this element depends on how the graph
+/// is built: If you feed a matrix of dimensionality n x m, the Likelihood element
+/// take the first p columns (where p is the dimensionality of its random variable),
+/// and dispatches the remaining m-p elements deeper into the graph, and the same process
+/// is repeated by the remaining elements until the full data matrix is split and distributed
+/// into the graph. If the element has a pre-set scale/shift factor (available only for
+/// normal and multinormal nodes), the element will take the first p+q entries,
+/// where q is the dimensionality of the scale matrix plus the dimensionality of the
+/// shift vector. If the matrix cannot be split exactly between all graph elements,
+/// the log_probability method will panic.
 pub trait Likelihood<C>
     where
         Self : ExponentialFamily<C> + Distribution + Sized,
@@ -344,7 +410,7 @@ pub trait Likelihood<C>
     /// log-probability of the sufficient stat should equal the
     /// log-probability of the component-wise multiplication of
     /// the natural parameter with the individual samples.
-    fn cond_log_prob(&self, y : DMatrixSlice<'_, f64>) -> f64 {
+    fn cond_log_prob(&self, y : DMatrixSlice<'_, f64>, x : Option<DMatrixSlice<'_, f64>>) -> f64 {
         match C::try_to_usize() {
             Some(_) => {
                 let eta_cond = self.view_parameter(true);
@@ -379,6 +445,26 @@ fn var_mle(y : DMatrixSlice<'_, f64>) -> f64 {
     m * (1. - m)
 }*/
 
+/// Posterior is a dynamic trait used by generic inference algorithms
+/// to iterate over the probabilistic graph after the method cond_log_prob(.) is called
+/// on its likelihood node. Inference algorithms should concern
+/// only with whether the current distribution has either none, one or two factors
+/// and the typical operations they might perform over them. Generic inference algorithms
+/// are agnostic to which distributions compose the graph, but nevertheless always operate over them
+/// in a valid way since elements can only be linked together via the compile-time checked Conditional<Target>
+/// trait.
+///
+/// Posterior requires that Self implements Distribution, so all the conventional methods to mutate and
+/// view parameter values are available, although parameters should always be treated on the natural scale.
+/// sampling and calculation of log-probabilities are also available, and are probably the most useful.
+///
+/// Posterior also adds the set_approximation(.) and approximation(.) traits, which deal with
+/// a gaussian approximation of self that can be accessed by the immediate child.
+///
+/// This trait is the way users can get posterior information from generic algorithms.
+/// Algorithms will give back the received graph, but the approximation(.) and/or trajectory(.)
+/// methods, instead of returning None, will return Some(MultiNormal) and/or Some(RandomWalk)
+/// users can query information from.
 pub trait Posterior
     where Self : Debug + Display + Distribution
 {
@@ -425,13 +511,134 @@ pub trait Posterior
         }
     }
 
-    fn set_approximation(&mut self, _m : MultiNormal) {
-        unimplemented!()
-    }
+    fn approximation_mut(&mut self) -> Option<&mut MultiNormal>;
 
-    fn approximation(&self) -> Option<&MultiNormal> {
-        unimplemented!()
+    fn approximation(&self) -> Option<&MultiNormal>;
+
+    fn trajectory(&self) -> Option<&RandomWalk>;
+
+    fn trajectory_mut(&mut self) -> Option<&mut RandomWalk>;
+
+}
+
+/// There is a order of preference when retrieving natural parameters during
+/// posterior estimation:
+/// 1. If the distribution a started random walk started, get the parameter from its last step ; or else:
+/// 2. If the distribution has an approximation set up, get the parameter from the approximation mean; or else:
+/// 3. Get the parameter from the corresponding field of the implementor.
+/// This order satisfies the typical strategy during MCMC of first finding a posterior mode approximation
+/// and use that as a proposal.
+fn get_posterior_eta<P>(post : &P) -> DVectorSlice<f64>
+where P : Posterior
+{
+    match post.trajectory() {
+        Some(rw) => rw.state(),
+        None => {
+            let param = match post.approximation() {
+                Some(mn) => mn.view_parameter(true),
+                None => post.view_parameter(true)
+            };
+            param.rows(0, param.nrows())
+        }
     }
 }
+
+/// Updates the posterior internally-set parameter
+/// using the random walk last step (if available)
+/// or the approximation mean (if available).
+fn update_posterior_eta<P>(post : &mut P)
+where P : Posterior
+{
+    let param = get_posterior_eta(&*post).clone_owned();
+    post.set_parameter(param.rows(0, param.nrows()), true);
+}
+
+/*
+/// A MarkovChain is a directed cyclic graph of categorical distributions.
+/// It is the discrete analog of the RandomWalk structure.
+/// Categoricals encode state transition probabilities (which inherit all the
+/// properties of categoricals, such as conditioning on MultiNormal factors,
+/// useful to model the influence of external factors at the transition probabilities).
+///
+/// Transition probabilities are required only to be conditionally independent,
+/// but they might be affected by factor-specific external variables.
+struct MarkovChain {
+
+    /// A state is simply a categorical holding transition probabilities.
+    /// Since categoricals can be made a function of a multinormal (multinomial regression),
+    /// the transition probabilities can be modelled as functions of external features.
+    states : Vec<Categorical>,
+
+    /// The target state to which each transition refers to is the entry at the dst
+    /// vector. Each entry at the inner vector is an index of the states vector
+    /// (including the current one). Transition targets are not required to be of
+    /// the same size, and empty inner vectors mean final states. Transitions might
+    /// refer to any categorical in the states vector, including the current state.
+    dst : Vec<Vec<usize>>,
+
+    /// The limit field determines the maximum transition size. Without this field,
+    /// recursive chains would repeat forever.
+    limit : usize,
+
+    curr_state : usize
+}
+
+pub enum Transition {
+
+    /// Explore all transition possibilities
+    Any,
+
+    /// Only transition to the highest probability
+    Highest,
+
+    /// Accept only probabilities that have minimum value
+    Minimum(f64),
+
+    /// Accept only the n-best probabilities for any given transition
+    Best(usize)
+
+}
+
+impl MarkovChain {
+
+    /// Return an exhaustive list of all possible trajectories and
+    /// their respective joint probabilities, ordered from the most likely trajectory to
+    /// the least likely. Using trajectories.first() yields the MAP estimate for the markov process.
+    /// Trajectores start at the informed state and end until either a final node is found
+    /// or the state transition limit is reached.
+    fn trajectories(&self, from : usize, rule : Transition) -> Vec<(Vec<usize>, f64)>;
+
+    /// Generate a random trajectory
+    fn sample(&self, n : usize, rule : Transition) -> Vec<<Vec<usize>>;
+
+}
+
+/// Use the curr_state method to walk into some state. Might yield mutable references so
+/// the categoricals may be updated with external data.
+impl Iterator for MarkovChain {
+
+}
+
+impl Extend for MarkovChain {
+
+    /// Receives an iterator over the tuple (Categorical, Vec<usize>)
+    fn extend<T>(&mut self, iter: T) {
+
+    }
+}
+
+/// HiddenMarkov wraps a Markov chain for which only the realizations
+/// of corresponding continuous distributions are seen (the observed variables
+/// are mixture distributions). A index realization
+/// i means that the observation is a draw by indexing the obs vector at
+/// index i. Using observed continuous states conditional on discrete states
+/// naturally accomodate translation/scale variants expected in sound/image
+/// recognition problems.
+struct HiddenMarkov {
+    chain : MarkovChain
+    obs : Vec<MultiNormal>
+}
+
+*/
 
 

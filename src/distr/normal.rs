@@ -23,13 +23,13 @@ use std::fmt::{self, Display};
 /// let y = norm.sample();
 ///
 /// // Maximum likelihood estimate
-/// let (mle,_) = Normal::mle((&y).into());
+/// let mle = Normal::mle((&y).into());
 ///
 /// // Bayesian conjugate estimate
 /// let mut norm_cond = norm.condition(Normal::new(1, Some(0.0), Some(1.0)));
-/// norm_cond.fit(y);
+/// norm_cond.fit(y, None);
 /// let post : Normal = norm_cond.take_factor().unwrap();
-/// assert!(post.mean()[0] - mle < 1E-3);
+/// assert!(post.mean()[0] - mle.mean()[0] < 1E-3);
 /// ```
 #[derive(Debug)]
 pub struct Normal {
@@ -58,6 +58,8 @@ pub struct Normal {
     /// Holds (-0.5)*1/sigma^2
     minus_half_prec : f64,
 
+    rw : Option<RandomWalk>
+
     // When updating the scale, also update this as
     // the second element to the sufficient statistic vector
     // and pass it to the gamma factor.
@@ -81,7 +83,7 @@ impl Normal {
         let prec_suff = DVector::from_column_slice(&[(1. / scale).ln(), 1. / scale]);
         let eta_traj = None;
         let log_part = mu.map(|e| e.powf(2.) / 2. );
-        let mut norm = Self{ mu : mu.clone(), scaled_mu : mu.clone(), loc_factor,
+        let mut norm = Self{ mu : mu.clone(), scaled_mu : mu.clone(), loc_factor, rw : None,
             eta_traj, prec_suff : prec_suff.clone(), scale_factor, log_part, minus_half_prec : -prec_suff[1] / 2.};
         norm.set_scale(scale);
         norm.set_parameter(mu.rows(0, mu.nrows()), false);
@@ -231,17 +233,17 @@ impl Distribution for Normal
         None
     }
 
-    fn log_prob(&self, y : DMatrixSlice<f64>) -> f64 {
+    fn log_prob(&self, y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>) -> f64 {
         /*let eta = match self.current() {
             Some(eta) => eta,
             None => self.mu.rows(0, self.mu.nrows())
         };*/
         let loc_lp = match self.loc_factor {
-            Some(ref loc) => loc.log_prob(self.mu.slice((0, 0), (self.mu.nrows(), 1))),
+            Some(ref loc) => loc.log_prob(self.mu.slice((0, 0), (self.mu.nrows(), 1)), None),
             None => 0.
         };
         let scale_lp = match self.scale_factor {
-            Some(ref scale) => scale.log_prob(self.prec_suff.slice((0,0), (2, 1))),
+            Some(ref scale) => scale.log_prob(self.prec_suff.slice((0,0), (2, 1)), None),
             None => 0.
         };
         let t = Self::sufficient_stat(y);
@@ -268,12 +270,22 @@ impl Posterior for Normal {
         (loc, scale)
     }
 
-    fn set_approximation(&mut self, _m : MultiNormal) {
+    fn approximation_mut(&mut self) -> Option<&mut MultiNormal> {
+        //Some(self)
         unimplemented!()
     }
 
     fn approximation(&self) -> Option<&MultiNormal> {
+        //Some(self)
         unimplemented!()
+    }
+
+    fn trajectory(&self) -> Option<&RandomWalk> {
+        self.rw.as_ref()
+    }
+
+    fn trajectory_mut(&mut self) -> Option<&mut RandomWalk> {
+        self.rw.as_mut()
     }
 
 }
@@ -291,7 +303,10 @@ impl Likelihood<U1> for Normal {
     }*/
 
     fn mle(y : DMatrixSlice<'_, f64>) -> Self {
-        unimplemented!()
+        let suff = Self::sufficient_stat(y);
+        let mean = suff[0] / y.nrows() as f64;
+        let var = (suff[1] - mean.powf(2.)) / y.nrows() as f64;
+        Normal::new(1, Some(mean), Some(var))
     }
 
     fn visit_factors<F>(&mut self, f : F) where F : Fn(&mut dyn Posterior) {
@@ -380,7 +395,7 @@ impl Conditional<Gamma> for Normal {
 
 impl Estimator<Normal> for Normal {
 
-    fn fit<'a>(&'a mut self, y : DMatrix<f64>) -> Result<&'a Normal, &'static str> {
+    fn fit<'a>(&'a mut self, y : DMatrix<f64>, x : Option<DMatrix<f64>>) -> Result<&'a Normal, &'static str> {
         let prec1 = 1. / self.var()[0];
         match (&mut self.loc_factor, &mut self.scale_factor) {
             (Some(ref mut norm), Some(ref mut gamma)) => {
