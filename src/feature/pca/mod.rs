@@ -1,5 +1,8 @@
 use nalgebra::*;
 
+/// Basis reductions based on decomposition of the empirical covariance matrix.
+/// Those transformations project samples to the orthogonal axis that preserve
+/// global variance (PCA)
 pub struct PCA {
 
 }

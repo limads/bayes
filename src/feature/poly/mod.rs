@@ -5,6 +5,13 @@ use crate::gsl::bpsline::*;
 /// polynomial expanded up to degree k. The basis implementation returns
 /// an empty coefficient iterator, because usually they will be estimated
 /// rather than be a part of the expansion.
+///
+/// Polynomial basis expansion to arbitrary degree, eiter globally (Polynomial)
+/// or locally (Spline). A polynomial basis expansion can be seen as a nth
+/// degree Taylor series approximation to a conditional expectation.
+/// Spline basis expansion are similar, but defined more locally over a domain,
+/// but have smoothness constraints at the region boundaries, and can be used to
+/// build flexible non-linear conditional expectations. (Work in progress)
 pub struct Spline {
     ws : *mut gsl_bspline_workspace,
     basis : DMatrix<f64>

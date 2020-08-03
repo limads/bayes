@@ -1,6 +1,45 @@
 use nalgebra::*;
 use nalgebra::storage::*;
 
+/// Basis reductions for signals (samples with temporal or spatial autocorrelation).
+/// FFTs are provided via bindings to Intel MKL (requires that crate is compiled with
+/// feature 'mkl'. DWTs are provided via bindings to GSL. Both algorithms
+/// are called through a safe generic trait FrequencyBasis at the module root.
+/// Also contain interpolation utilities for signals that are not sampled homogeneously,
+/// to satisfy the FFT/DWT equal sample spacing restriction.
+pub trait Basis<'a, M, N, C>
+    where
+        M: Scalar,
+        N : Scalar,
+        C : Dim
+{
+
+    fn forward<S>(&'a mut self, s : &Matrix<M, Dynamic, C, S>) -> &'a Matrix<N, Dynamic, C, VecStorage<N, Dynamic, C>>
+        where S : ContiguousStorage<M, Dynamic, C>;
+
+    fn backward(&'a mut self) -> &'a Matrix<M, Dynamic, C, VecStorage<M, Dynamic, C>>;
+
+    fn partial_backward<S>(&'a mut self, n : usize) -> MatrixSlice<'a, M, Dynamic, C, U1, Dynamic>;
+
+    /// Iterate over eigenvalues of the decomposition (PCA/LDA) or over
+    /// complex coefficients at a vector or matrix (FFT) or over the real
+    /// coefficient windows (DWT). Returns single result for PCA/LDA (Option).
+    /// Return groups of coefficients for splines, depending on the region
+    /// the spline is centered at (Vec).
+    fn coefficients(&'a self) -> &'a Matrix<N, Dynamic, C, VecStorage<N, Dynamic, C>>;
+
+    fn coefficients_mut(&'a mut self) -> &'a mut Matrix<N, Dynamic, C, VecStorage<N, Dynamic, C>>;
+
+    fn domain(&'a self) -> Option<&'a Matrix<M, Dynamic, C, VecStorage<M, Dynamic, C>>>;
+
+    fn domain_mut(&'a mut self) -> Option<&'a mut Matrix<M, Dynamic, C, VecStorage<M, Dynamic, C>>>;
+
+    // Iterate over column vectors of V (PCA;LDA) or over complex
+    // sinusoids (FFT) or over wavelets (DWT).
+    // fn basis(&self) -> Vec<Matrix<N, Dynamic, C, SliceStorage<N, Dynamic, C>>>;
+
+}
+
 // Wrapper type to the Fast-Fourier transforms provided by MKL
 #[cfg(feature = "mkl")]
 pub mod fft;
@@ -10,8 +49,6 @@ pub use fft::*;
 
 // Wrapper type to the Wavelet transforms provided by GSL
 pub mod dwt;
-
-// mod dwt;
 
 pub use dwt::*;
 

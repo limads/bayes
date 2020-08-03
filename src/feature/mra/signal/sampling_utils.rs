@@ -1,5 +1,6 @@
 use nalgebra::{Scalar, DMatrix, Dynamic, U1, MatrixSlice, MatrixSliceMut};
 use std::ops::{Add, Mul};
+use super::Sampling;
 
 #[inline(always)]
 fn zip_rows_buffer_mut<'a, N : Scalar>(
@@ -276,6 +277,15 @@ pub fn subsample_convert<T,U>(
             dst[dst_ix] = content[r*sample_n*ncols + c*sample_n].into();
         }
     }
+}
+
+pub fn window_2d<'a>(src : &'a [u8], sampling : &Sampling, nrows : usize, ncols : usize) -> Vec<&'a [u8]> {
+    src.chunks(sampling.size.1)
+        .skip(sampling.offset.0)
+        .step_by(sampling.step)
+        .take(nrows)
+        .map(|r| &r[sampling.offset.1..(sampling.offset.1+ncols*sampling.step)] )
+        .collect()
 }
 
 /*#[inline(always)]

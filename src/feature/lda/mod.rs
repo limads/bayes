@@ -10,6 +10,7 @@ use nalgebra::*;
 /// based on a classification vector or design matrix.
 /// The coefficients of LDA are the eigenvalues of sigma_w^-1 sigma_b;
 /// The eigenvectors are the ordered, unscaled axes of maximum discriminability.
+/// This structure preserve within/between-class variance (LDA).
 pub struct LDA {
 
 }

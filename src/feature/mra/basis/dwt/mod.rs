@@ -3,8 +3,7 @@ use nalgebra::*;
 use iter::*;
 use nalgebra::storage::*;
 use gsl::*;
-use crate::feature::basis::Basis;
-use super::FrequencyBasis;
+use super::{Basis, FrequencyBasis};
 
 /// Utilities for iterating over the levels of a wavelet transform.
 pub mod iter;

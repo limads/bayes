@@ -3,8 +3,8 @@ use super::*;
 use nalgebra::storage::*;
 use simba::scalar::RealField;
 use std::fmt::Debug;
-use crate::feature::basis::*;
-use crate::signal::conv::*;
+use super::*;
+use super::super::signal::conv::*;
 
 /// Wrappers over MKL FFT routines.
 pub mod mkl;
@@ -17,7 +17,7 @@ pub enum Overlap {
     Quarter
 }
 
-/// If the FFT is built with a window, perform the short-time fourier transform.
+/*/// If the FFT is built with a window, perform the short-time fourier transform.
 /// The transform yields an interator over separate windows. If the FFT is built
 /// without a window, the iterator yield a single element. The second element is
 /// an overlap, informing if the window should be over contiguous or overlapping
@@ -25,6 +25,13 @@ pub enum Overlap {
 /// too large relative to the window and might be missed if they are over window
 /// transitions). Each transition point is a categorical (or bernoulli for binary
 /// transitions) with a dirichlet (beta) prior.
+/// Self will decompose the signal at windows of size len.
+/// Signal is shift-invariant within windows at the cost
+/// of reduced spatial resolution. Larger window sizes
+/// increase spatial resolution at each window at the cost
+/// of not being able to examine short-scale temporal
+/// changes. After setting the window, take FFT only of the
+/// updated window, leaving past data at their old state.
 pub enum Window {
 
     /// The box window simply tiles the temporal/spatial
@@ -50,7 +57,7 @@ pub enum Window {
 
 struct WindowContent<N, C>
 where
-    N : Scalar + Into<f64>
+    N : Scalar + Into<f64>,
     C : Dim
 {
     win : Window,
@@ -130,7 +137,7 @@ impl<N, C> WindowContent<N, C>
             }
         }
     }
-}
+}*/
 
 fn half_circular_domain<N : Scalar + From<f32>>(sz : usize) -> DVector<N> {
     let samples : Vec<N> = (0..sz).map(|s| {

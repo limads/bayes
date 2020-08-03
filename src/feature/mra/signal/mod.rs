@@ -2,12 +2,17 @@ use nalgebra::*;
 use nalgebra::storage::*;
 use std::default::Default;
 use std::ops::{Add, Mul};
+use crate::sample::*;
+use crate::distr::*;
 
 /// Convolution utilities
 pub mod conv;
 
-/// Utilities for interpolating time series and surfaces, offered by GSL. (Work in progress)
+/// Utilities for interpolating time series and surfaces, via bindings to GSL. (Work in progress)
 pub mod interp;
+
+/// Utilities for downsampling/upsampling signals.
+pub mod res;
 
 mod sampling_utils;
 
@@ -66,11 +71,6 @@ pub struct Sampling {
     pub step : usize,
 }
 
-/*impl Default for Sampling {
-    fn default() -> Self {
-    }
-}*/
-
 impl<N> Signal<u8> for DVector<N>
 where
     N : Scalar + Copy + From<u8> + From<f32> + Add<Output=N> + Mul<Output=N>
@@ -103,19 +103,13 @@ where
 
 impl<N> Signal<u8> for DMatrix<N>
 where
-    N : Scalar + Copy + From<u8> + /*Into<u8> +*/ From<f32> + Add<Output=N> + Mul<Output=N>,
+    N : Scalar + Copy + From<u8> + From<f32> + Add<Output=N> + Mul<Output=N>,
     f64 : From<N>
 {
 
     fn downsample(&mut self, src : &[u8], sampling : Sampling) {
         let (nrows, ncols) = self.shape();
-        let rows : Vec<&[u8]> = src.chunks(sampling.size.1)
-            .skip(sampling.offset.0)
-            .step_by(sampling.step)
-            .take(self.nrows())
-            .map(|r| &r[sampling.offset.1..(sampling.offset.1+self.ncols()*sampling.step)] )
-            .collect();
-        //println!("{:?}", rows);
+        let rows = window_2d(src, &sampling, self.nrows(), self.ncols());
         copy_from_slices(self, &rows, sampling.step);
     }
 

@@ -1,4 +1,4 @@
-use crate::signal::conv::iter::*;
+use super::iter::*;
 use nalgebra::*;
 
 pub trait Convolve {

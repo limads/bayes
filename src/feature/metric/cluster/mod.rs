@@ -1,8 +1,9 @@
 use nalgebra::*;
-use super::metric::*;
+use super::*;
 
 pub struct Cluster {
 
+    /// Rows of sample pertaining to this cluster.
     pub items : Vec<usize>,
 
     // mean and cov can be recovered from the
@@ -17,6 +18,9 @@ pub struct Cluster {
 /// from the average of the observations.
 pub struct KMeans {
 
+    /// Indices of the sample columns that were used for clustering.
+    cols : usize
+
 }
 
 /// The hierarchical clustering algorithm generate clusters
@@ -25,7 +29,10 @@ pub struct KMeans {
 pub struct HClust {
 
     /// Distance/Proximity of observation i (row) to j (column).
-    metrics : DMatrix<f64>
+    metrics : DMatrix<f64>,
+
+    /// Indices of the sample columns that were used for clustering.
+    cols : usize
 }
 
 impl HClust {

@@ -44,8 +44,5 @@ pub mod gsl;
 /// Data structures and generic traits to load and save data into/from dynamically-allocated matrices.
 pub mod sample;
 
-/// Utilities to load time series data or images into dynamically-allocated matrices
-pub mod signal;
-
 /// Feature extraction traits, structures and algorithms.
 pub mod feature;

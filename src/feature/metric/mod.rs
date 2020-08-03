@@ -3,6 +3,12 @@ use nalgebra::*;
 use nalgebra::sparse::CsMatrix;
 use std::collections::HashSet;
 
+// Sample-wise matching from global metrics
+pub mod matching;
+
+// Clustering based on sample-wise metric or sample-to-prototype metric
+pub mod cluster;
+
 /*/// Pair-wise metrics are calculated w.r.t. a pair of sample implementors
 /// of the same type.
 pub type Set<T : Sample> = HashSet<T>;*/
