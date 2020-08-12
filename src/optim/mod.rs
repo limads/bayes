@@ -321,11 +321,18 @@ mod approx {
 
         // data points w.r.t. which function is optimized.
         let vals = DMatrix::from_column_slice(5, 1, &[1., 2., 3., 1., 2.]);
-        let mut optim = LBFGS::prepare(param, (g, vals))
+        let mut optim = LBFGS::prepare(param, (g, vals.clone()))
             .with_gradient(grad)
             .with_function(obj);
-        optim.minimize().map(|min| println!("Minimum = {}", min) )
-            .expect("Minimization failed");
+        let min = optim.minimize().expect("Minimization failed");
+        println!("Minimum = {}", min);
+        let mut poiss = optim.take_data().0;
+        poiss.set_parameter((&min.value).into(), true);
+        let optim_mle = poiss.view_parameter(false)[0];
+        println!("optim suff stat: {}", optim_mle);
+        let stat_mle = Poisson::sufficient_stat((&vals).into())[(0, 0)];
+        println!("suff stat: {}", stat_mle);
+        assert!((optim_mle - stat_mle).abs() < 1E-2 );
     }
 
 }

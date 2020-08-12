@@ -261,7 +261,7 @@ impl Conditional<Gamma> for Poisson {
 impl Likelihood<U1> for Poisson {
 
     fn mle(y : DMatrixSlice<'_, f64>) -> Self {
-        let lambda = y.sum() / y.nrows() as f64;
+        let lambda = y.sum() as f64 / y.nrows() as f64;
         Self::new(1, Some(lambda))
     }
 

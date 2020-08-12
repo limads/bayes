@@ -22,18 +22,21 @@ fn prob_sample() {
     }
 }
 
-// View distribution as a function of the parameter
-// select lambda::real, log_prob::real, score::real from poiss;
+// View distribution as a function of the natural parameter
+// select eta::real, log_prob::real, score::real from poiss;
+// select * from poiss
+//    order by abs(score::real);
 fn log_prob() {
-    println!("lambda,log_prob,score");
+    println!("eta,log_prob,score");
     let y = DVector::from_column_slice(&[1., 2., 3., 1., 2.]);
+    let mut p = Poisson::new(5, None);
     for i in 1..1000 {
-        let lambda = i as f64 * 0.1;
-        let p = Poisson::new(5, Some(lambda));
+        let eta = DVector::from_element(5, -2.3 + i as f64 * 0.01);
+        p.set_parameter((&eta).into(), true);
         let lp = p.log_prob(y.slice((0, 0), (5, 1)), None);
         // let prob = p.prob(y.slice((0, 0), (5, 1)), None);
         let score = p.grad(y.slice((0, 0), (5, 1)), None);
-        println!("{},{},{}", lambda, lp, score[0]);
+        println!("{},{},{}", eta[0], lp, score[0]);
     }
 }
 
