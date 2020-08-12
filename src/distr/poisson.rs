@@ -78,6 +78,12 @@ impl ExponentialFamily<U1> for Poisson
         y.column(0).map(|y| /*1. / (Bernoulli::factorial(y as usize) as f64*/ Gamma::gamma_inv(y + 1.) )
     }
 
+    /*fn grad(&self, y : DMatrixSlice<'_, f64>, x : Option<DMatrix<f64>>) -> DVector<f64> {
+        // equivalent to sum_i { yi/lambda - 1 }
+        let g = y.nrows() as f64 * (y.mean() - self.lambda[0]) / self.lambda[0];
+        DVector::from_element(1, g)
+    }*/
+
     fn sufficient_stat(y : DMatrixSlice<'_, f64>) -> DMatrix<f64> {
         assert!(y.ncols() == 1);
         DMatrix::from_element(1, 1, y.column(0).iter().fold(0.0, |ys, y| ys + y ))
@@ -91,7 +97,9 @@ impl ExponentialFamily<U1> for Poisson
     }
 
     fn update_log_partition<'a>(&'a mut self, eta : DVectorSlice<'_, f64>) {
-        self.log_part.iter_mut().zip(eta.iter()).for_each(|(l,e)| { *l = e.exp() } );
+        self.log_part.iter_mut()
+            .zip(eta.iter())
+            .for_each(|(l,e)| { *l = e.exp() } );
     }
 
     fn log_partition<'a>(&'a self) -> &'a DVector<f64> {
@@ -176,7 +184,7 @@ impl Distribution for Poisson
             PoissonFactor::Empty => 0.
         };
         eta.dot(&y.slice((0, 0), (y.nrows(), 1))) - self.log_part[0] + factor_lp*/
-        super::univariate_log_prob(y, x, &self.factor, &self.view_parameter(true), self.log_part[0], self.suf_lambda.clone())
+        super::univariate_log_prob(y.clone(), x, &self.factor, &self.view_parameter(true), self.log_part[0], self.suf_lambda.clone())
     }
 
     fn sample_into(&self, mut dst : DMatrixSliceMut<'_,f64>) {

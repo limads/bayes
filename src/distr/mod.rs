@@ -187,8 +187,9 @@ fn univariate_log_prob<D>(
 ) -> f64
 where D : Distribution
 {
-    //let eta = self.view_parameter(true);
+    // let eta = self.view_parameter(true);
     let eta_s = eta.rows(0, eta.nrows());
+    // println!("eta = {}", eta_s);
     let factor_lp = match &factor {
         UnivariateFactor::Conjugate(d) => {
             assert!(y.ncols() == 1);
@@ -262,16 +263,22 @@ pub trait ExponentialFamily<C>
     // fn update_grad(&mut self, eta : DVectorSlice<'_, f64>);
 
     /// Retrieves the gradient of self, with respect to the currently set natural
-    /// parameter and sufficient statistic.
+    /// parameter and sufficient statistic. For univariate exponential family implementors,
+    /// this is called the score function, because it is a generalization of the normal score
+    /// (y - mu) / sigma. The output gradient has the same dimensionality as the sample y
+    /// and the (expanded) natural parameter eta.
     fn grad(&self, y : DMatrixSlice<'_, f64>, x : Option<DMatrix<f64>>) -> DVector<f64> {
         match y.ncols() {
             1 => {
-                let v = self.var();
-                assert!(v.nrows() == v.ncols());
-                assert!(v.nrows() == 1);
+
+                // This will work only for None or Conjugate factors, since the CondExpect
+                // factors fall into the second (multivariate case): cov_inv^{-1} ( y - mean )
+                // The variance vector will have the same value at each entry in those cases,
+                // but different values if the factor is a condtional expectation.
+                /*let v = self.var();
                 let mut diff = y.column(0).clone_owned() - self.mean();
-                diff.unscale_mut(v[(0)]);
-                diff
+                DVector::from_element(1, diff.sum() )*/
+                DVector::from_element(1, y.sum() - self.mean()[0])
             },
             d => {
                 let cov_inv = self.cov_inv().unwrap();
@@ -299,17 +306,22 @@ pub trait ExponentialFamily<C>
     /// can be evaluated. What we can do is calculate the KL divergence between a factor-free
     /// distribution A wrt. a factored distribution B by calling prob(.) over A and log_prob(.)
     /// over B, which is useful for variational inference.
-    fn prob(&self, y : DMatrixSlice<f64>) -> f64 {
+    fn prob(&self, y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>) -> f64 {
         // TODO assert self does not have factors.
         // (Assume self does not have any factor,
         // since log_prob will evaluate whole graph)
-        let bm = Self::base_measure(y.clone());
+
         let mut unn_p = DVector::zeros(y.nrows());
         for (i, _) in y.row_iter().enumerate() {
-            unn_p[i] = self.log_prob(y.rows(i,1), None).exp();
+            unn_p[i] = self.log_prob(y.rows(i,1), x).exp();
             //println!("lp = {}", unn_p[i]);
         }
+
+        // (Moved base measure to addition at univariate_log_prob).
+        let bm = Self::base_measure(y.clone());
         let p = bm.component_mul(&unn_p);
+        //let p = unn_p;
+
         let joint_p = p.iter().fold(1., |jp, p| jp * p);
         joint_p
     }

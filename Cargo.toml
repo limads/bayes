@@ -37,3 +37,9 @@ path = "examples/composition.rs"
 [[example]]
 name = "sample"
 path = "examples/sample.rs"
+
+[[example]]
+name="approx"
+path = "examples/approx.rs"
+
+

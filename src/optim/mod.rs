@@ -248,6 +248,86 @@ mod approx {
         delta
     }
 
+    #[test]
+    fn approx_gamma() {
+
+        use crate::distr::*;
+        use super::*;
+
+        let g = Gamma::new(0.5, 0.5);
+        let param = OptimParam::new()
+            .init_state(DVector::from_column_slice(&[10.0, 10.0]))
+            .preserve(100)
+            .max_iter(100);
+        let grad = |dx : &DVector<f64>, g : &mut (Gamma, DMatrix<f64>)| -> DVector<f64> {
+            let grad = g.0.grad((&g.1).into(), None);
+            println!("grad = {}", grad);
+            grad
+        };
+        let obj = |x : &DVector<f64>, g : &mut (Gamma, DMatrix<f64>)| -> f64 {
+            println!("param = {}", x);
+            g.0.set_parameter((x).into(), true);
+            let min = (-1.)*g.0.suf_log_prob((&g.1).into());
+            println!("min = {}", min);
+            min
+        };
+        let val = DMatrix::from_column_slice(2, 1, &[1., 1.]);
+        let mut optim = LBFGS::prepare(param, (g, val))
+            .with_gradient(grad)
+            .with_function(obj);
+        optim.minimize().map(|min| println!("{}", min) )
+            .expect("Minimization failed");
+    }
+
+    #[test]
+    fn approx_poiss() {
+
+        use crate::distr::*;
+        use super::*;
+
+        // Establish the 1D parameter vector.
+        let init_lambda = 8.0;
+        let g = Poisson::new(5, Some(init_lambda));
+        let param = OptimParam::new()
+            .init_state(DVector::from_column_slice(&[init_lambda]))
+            .preserve(100)
+            .max_iter(100);
+        let grad = |x : &DVector<f64>, g : &mut (Poisson, DMatrix<f64>)| -> DVector<f64> {
+            let x = if x.nrows() == 1 {
+                DVector::from_element(g.1.nrows(), x[0])
+            } else {
+                x.clone_owned()
+            };
+            g.0.set_parameter((&x).into(), true);
+            let grad = (-1.)*g.0.grad((&g.1).into(), None);
+            println!("grad = {}", grad);
+            grad
+        };
+        let obj = |x : &DVector<f64>, g : &mut (Poisson, DMatrix<f64>)| -> f64 {
+            println!("param = {}", x);
+
+            // During optimization, we will receive a vector of size one from the optimizer.
+            // We must propagate to the actual natural parameter size (3).
+            let x = if x.nrows() == 1 {
+                DVector::from_element(g.1.nrows(), x[0])
+            } else {
+                x.clone_owned()
+            };
+            g.0.set_parameter((&x).into(), true);
+            let min = (-1.) * g.0.log_prob((&g.1).into(), None);
+            println!("min = {}", min);
+            min
+        };
+
+        // data points w.r.t. which function is optimized.
+        let vals = DMatrix::from_column_slice(5, 1, &[1., 2., 3., 1., 2.]);
+        let mut optim = LBFGS::prepare(param, (g, vals))
+            .with_gradient(grad)
+            .with_function(obj);
+        optim.minimize().map(|min| println!("Minimum = {}", min) )
+            .expect("Minimization failed");
+    }
+
 }
 
 type Gradient<T> = Box<dyn FnMut(&DVector<f64>, &mut T)->DVector<f64>>;
@@ -268,8 +348,8 @@ type Objective<T> = Box<dyn FnMut(&DVector<f64>, &mut T)->f64>;
 ///        .init_state(DVector::from_element(1, 1.))
 ///        .preserve(100)
 ///        .max_iter(100);
-/// let grad = |dx : &DVector<f64>, t : &mut ()| -> DVector<f64> {
-///     DVector::from_element(1, 6. * dx[0])
+/// let grad = |x : &DVector<f64>, t : &mut ()| -> DVector<f64> {
+///     DVector::from_element(1, 6. * x[0])
 /// };
 /// let obj = |x : &DVector<f64>, t : &mut ()| -> f64 {
 ///     3.*x[0].powf(2.) + 5.

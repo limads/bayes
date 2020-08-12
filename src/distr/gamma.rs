@@ -93,8 +93,8 @@ impl ExponentialFamily<Dynamic> for Gamma {
     }
 
     fn suf_log_prob(&self, t : DMatrixSlice<'_, f64>) -> f64 {
-        assert!(self.log_part.nrows() == 1, "Sufficient probability matrix should be 2x1");
-        assert!(t.ncols() == 1 && t.nrows() == 2, "Sufficient probability matrix should be 2x1");
+        assert!(self.log_part.nrows() == 1, "Log-partition 1x1");
+        assert!(t.ncols() == 1 && t.nrows() == 2, "Sufficient statistic matrix should be 2x1");
         self.eta.dot(&t.column(0)) - self.log_part[0]
     }
 

@@ -3,17 +3,17 @@ use crate::sample::Sample;
 use nalgebra::sparse::CsMatrix;
 use crate::distr::*;
 
-// Linear discriminant analysis
-// pub mod lda;
+/// Linear discriminant analysis
+pub mod lda;
 
-// Dissimilarity metrics and related clustering and matching algorithms
+/// Dissimilarity metrics and related clustering and matching algorithms
 pub mod metric;
 
 /// Multiresolution analysis and signal processing utilities
 pub mod mra;
 
-// Principal components analysis basis reduction
-//pub mod pca;
+/// Principal components analysis
+pub mod pca;
 
 // Polynomial and spline basis expansion
 // pub mod poly;
@@ -80,9 +80,23 @@ pub trait Feature
 /// (multiply-add), conversions (floating-point to u8 for example) and
 /// LTI operations (subsampling/upsampling, convolution).
 pub trait Invert<S>
-where {
+{
 
     fn invert(feat : Self) -> S;
+
+}
+
+/// Signal approximation algorithm (sparse reconstruction, principal components approximation,
+/// etc). If a pipeline is composed only with algorithms that implement Approximate and/or Invert,
+/// the pipeline can automatically generate new signal samples from the probabilistic model samples.
+/// Unlike Invert<>, where the output is a signal, calls to Approximate will generate not signals,
+/// but sample objects.
+pub trait Approximate<S> //<S, O>
+//where
+    //S : Sample<O>
+{
+
+    fn approximate(sig : Self) -> S;
 
 }
 
@@ -92,12 +106,21 @@ pub enum PipelineError {
     Sample(usize)
 }
 
-pub enum Step<D, I>
+pub enum Step<D, A, I>
 where
-    I : Invert<D>
+    I : Invert<D>,
+    A : Approximate<D>
 {
+
+    /// Generic (non-invertible) signal transformation step
+    /// such as convolution.
     Generic(Box<dyn FnMut(D)->Option<D>>),
-    Invertible(I)
+
+    /// Invertible signal transformation step such as down/upsampling,
+    /// interpolation, dimensionality reduction, etc.
+    Invertible(I),
+
+    Approximate(A)
 }
 
 /*impl<D, I> From<F> for Step<D, I>
@@ -140,6 +163,13 @@ where
 /// last element, and all operations implement Invert, a signal can be reconstructed
 /// by sampling from the model and walking the graph backwards.
 ///
+/// Pipeline is a sample implementor that transforms arbitrary Rust objects
+/// (usually containers) that implement bayes::feature::Signal. As such, Estimators can
+/// receive a pipeline as argument. The method pipeline.process(S)
+/// generate rows from a single Signal implementor, while pipeline.aggregate(&[S])
+/// generate one row per signal implementor at the slice, appending the rows from each
+/// sample as a column.
+///
 /// # Example
 ///
 /// ```
@@ -156,7 +186,7 @@ where
 ///
 /// let ans = pipe.process(&[1,2,3]).expect("Pipeline failed);
 /// let ans = pipe.generate(None);
-/// model.fit(&ans);
+/// model.fit(&pipe);
 /// ```
 pub struct Pipeline<D, S, E>
 where
@@ -185,6 +215,8 @@ where
     //P : Distribution
 {
 
+    /// Creates a pipeline that process a type that have or can be
+    /// converted to have the given dimensionality. Should receive Signal here.
     pub fn create(dim : (usize, usize)) -> Self {
         Self{ transf : Vec::new(), extract : None, dim, acc : Vec::new(), distr : None }
     }
@@ -238,7 +270,9 @@ where
         self
     }
 
-    // Pass generic sample implementor here.
+    /// Pass generic sample implementor here. If you sample from the model,
+    /// pass the generated (x, y) data here to get the signal back. Perhaps
+    /// make this generic over the passed sample.
     pub fn generate(&self, x : Option<DMatrix<f64>>) -> Option<D> {
         // Sample from posterior if available
         // Iterate transforms back calling invert if available.
@@ -262,6 +296,12 @@ where
 
     pub fn take_estimator(mut self) -> Option<E> {
         self.distr
+    }
+
+    /// Process the informed signal sequence, packing rows into columns,
+    /// such that each signal yields a single row of the sample implementor.
+    pub fn aggregate(sigs : &[S]) {
+        unimplemented!()
     }
 
     //pub fn take_posterior(mut self) -> Option<P> {

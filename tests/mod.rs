@@ -26,7 +26,7 @@ fn bernoulli() {
             let pv = DVector::from_element(1,p);
             b.set_parameter(pv.rows(0,1), false);
             let ym = DMatrix::from_element(1,1,*y);
-            assert!( (gsl_p - b.prob(ym.rows(0,1))).abs() < EPS);
+            assert!( (gsl_p - b.prob(ym.rows(0,1), None)).abs() < EPS);
         }
     }
 }
@@ -40,7 +40,7 @@ fn poisson() {
             for l in lambda.iter() {
                 let gsl_prob = gsl_ran_poisson_pdf(count[(i,0)] as u32, *l);
                 let poiss = Poisson::new(1, Some(*l));
-                let bayes_prob = poiss.prob(count.slice((i,0), (1,1)));
+                let bayes_prob = poiss.prob(count.slice((i,0), (1,1)), None);
                 assert!( (gsl_prob -  bayes_prob).abs() < EPS);
             }
         }
@@ -56,7 +56,7 @@ fn beta() {
             for (a, b) in count.iter().zip(count.iter()) {
                 let gsl_prob = gsl_ran_beta_pdf(theta[(i,0)], *a, *b);
                 let beta = Beta::new(*a as usize, *b as usize);
-                let bayes_prob = beta.prob(theta.slice((i,0), (1,1)));
+                let bayes_prob = beta.prob(theta.slice((i,0), (1,1)), None);
                 //println!("Gsl prob: {}", gsl_prob);
                 //println!("Bayes prob: {}", bayes_prob);
                 //println!("a: {}; b: {}; theta: {}", a, b, theta[(i,0)]);
@@ -77,7 +77,7 @@ fn gamma() {
                 // bayes follows the shape/inv-scale parametrization
                 let gsl_prob = gsl_ran_gamma_pdf(theta[(i,0)], *a, 1. / *b);
                 let gamma = Gamma::new(*a, *b);
-                let bayes_prob = gamma.prob(theta.slice((i,0), (1,1)));
+                let bayes_prob = gamma.prob(theta.slice((i,0), (1,1)), None);
                 assert!( (gsl_prob -  bayes_prob).abs() < EPS);
             }
         }
@@ -119,8 +119,8 @@ fn multinormal() {
     let mn : MultiNormal = MultiNormal::new(mu.clone(), sigma);
     let x = DMatrix::<f64>::from_iterator(1, 5, mu.iter().map(|x| *x));
     println!("GSL Prob: {}", gsl_prob);
-    println!("Bayes Prob: {}",  mn.prob(x.slice((0,0), (x.nrows(), x.ncols()))));
-    assert!((gsl_prob - mn.prob(x.slice((0,0), (x.nrows(), x.ncols())))).abs() < EPS);
+    println!("Bayes Prob: {}",  mn.prob(x.slice((0,0), (x.nrows(), x.ncols())), None));
+    assert!((gsl_prob - mn.prob(x.slice((0,0), (x.nrows(), x.ncols())), None)).abs() < EPS);
 }
 
 #[test]
@@ -134,7 +134,7 @@ fn normal() {
             // bayes by the variance.
             let gsl_prob = gsl_ran_gaussian_pdf(*y, (1.).sqrt());
             let norm = Normal::new(1, Some(0.), Some(1.));
-            let bayes_prob = norm.prob(values.slice((i,0), (1,1)));
+            let bayes_prob = norm.prob(values.slice((i,0), (1,1)), None);
             // println!("Gsl prob: {} (evaluated at {})", gsl_prob, *y);
             // println!("Bayes prob: {} (evaluated at {})", bayes_prob, *y);
             assert!( (gsl_prob -  bayes_prob).abs() < EPS);
@@ -158,7 +158,7 @@ fn categorical() {
     unsafe {
         let gsl_cat_p = gsl_ran_multinomial_pdf(5, &probs[0] as *const _, &outcome[0] as *const _);
         let vprobs = DMatrix::from_iterator(1, 4, outcome[0..4].iter().map(|o| *o as f64));
-        let cat_p = c.prob(vprobs.slice((0, 0), (1, 4)));
+        let cat_p = c.prob(vprobs.slice((0, 0), (1, 4)), None);
         // println!("Categorical: {} {}", gsl_cat_p, cat_p);
         // println!("{}", gsl_cat_p - cat_p);
         assert!((gsl_cat_p - cat_p).abs() < EPS);
@@ -175,6 +175,14 @@ fn histogram() {
     println!("Variance = {}", hist.var());
     println!("Full = {:?}", hist.full(5, false));
     //assert!(hist.mean() == hist.median());
+}
+
+#[test]
+fn gradients() {
+
+    let p = Poisson::new(5, Some(0.5));
+    let data = DVector::from_column_slice(&[1., 1., 2., 1., 2.]);
+    println!("gradient = {}", p.grad((&data).into(), None) );
 }
 
 /*#[test]

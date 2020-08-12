@@ -764,6 +764,17 @@ mod ls {
 
     }
 
+    #[test]
+    fn test_ols() {
+        let y : DVector<f64> = DVector::from_vec(vec![1.0, 1.4, 2.1, 2.4, 3.1]);
+        let x : DMatrix<f64> = DMatrix::from_vec(5,2,
+            vec![1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.5, 2.0, 2.5, 3.0]
+        );
+        let ols = OLS::estimate(&y, &x);
+        println!("beta = {}", ols.beta);
+        println!("err = {}", ols.err.unwrap());
+    }
+
     /*/// Generalized Least squares algorithm. GLS generalizes WLS for
     /// non-diagonal covariances (estimation under any error covariance).
     /// This covariance has an n x n structure and represents the possible

@@ -1,5 +1,4 @@
 use nalgebra::*;
-//use super::Transform;
 use iter::*;
 use nalgebra::storage::*;
 use gsl::*;

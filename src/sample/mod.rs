@@ -7,6 +7,27 @@ pub use table::*;
 
 use rand;
 
+/* By leaving the observation type as IntoIterator<f64> we have the possibility
+of returning both owned Vec<f64> for structures that must pool data before
+returning them; or non-owned &[f64] for structures that should just access
+elements in a column-wise fashion. The outer-most vector is just a container
+for columns. The columns themselves can be slices (read) or vectors (polled).
+Returns an empty vector if the (offset, batch) pair refers to an invalid
+position in the data matrix.
+
+row_iter(offset, len) can be a provided method that takes batch(len) and builds
+a vector iterator over the rows.
+impl Sample<O>
+where
+    O : IntoIterator<&f64>
+{
+
+    pub fn batch(offset : o, n : usize) -> Vec<O>;
+
+    pub fn shape() -> (usize, usize);
+}
+*/
+
 /// Samples are types which hold independent (or at least conditionally independent)
 /// observations, and interface directly with the likelihood of probabilistic models.
 /// The ability to iterate over those observations via conversion into

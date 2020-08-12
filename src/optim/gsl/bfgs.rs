@@ -95,7 +95,7 @@ pub fn minimize_with_grad<T : Sized + Clone>(
             &mut fdf as *mut _,
             &params_gsl,
             1.0,     // First step size
-            0.1      // Tolerance (0.1 recommended by gsl)
+            0.1      // Tolerance (0.1 recommended by gsl doc)
         );
         match GSLStatus::from_code(init_status) {
             GSLStatus::Success => { },
