@@ -12,6 +12,8 @@ pub mod em;
 
 pub use em::*;
 
+mod approx;
+
 #[derive(Debug, Clone)]
 pub struct OptimParam {
 
@@ -194,148 +196,6 @@ pub struct Approximation {
 
     }
 }*/
-
-mod approx {
-
-    use nalgebra::*;
-
-    /// A hessian is approximated from two first derivative steps as:
-    /// (1/(f(t) - f(t-1)) * [x][x]^T = [Δx][Δx]^T (unscaled outer product of the
-    /// domain vectors, which equals the simple outer product of gradient
-    /// vectors). By receiving the gradient (dxs) the unscaling step
-    /// is already assumed to have taken place. Since the
-    /// steps/gradients are arranged as  column vectors, we can do the
-    /// outer product and averaging step at the same time. For convex functions
-    /// the hessian is a constant capturing the n-dimensional dispersion, and
-    /// there is no loss of information in using it instead of the optimizer
-    /// gradient trajectory to describe a n-dimensional surface.
-    pub fn hessian(mut dxs : DMatrix<f64>) -> DMatrix<f64> {
-
-        // Build numerical hessian approximation: delta^T * delta
-        // (actually this expression transposed since we are working
-        // with a tall domain matrix).
-        let hess_approx = dxs.clone() * dxs.transpose();
-
-        // Guarantees symmetry
-        let hess = (hess_approx.clone() + hess_approx.transpose()).scale(0.5);
-
-        hess
-    }
-
-    /// The finite difference method transform a trajectory of function
-    /// evaluations ys = f(xs) into a trajectory of first derivative
-    /// approximations. For convex functions, the first derivative is
-    /// a linear function of the parameter vector.
-    pub fn gradient(mut xs : DMatrix<f64>, ys : &DVector<f64>) -> DMatrix<f64> {
-
-        assert!(xs.ncols() >= 2);
-        assert!(ys.nrows() >= 2);
-
-        let xs_lag = xs.clone();
-
-        // build the numerical gradient approximation using
-        // backward difference: delta_i = lp_{i} / (x_{i} - x_{i-1})
-        let delta_iter = xs.column_iter_mut()
-            .skip(1)
-            .zip(xs_lag.column_iter())
-            .enumerate();
-        for (i, (mut x_curr, x_last)) in delta_iter {
-            x_curr -= x_last;
-            x_curr.unscale_mut(&ys[i+1] - &ys[i]);
-        }
-
-        let delta = xs.remove_column(0);
-        delta
-    }
-
-    #[test]
-    fn approx_gamma() {
-
-        use crate::distr::*;
-        use super::*;
-
-        let g = Gamma::new(0.5, 0.5);
-        let param = OptimParam::new()
-            .init_state(DVector::from_column_slice(&[10.0, 10.0]))
-            .preserve(100)
-            .max_iter(100);
-        let grad = |dx : &DVector<f64>, g : &mut (Gamma, DMatrix<f64>)| -> DVector<f64> {
-            let grad = g.0.grad((&g.1).into(), None);
-            println!("grad = {}", grad);
-            grad
-        };
-        let obj = |x : &DVector<f64>, g : &mut (Gamma, DMatrix<f64>)| -> f64 {
-            println!("param = {}", x);
-            g.0.set_parameter((x).into(), true);
-            let min = (-1.)*g.0.suf_log_prob((&g.1).into());
-            println!("min = {}", min);
-            min
-        };
-        let val = DMatrix::from_column_slice(2, 1, &[1., 1.]);
-        let mut optim = LBFGS::prepare(param, (g, val))
-            .with_gradient(grad)
-            .with_function(obj);
-        optim.minimize().map(|min| println!("{}", min) )
-            .expect("Minimization failed");
-    }
-
-    #[test]
-    fn approx_poiss() {
-
-        use crate::distr::*;
-        use super::*;
-
-        // Establish the 1D parameter vector.
-        let init_lambda = 8.0;
-        let g = Poisson::new(5, Some(init_lambda));
-        let param = OptimParam::new()
-            .init_state(DVector::from_column_slice(&[init_lambda]))
-            .preserve(100)
-            .max_iter(100);
-        let grad = |x : &DVector<f64>, g : &mut (Poisson, DMatrix<f64>)| -> DVector<f64> {
-            let x = if x.nrows() == 1 {
-                DVector::from_element(g.1.nrows(), x[0])
-            } else {
-                x.clone_owned()
-            };
-            g.0.set_parameter((&x).into(), true);
-            let grad = (-1.)*g.0.grad((&g.1).into(), None);
-            println!("grad = {}", grad);
-            grad
-        };
-        let obj = |x : &DVector<f64>, g : &mut (Poisson, DMatrix<f64>)| -> f64 {
-            println!("param = {}", x);
-
-            // During optimization, we will receive a vector of size one from the optimizer.
-            // We must propagate to the actual natural parameter size (3).
-            let x = if x.nrows() == 1 {
-                DVector::from_element(g.1.nrows(), x[0])
-            } else {
-                x.clone_owned()
-            };
-            g.0.set_parameter((&x).into(), true);
-            let min = (-1.) * g.0.log_prob((&g.1).into(), None);
-            println!("min = {}", min);
-            min
-        };
-
-        // data points w.r.t. which function is optimized.
-        let vals = DMatrix::from_column_slice(5, 1, &[1., 2., 3., 1., 2.]);
-        let mut optim = LBFGS::prepare(param, (g, vals.clone()))
-            .with_gradient(grad)
-            .with_function(obj);
-        let min = optim.minimize().expect("Minimization failed");
-        println!("Minimum = {}", min);
-        let mut poiss = optim.take_data().0;
-        poiss.set_parameter((&min.value).into(), true);
-        let optim_mle = poiss.view_parameter(false)[0];
-        println!("optim suff stat: {}", optim_mle);
-        let stat_mle = Poisson::sufficient_stat((&vals).into())[(0, 0)];
-        println!("suff stat: {}", stat_mle);
-        assert!((optim_mle - stat_mle).abs() < 1E-2 );
-    }
-
-}
 
 type Gradient<T> = Box<dyn FnMut(&DVector<f64>, &mut T)->DVector<f64>>;
 

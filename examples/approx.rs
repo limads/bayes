@@ -22,11 +22,25 @@ fn prob_sample() {
     }
 }
 
+// select eta::real, log_prob::real, score::real from bern;
+fn bernoulli_log_prob() {
+    println!("theta,eta,log_prob,score");
+    let y = DVector::from_column_slice(&[1., 0., 1., 1., 0., 1., 1., 0., 1., 1.]);
+    let mut p = Bernoulli::new(10, None);
+    for i in 1..1000 {
+        let eta = DVector::from_element(10, -5. + (i as f64)*0.01);
+        p.set_parameter((&eta).into(), true);
+        let lp = p.log_prob(y.slice((0, 0), (10, 1)), None);
+        let score = p.grad(y.slice((0, 0), (10, 1)), None);
+        println!("{},{},{},{}", p.view_parameter(false)[0], eta[0], lp, score[0]);
+    }
+}
+
 // View distribution as a function of the natural parameter
 // select eta::real, log_prob::real, score::real from poiss;
 // select * from poiss
 //    order by abs(score::real);
-fn log_prob() {
+fn poisson_log_prob() {
     println!("eta,log_prob,score");
     let y = DVector::from_column_slice(&[1., 2., 3., 1., 2.]);
     let mut p = Poisson::new(5, None);
@@ -41,7 +55,7 @@ fn log_prob() {
 }
 
 fn main() {
-    log_prob();
+    bernoulli_log_prob();
 }
 
 

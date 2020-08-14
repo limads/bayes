@@ -130,6 +130,9 @@ pub struct MultiNormal {
 
     scale_factor : Option<Wishart>,
 
+    /// This is a single-element vector. Unlike the univariate distributions (Poisson, Bernoulli)
+    /// that hold conditional expectations and thus have a log-partition with the same size as eta,
+    /// the multinormal holds a single parameter value, with its corresponding scalar log-partition.
     log_part : DVector<f64>,
 
     rw : Option<RandomWalk>,

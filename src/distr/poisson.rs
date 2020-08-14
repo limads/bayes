@@ -61,6 +61,7 @@ impl Poisson {
             assert!(l > 0.0);
         }
         let mut p : Poisson = Default::default();
+        p.log_part = DVector::zeros(n);
         let l = DVector::from_element(n, lambda.unwrap_or(1.));
         p.set_parameter(l.rows(0, l.nrows()), false);
         p
@@ -184,7 +185,7 @@ impl Distribution for Poisson
             PoissonFactor::Empty => 0.
         };
         eta.dot(&y.slice((0, 0), (y.nrows(), 1))) - self.log_part[0] + factor_lp*/
-        super::univariate_log_prob(y.clone(), x, &self.factor, &self.view_parameter(true), self.log_part[0], self.suf_lambda.clone())
+        super::univariate_log_prob(y.clone(), x, &self.factor, &self.view_parameter(true), &self.log_part, self.suf_lambda.clone())
     }
 
     fn sample_into(&self, mut dst : DMatrixSliceMut<'_,f64>) {

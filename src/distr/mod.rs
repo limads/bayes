@@ -182,7 +182,7 @@ fn univariate_log_prob<D>(
     x : Option<DMatrixSlice<f64>>,
     factor : &UnivariateFactor<D>,
     eta : &DVector<f64>,
-    lp : f64,
+    lp : &DVector<f64>, /*f64*/
     suf_factor : Option<DMatrix<f64>>
 ) -> f64
 where D : Distribution
@@ -202,7 +202,8 @@ where D : Distribution
         },
         UnivariateFactor::Empty => 0.
     };
-    eta_s.dot(&y.slice((0, 0), (y.nrows(), 1))) - lp + factor_lp
+    // eta_s.dot(&y.slice((0, 0), (y.nrows(), 1))) - lp + factor_lp
+    (eta_s.component_mul(&y.slice((0, 0), (y.nrows(), 1))) - lp).sum() + factor_lp
 }
 
 /// Generic trait shared by all exponential-family distributions. Encapsulate
@@ -270,15 +271,11 @@ pub trait ExponentialFamily<C>
     fn grad(&self, y : DMatrixSlice<'_, f64>, x : Option<DMatrix<f64>>) -> DVector<f64> {
         match y.ncols() {
             1 => {
+                // The same procedure will work for the scaled distributions (Normal and Multinormal)
+                // except they will be divided by the standard error/pre-multiplied by the cholesky factor.
+                let mut s = (y.column(0) - self.mean()).sum();
 
-                // This will work only for None or Conjugate factors, since the CondExpect
-                // factors fall into the second (multivariate case): cov_inv^{-1} ( y - mean )
-                // The variance vector will have the same value at each entry in those cases,
-                // but different values if the factor is a condtional expectation.
-                /*let v = self.var();
-                let mut diff = y.column(0).clone_owned() - self.mean();
-                DVector::from_element(1, diff.sum() )*/
-                DVector::from_element(1, y.sum() - self.mean()[0])
+                DVector::from_element(1, s)
             },
             d => {
                 let cov_inv = self.cov_inv().unwrap();
@@ -325,6 +322,19 @@ pub trait ExponentialFamily<C>
         let joint_p = p.iter().fold(1., |jp, p| jp * p);
         joint_p
     }
+
+    // TODO this method updates the sufficient statistic when self has a
+    // conjugate factor. The conjugate factor always has its log-probability
+    // evaluated wrt this element.
+    //fn update_suff_stat(&mut self) {
+    //}
+
+    // The dispersion is mean() for the Poisson; 1. / mean() for the Bernoulli
+    // and 1. / sigma for the normal. It is useful to express the score as the
+    // error between the observation and the expected value times the dispersion.
+    // The expected value is the first derivative of the log-partition; the variance
+    // the second derivative times the dispersion.
+    // fn dispersion()
 
 }
 

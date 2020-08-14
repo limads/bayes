@@ -10,7 +10,12 @@ pub struct Categorical {
     theta : DVector<f64>,
     log_theta : DVector<f64>,
     eta : DVector<f64>,
+
+    /// Unlike the univariate distributions, that hold a log-partition vector with same dimensionality
+    /// as the parameter vector, the categorical holds a parameter vector with a single value, representing
+    /// the state of the theta vector.
     log_part : DVector<f64>,
+
     factor : Option<Dirichlet>
 }
 
