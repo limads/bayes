@@ -313,6 +313,14 @@ impl MultiNormal {
         Self::new(mu, cov)
     }
 
+    pub fn set_cov(&mut self, cov : DMatrix<f64>) {
+        let prec = Self::invert_scale(&cov);
+        self.scaled_mu = prec.clone() * &self.mu;
+        self.sigma_inv = prec;
+        let unused = DVector::from_element(1, 1.);
+        self.update_log_partition(unused.rows(0,1));
+    }
+
     /*pub fn new(mu : DVector<f64>, w : Wishart) -> Self {
         Self { mu : mu, cov : Covariance::new_random(w), shift : None, scale : None }
     }

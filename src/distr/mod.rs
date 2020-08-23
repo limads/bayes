@@ -209,10 +209,16 @@ where D : Distribution
 /// Generic trait shared by all exponential-family distributions. Encapsulate
 /// all expressions necessary to build a log-probability with respect to a
 /// sufficient statistic.
+///
+/// Exponential family members factor as:
+/// a(theta)*y + b(eta) + c = eta*y + b(eta) + c
+/// where a is a canonical-to-natural parameter mapping (link) function;
+/// b is a function of the parameter alone (the log-partition), and c is
+/// a base measure constant that can be ignored for the purpose of optimization.
 pub trait ExponentialFamily<C>
-    where
-        C : Dim,
-        Self : Distribution
+where
+    C : Dim,
+    Self : Distribution
 {
 
     /// Transforms a canonical parameter vector (i.e. parameter in the same scale
@@ -272,7 +278,8 @@ pub trait ExponentialFamily<C>
         match y.ncols() {
             1 => {
                 // The same procedure will work for the scaled distributions (Normal and Multinormal)
-                // except they will be divided by the standard error/pre-multiplied by the cholesky factor.
+                // except they will be divided by the standard deviation/pre-multiplied by the cholesky factor.
+                // They will have specialized implementations for this method.
                 let mut s = (y.column(0) - self.mean()).sum();
 
                 DVector::from_element(1, s)
@@ -370,6 +377,11 @@ pub trait Estimator<D>
 /// where q is the dimensionality of the scale matrix plus the dimensionality of the
 /// shift vector. If the matrix cannot be split exactly between all graph elements,
 /// the log_probability method will panic.
+///
+/// Likelihoods are factors that can live at the bottom of the probabilistic graph
+/// and interact directly with data. If the model is composed of more than a single
+/// likelihood distribution of the same type, use Factor<D>
+/// (an iterator over distribution children).
 pub trait Likelihood<C>
     where
         Self : ExponentialFamily<C> + Distribution + Sized,
@@ -451,6 +463,10 @@ pub trait Likelihood<C>
             }
         }
     }
+
+    // Iterate over sister nodes if Factor; or returns a single distribution if
+    // not a factor.
+    // pub fn iter_sisters() -
 }
 
 /*/// Return (mean, var) pair over a sample.
@@ -541,6 +557,13 @@ pub trait Posterior
 
     fn trajectory_mut(&mut self) -> Option<&mut RandomWalk>;
 
+    // Mark this variable fixed (e.g. at its current MLE) to avoid using it further as part of the
+    // Inference algorithms by querying it via the fixed() method.
+    // fn fix(&mut self)
+
+    // Verify if this variable has been fixed by calling self.fix() at a previous iteration.
+    // fn fixed(&self)
+
 }
 
 /// There is a order of preference when retrieving natural parameters during
@@ -574,6 +597,38 @@ where P : Posterior
     let param = get_posterior_eta(&*post).clone_owned();
     post.set_parameter(param.rows(0, param.nrows()), true);
 }
+
+/*/// Generic factor of distributions which have more than one factor
+/// children of the same type. This structure implements Likelihood,
+/// Distribution and Exponential generically by calling the methods of
+/// its children, since factors are conditionally independent given
+/// their parents. For distributions that have
+/// a closed expression for the multivariate case (MultiNormal and Categorical)
+/// the dedicated structures should be used.
+pub struct Multi<D, P, C>
+where
+    D : Distrbution + ExponentialFamily<C> + Likelihood<C> + Conditional<P>,
+    P : Distribution + ExponentialFamily<C> + Likelihood<C>
+{
+    prior : P,
+    children : Vec<D>
+}
+
+impl<D, P, C> Multi<D, P, C>
+where
+    D : Distrbution + ExponentialFamily<C> + Likelihood<C> + Conditional<P>,
+    P : Distribution + ExponentialFamily<C> + Likelihood<C>
+{
+
+    // Create a new distribution sequence with default parameters
+    pub fn new(n : usize) -> Self {
+        unimplemented!()
+    }
+
+    // pub fn iter() -> I;
+    // pub fn iter_mut() -> I;
+
+}*/
 
 /*
 /// A MarkovChain is a directed cyclic graph of categorical distributions.

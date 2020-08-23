@@ -3,10 +3,9 @@ use crate::distr::gamma::Gamma;
 use rand_distr;
 use rand;
 use std::f64::consts::PI;
-// use std::ops::Add;
 use crate::sim::*;
-// use std::ops::AddAssign;
 use std::fmt::{self, Display};
+use crate::gsl::rand_utils::GslRng;
 
 /// The Normal is the exponential-family distribution
 /// used as the likelihood for continuous unbounded outcomes and as priors
@@ -31,7 +30,7 @@ use std::fmt::{self, Display};
 /// let post : Normal = norm_cond.take_factor().unwrap();
 /// assert!(post.mean()[0] - mle.mean()[0] < 1E-3);
 /// ```
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Normal {
 
     // Location parameter, against which location factor is
@@ -58,7 +57,9 @@ pub struct Normal {
     /// Holds (-0.5)*1/sigma^2
     minus_half_prec : f64,
 
-    rw : Option<RandomWalk>
+    rw : Option<RandomWalk>,
+
+    rng : GslRng
 
     // When updating the scale, also update this as
     // the second element to the sufficient statistic vector
@@ -72,30 +73,33 @@ impl Normal {
     /// All log-probabilities are evaluated conditional against the parameter
     /// for this factor; All sampling is conditional on a sampled value for this
     /// factor.
-    pub fn new(n : usize, loc : Option<f64>, scale : Option<f64>) -> Self {
-        if let Some(s) = scale {
+    pub fn new(n : usize, loc : Option<f64>, var : Option<f64>) -> Self {
+        if let Some(s) = var {
             assert!(s > 0.0, "Variance should be a strictly positive value");
         }
         let mu = DVector::from_element(n, loc.unwrap_or(0.0));
         let loc_factor = None;
         let scale_factor = None;
-        let scale = scale.unwrap_or(1.);
-        let prec_suff = DVector::from_column_slice(&[(1. / scale).ln(), 1. / scale]);
+        let var = var.unwrap_or(1.);
+        let prec_suff = DVector::from_column_slice(&[(1. / var).ln(), 1. / var]);
         let eta_traj = None;
         let log_part = mu.map(|e| e.powf(2.) / 2. );
-        let mut norm = Self{ mu : mu.clone(), scaled_mu : mu.clone(), loc_factor, rw : None,
+        let rand_seed : f64 = rand::random();
+        let rng = GslRng::new(rand_seed as u64 * 32000);
+        let mut norm = Self{ mu : mu.clone(), scaled_mu : mu.clone(), loc_factor, rw : None, rng,
             eta_traj, prec_suff : prec_suff.clone(), scale_factor, log_part, minus_half_prec : -prec_suff[1] / 2.};
-        norm.set_scale(scale);
+        norm.set_var(var);
         norm.set_parameter(mu.rows(0, mu.nrows()), false);
         norm
     }
 
-    pub fn set_scale(&mut self, var : f64) {
+    pub fn set_var(&mut self, var : f64) {
         let prec = 1. / var;
-        self.prec_suff [0] = prec.ln();
+        self.prec_suff[0] = prec.ln();
         self.prec_suff[1] = prec;
         self.minus_half_prec = (-1.)*prec / 2.;
-        // TODO remove requirement for eta vector.
+        self.scaled_mu = self.mu.scale(prec);
+        // TODO remove requirement for argument to update_log_partition eta vector.
         let unused : DVector<f64> = DVector::zeros(1);
         self.update_log_partition((&unused).into());
     }
@@ -134,6 +138,12 @@ impl ExponentialFamily<U1> for Normal
         DVector::from_element(y.nrows(),  1. / (2.*PI).sqrt())
     }
 
+    fn grad(&self, y : DMatrixSlice<'_, f64>, x : Option<DMatrix<f64>>) -> DVector<f64> {
+        let mut s = (y.column(0) - self.mean()).unscale(self.var()[0].sqrt() ).sum();
+        // let mut s = (y.column(0) - self.mean()).unscale(self.var()[0] ).sum();
+        DVector::from_element(1, s)
+    }
+
     // TODO if there is a constant scale factor, the sufficient statistic
     // is the sample sum. If there is a random scale factor (gamma) the sufficient
     // statistic is the 2-dimensional vector [sum(x) sum(x^2)]
@@ -149,20 +159,33 @@ impl ExponentialFamily<U1> for Normal
 
     // suf_log_prob assumes dimensionality of mu vector is 1
     fn suf_log_prob(&self, t : DMatrixSlice<'_, f64>) -> f64 {
-        assert!(self.log_partition().nrows() == 1);
-        assert!(self.mu.nrows() == 1);
-        assert!(self.scaled_mu.nrows() == 1);
-        assert!(t.ncols() == 1 && t.nrows() == 2);
+        // assert!(self.log_partition().nrows() == 1);
+        // assert!(self.mu.nrows() == 1);
+        // assert!(self.scaled_mu.nrows() == 1);
+        // assert!(t.ncols() == 1 && t.nrows() == 2);
         self.scaled_mu[0] * t[(0,0)] + self.minus_half_prec*t[(1,0)] - self.log_part[0]
     }
 
-    // ignore mu, using the scaled mu already set at the update.
-    // eta = [ prec*mu; (-1/2)*prec ]
+    /// ignore mu, using the scaled mu already set at the update.
+    /// eta = [ prec*mu; (-1/2)*prec ]
+    /// The log_prob as a function of scaled_mu (natural parameter over real line) is the last expression;
+    /// The log_prob as a function of [scaled_mu, ln(scale)] (natural parameter over real plane) is the
+    /// second expression. The normal with a known variance is a function of a scalar; the normal with unknown
+    /// variance is a function of a plane, and we must disambiguate between those two cases. The first case
+    /// defines a parabola over the scaled_mu line; the second case defines a convex surface over the real plane.
+    /// For the second case, the log-likelihood parabola maximum of scaled_mu as a function of scale
+    /// will only match the sample mean when the scale is fixed at the sample MLE conditional on the current mu.
+    /// Re-fixing the scale at each iteration, however, will not lead to a convex likelihood but an exp-looking
+    /// function. The correct scale maximum likelihood must be set at the beginning of the optimization (equal
+    /// to chosing a slice at the mu-sigma plane that pass through the sigma MLE).
     fn update_log_partition<'a>(&'a mut self, _mu : DVectorSlice<'_, f64>) {
-        // println!("mu: {}; half prec: {}", self.mu, self.half_prec);
-        // println!("lpf1 = {}", -self.scaled_mu[0].powf(2.) / 4.*self.half_prec);
-        // println!("lpf2 = {}", 0.5*(-2.*self.half_prec).ln());
-        self.log_part = self.scaled_mu.map(|m| -m.powf(2.) / 4.*self.minus_half_prec - 0.5*(-2.*self.minus_half_prec).ln() )
+
+        // This is the expression for unknown variance
+        self.log_part = self.mu.map(|m| m.powf(2.) / (2.*self.var()[0]) + self.var()[0].sqrt().ln() );
+
+        // This is the expression for known variance
+        // self.log_part = self.scaled_mu.map(|m| 0.5 * m.powf(2.0) )
+        // self.log_part = self.scaled_mu.map(|m| 0.5 * m.powf(2.0) * self.prec_suff[1] )
     }
 
     fn log_partition<'a>(&'a self ) -> &'a DVector<f64> {
@@ -201,6 +224,9 @@ impl Distribution for Normal
     where Self : Sized
 {
 
+    // The parameter set at the eta scale should be assumed to be the scaled mu;
+    // the parameter set at the theta scale should be assumed to be mu (conditional
+    // on the current inverse scale).
     fn set_parameter(&mut self, mu : DVectorSlice<'_, f64>, _natural : bool) {
         self.mu = mu.clone_owned();
         self.scaled_mu = self.prec_suff[1] * self.mu.clone();
@@ -247,16 +273,20 @@ impl Distribution for Normal
             None => 0.
         };
         let t = Self::sufficient_stat(y);
-        //println!("suff stat: {}", t);
-        self.suf_log_prob(t.slice((0, 0), (2, 1))) + loc_lp + scale_lp
+        let y_sq = y.column(0).map(|y| y.powf(2.0));
+        (self.scaled_mu.component_mul(&y) + (self.minus_half_prec*y_sq) - &self.log_part).sum() + loc_lp + scale_lp
     }
 
     fn sample_into(&self, mut dst : DMatrixSliceMut<'_, f64>) {
-        use rand::prelude::*;
+        assert!(dst.ncols() == 1);
         let var = self.var()[0];
-        for (i, _) in self.mu.iter().enumerate() {
+        /*use rand::prelude::*;
+        for (i, m) in self.mu.iter().enumerate() {
             let n : f64 = rand::thread_rng().sample(rand_distr::StandardNormal);
-            dst[(i,0)] = var * n;
+            dst[(i,0)] = var.sqrt() * n + m;
+        }*/
+        for (i, m) in self.mu.iter().enumerate() {
+            dst[(i,0)] = self.rng.normal(*m, var.sqrt() );
         }
     }
 
@@ -302,10 +332,11 @@ impl Likelihood<U1> for Normal {
         y.iter().fold(0.0, |ys, y| ys + y.powf(2.) / n)
     }*/
 
+    /// Biased maximum likelihood mean estimate
     fn mle(y : DMatrixSlice<'_, f64>) -> Self {
         let suff = Self::sufficient_stat(y);
         let mean = suff[0] / y.nrows() as f64;
-        let var = (suff[1] - mean.powf(2.)) / y.nrows() as f64;
+        let var = suff[1] / y.nrows() as f64 - mean.powf(2.);
         Normal::new(1, Some(mean), Some(var))
     }
 
@@ -410,7 +441,7 @@ impl Estimator<Normal> for Normal {
                 let var_out = 1. / (prec0 + n*prec1);
                 let mu_out =  var_out*(mu0*prec0 + ys*prec1);
                 norm.set_parameter((&DVector::from_element(1, mu_out)).into(), false);
-                norm.set_scale(var_out);
+                norm.set_var(var_out);
                 Ok(&(*norm))
             },
             _ => Err("Distribution does not have a conjugate location factor")

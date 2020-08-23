@@ -26,6 +26,9 @@ where
 
     pub fn shape() -> (usize, usize);
 }
+
+impl Sample for std::str::Lines()
+impl Sample for Stream<Item=Database::Row>
 */
 
 /// Samples are types which hold independent (or at least conditionally independent)

@@ -82,7 +82,7 @@ fn approx_gamma() {
         .expect("Minimization failed");
 }
 
-/// Finds the MLE via optimization for an unscaled distribution such as the Poisson or Bernoulli.
+/// Finds the MLE via optimization for an unscaled distribution such as the Poisson or Bernoulli
 fn optimize_mle<D, C>(distr : D, data : DMatrix<f64>) -> Result<D, String>
 where
     C : Dim,
@@ -131,6 +131,52 @@ where
     Ok(distr)
 }
 
+/// Finds the MLE via optimization of a scaled distribution (the normal),
+/// conditional on the MLE of its scalar factor for each natural parameter iteration.
+fn optimize_mle_scaled(distr : Normal, data : DMatrix<f64>) -> Result<Normal, String>
+{
+    let param = OptimParam::new()
+        .init_state(distr.view_parameter(true).rows(0,1).clone_owned())
+        .preserve(100)
+        .max_iter(100);
+    let grad = |x : &DVector<f64>, g : &mut (Normal, DMatrix<f64>)| -> DVector<f64> {
+        let x = if x.nrows() == 1 {
+            DVector::from_element(g.1.nrows(), x[0])
+        } else {
+            x.clone_owned()
+        };
+        g.0.set_parameter((&x).into(), true);
+        // g.0.set_var(g.1.map(|y| (y-x[0]).powf(2.) / (g.1.nrows() - 1) as f64 ).sum());
+        let grad = (-1.)*g.0.grad((&g.1).into(), None);
+        println!("grad = {}", grad);
+        grad
+    };
+    let obj = |x : &DVector<f64>, g : &mut (Normal, DMatrix<f64>)| -> f64 {
+        println!("param = {}", x);
+        // During optimization, we will receive a vector of size one from the optimizer.
+        // We must propagate to the actual natural parameter size (3).
+        let x = if x.nrows() == 1 {
+            DVector::from_element(g.1.nrows(), x[0])
+        } else {
+            x.clone_owned()
+        };
+        g.0.set_parameter((&x).into(), true);
+        // g.0.set_var(g.1.map(|y| (y-x[0]).powf(2.) / (g.1.nrows() - 1) as f64 ).sum());
+        let min = (-1.) * g.0.log_prob((&g.1).into(), None);
+        println!("min = {}", min);
+        min
+    };
+    let mut optim = LBFGS::prepare(param, (distr, data))
+        .with_gradient(grad)
+        .with_function(obj);
+    let min = optim.minimize()
+        .map_err(|e| format!("Minimization failed: {:?}", e) )?;
+    println!("Minimum = {}", min);
+    let mut distr = optim.take_data().0;
+    distr.set_parameter((&min.value).into(), true);
+    Ok(distr)
+}
+
 fn mle_compare_univ<D>(distr : D, data : DMatrix<f64>)
 where
     D : Distribution + ExponentialFamily<U1> + Clone + Likelihood<U1>
@@ -158,6 +204,24 @@ fn approx_bern() {
     let bern = Bernoulli::new(5, Some(init_theta));
     let vals = DMatrix::from_column_slice(5, 1, &[1., 0., 1., 0., 0.]);
     mle_compare_univ(bern, vals);
+}
+
+#[test]
+fn approx_norm() {
+    let init_mu = 0.0;
+    let init_sigma = 1.0;
+
+    let vals = DMatrix::from_column_slice(5, 1, &[1.1, 2.2, 3.3, 4.5, 5.5]);
+    let mean = vals.sum() / 5.;
+    let var = vals.map(|v| (v - mean).powf(2.) ).sum() / 4.;
+    let mut norm = Normal::new(5, Some(0.0), Some(var));
+    let distr_out = optimize_mle_scaled(norm, vals.clone())
+        .expect("Optimization failed");
+    let optim_mle = distr_out.view_parameter(false)[0];
+    println!("optim suff stat: {}", optim_mle);
+    let stat_mle = Normal::mle((&vals).into()).mean()[0];
+    println!("suff stat: {}", stat_mle);
+    assert!((optim_mle - stat_mle).abs() < 1E-2 );
 }
 
 
