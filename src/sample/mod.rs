@@ -31,6 +31,18 @@ impl Sample for std::str::Lines()
 impl Sample for Stream<Item=Database::Row>
 */
 
+/*
+The macro #[derive(Sample)] should map structure field names to the column names.
+Containers inside the structure should be named to field_name_$i where i is the
+container index (constrained to be of the same type for all implementors). A generic
+implementation for Vec<T> should be supplied for all T that implement sample. In this way,
+users can re-use their custom structures for the inference problem without worrying
+about conversions. This might work if distributions are built with a name that maps
+to the field of interest:
+let n = Normal::new(5, Some("my_field"), None, None);
+let mn = MultiNormal::new(10, Some("my_field_$i"), None, None);
+*/
+
 /// Samples are types which hold independent (or at least conditionally independent)
 /// observations, and interface directly with the likelihood of probabilistic models.
 /// The ability to iterate over those observations via conversion into

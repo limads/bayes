@@ -1,11 +1,7 @@
 use nalgebra::*;
 use super::*;
-// use std::fmt::{self, Display};
 use serde::{Serialize, Deserialize};
-// use super::Gamma;
 use std::f64::consts::PI;
-// use crate::sim::*;
-// use std::ops::MulAssign;
 use std::fmt::{self, Display};
 use std::default::Default;
 use std::ops::{SubAssign, MulAssign};
@@ -185,7 +181,8 @@ impl MultiNormal {
             rw : None,
             scaled_mu : mu.clone()
         };
-        norm.update_log_partition(mu.rows(0, mu.nrows()));
+        norm.set_parameter(mu.rows(0, mu.nrows()), true);
+        norm.set_cov(sigma.clone());
         norm
     }
 
@@ -211,11 +208,17 @@ impl MultiNormal {
         }
     }
 
-    fn multinormal_log_part(mu : DVectorSlice<'_, f64>, cov : &DMatrix<f64>) -> f64 {
+    fn multinormal_log_part(mu : DVectorSlice<'_, f64>, scaled_mu : DVectorSlice<'_, f64>, cov : &DMatrix<f64>, prec : &DMatrix<f64>) -> f64 {
         let sigma_lu = LU::new(cov.clone());
         let sigma_det = sigma_lu.determinant();
-        let p_mu_cov = -0.25 * mu.clone().transpose() * cov * &mu;
-        p_mu_cov[0] - 0.5*sigma_det.ln()
+
+        let prec_lu = LU::new(prec.clone());
+        let prec_det = prec_lu.determinant();
+        //let p_mu_cov = -0.25 * scaled_mu.clone().transpose() * cov * &scaled_mu;
+
+        //println!("sigma det ln: {}", sigma_det.ln());
+        -0.5 * (mu.clone().transpose() * scaled_mu)[0] - 0.5 * sigma_det.ln()
+        // p_mu_cov[0] - 0.5*sigma_det.ln()
     }
 
     /// Returns the reduced multivariate normal [ix, ix+n) by marginalizing over
@@ -317,8 +320,8 @@ impl MultiNormal {
         let prec = Self::invert_scale(&cov);
         self.scaled_mu = prec.clone() * &self.mu;
         self.sigma_inv = prec;
-        let unused = DVector::from_element(1, 1.);
-        self.update_log_partition(unused.rows(0,1));
+        let mu = self.mu.clone();
+        self.update_log_partition(mu.rows(0, mu.nrows()));
     }
 
     /*pub fn new(mu : DVector<f64>, w : Wishart) -> Self {
@@ -403,14 +406,26 @@ impl ExponentialFamily<Dynamic> for MultiNormal {
     fn update_log_partition<'a>(&'a mut self, eta : DVectorSlice<'_, f64>) {
         // TODO update eta parameter here.
         let cov = Self::invert_scale(&self.sigma_inv);
-        let log_part = Self::multinormal_log_part(eta, &cov);
+        let log_part = Self::multinormal_log_part(
+            eta,
+            self.scaled_mu.rows(0, self.scaled_mu.nrows()),
+            &cov,
+            &self.sigma_inv
+        );
         self.log_part = DVector::from_element(1, log_part);
         if let Some(ref mut op) = self.op {
             // The new lin_mu should have already been set at self.set_parameter()
             let lin_mu = op.lin_mu.clone_owned();
             let lin_sigma_inv = op.lin_sigma_inv.clone_owned();
             let lin_cov = Self::invert_scale(&lin_sigma_inv);
-            let lin_log_part = Self::multinormal_log_part(lin_mu.rows(0, lin_mu.nrows()), &lin_cov);
+
+            // pass scaled_lin_mu here instead
+            let lin_log_part = Self::multinormal_log_part(
+                lin_mu.rows(0, lin_mu.nrows()),
+                lin_mu.rows(0, lin_mu.nrows()),
+                &lin_cov,
+                &lin_sigma_inv
+            );
             op.lin_log_part = DVector::from_element(1, lin_log_part);
         }
         //let sigma_lu = LU::new(cov.clone());
@@ -453,6 +468,16 @@ impl ExponentialFamily<Dynamic> for MultiNormal {
         unimplemented!()
     }*/
 
+}
+
+#[test]
+fn suff_stat() {
+    let x = DMatrix::from_row_slice(3,3,&[
+        1.0, 1.0, 1.0,
+        2.0, 2.0, 2.0,
+        3.0, 3.0, 3.0
+    ]);
+    println!("norm suff = {}", MultiNormal::sufficient_stat(x.slice((0, 0), (3,3))));
 }
 
 impl Distribution for MultiNormal {

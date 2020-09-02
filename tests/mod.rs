@@ -5,7 +5,7 @@ use bayes::gsl::matrix_double::*;
 use bayes::gsl::utils::*;
 use bayes::distr::*;
 use bayes::sim::Histogram;
-//use bayes::io::{Sequence, Surface};
+// use bayes::io::{Sequence, Surface};
 
 const EPS : f64 = 10E-8;
 
@@ -84,7 +84,7 @@ fn gamma() {
     }
 }
 
-fn gsl_multinormal_logprob(mu : &DVector<f64>, sigma : &DMatrix<f64>) -> f64 {
+fn gsl_multinormal_logprob(x : &DVector<f64>, mu : &DVector<f64>, sigma : &DMatrix<f64>) -> f64 {
     let mut gsl_prob : f64 = 0.0;
     let lu = Cholesky::new(sigma.clone()).unwrap();
     let lower = lu.l();
@@ -93,7 +93,7 @@ fn gsl_multinormal_logprob(mu : &DVector<f64>, sigma : &DMatrix<f64>) -> f64 {
         let ws_orig = DVector::<f64>::zeros(5);
         let mut ws : gsl_vector = ws_orig.into();
         let mu_vec : gsl_vector = mu.clone().into();
-        let x_vec : gsl_vector = mu.clone().into();
+        let x_vec : gsl_vector = x.clone().into();
         let ans = gsl_ran_multivariate_gaussian_pdf(
             &x_vec as *const _,
             &mu_vec as *const _,
@@ -110,33 +110,47 @@ fn gsl_multinormal_logprob(mu : &DVector<f64>, sigma : &DMatrix<f64>) -> f64 {
 
 #[test]
 fn multinormal() {
-    let mu = DVector::from_element(5, 0.0);
+
+    let mut mu = DVector::from_element(5, 0.0);
+    mu[0] = 1.2;
+    mu[1] = 3.1;
+
     let mut sigma = DMatrix::from_element(5, 5, 0.0);
     sigma.set_diagonal(&DVector::from_element(5, 2.));
     sigma.row_mut(0).copy_from_slice(&[1.0, 0.5, 0.0, 0.0, 0.0]);
     sigma.row_mut(1).copy_from_slice(&[0.5, 1.0, 0.0, 0.0, 0.0]);
-    let gsl_prob = gsl_multinormal_logprob(&mu, &sigma);
+
+    // We pass samples organized row-by-row to bayes; but as a vector to gsl (as long as we
+    // evaluate only a single probability).
+    let mut x = DMatrix::zeros(1, 5);
+    x[(0,0)] = 1.0;
+    x[(0,1)] = 2.0;
+    let xt = x.row(0).clone_owned().transpose();
+
+    let gsl_prob = gsl_multinormal_logprob(&xt, &mu, &sigma);
     let mn : MultiNormal = MultiNormal::new(mu.clone(), sigma);
-    let x = DMatrix::<f64>::from_iterator(1, 5, mu.iter().map(|x| *x));
+    let bayes_prob = mn.prob(x.slice((0,0), (x.nrows(), x.ncols())), None);
     println!("GSL Prob: {}", gsl_prob);
-    println!("Bayes Prob: {}",  mn.prob(x.slice((0,0), (x.nrows(), x.ncols())), None));
-    assert!((gsl_prob - mn.prob(x.slice((0,0), (x.nrows(), x.ncols())), None)).abs() < EPS);
+    println!("Bayes Prob: {}", bayes_prob);
+    assert!((gsl_prob - bayes_prob).abs() < EPS);
 }
 
 #[test]
 fn normal() {
     let mu = unit_interval_seq(100);
     let values = mu.clone();
+    let vars = unit_interval_seq(100);
     unsafe {
         //for m in mu.iter() {
-        for (i, y) in values.iter().enumerate() {
+        for (i, (y, v)) in values.iter().zip(vars.iter()).enumerate() {
             // GSL parametrizes gaussians by the standard deviation;
             // bayes by the variance.
-            let gsl_prob = gsl_ran_gaussian_pdf(*y, (1.).sqrt());
-            let norm = Normal::new(1, Some(0.), Some(1.));
+            let gsl_prob = gsl_ran_gaussian_pdf(*y - *v, (v).sqrt());
+            let norm = Normal::new(1, Some(*v), Some(*v));
             let bayes_prob = norm.prob(values.slice((i,0), (1,1)), None);
             // println!("Gsl prob: {} (evaluated at {})", gsl_prob, *y);
             // println!("Bayes prob: {} (evaluated at {})", bayes_prob, *y);
+            println!("mu: {}, var: {}, gsl prob: {}; bayes prob: {}", v, v, gsl_prob, bayes_prob);
             assert!( (gsl_prob -  bayes_prob).abs() < EPS);
         }
         //}

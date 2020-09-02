@@ -48,14 +48,39 @@ fn poisson_log_prob() {
         let eta = DVector::from_element(5, -2.3 + i as f64 * 0.01);
         p.set_parameter((&eta).into(), true);
         let lp = p.log_prob(y.slice((0, 0), (5, 1)), None);
-        // let prob = p.prob(y.slice((0, 0), (5, 1)), None);
         let score = p.grad(y.slice((0, 0), (5, 1)), None);
         println!("{},{},{}", eta[0], lp, score[0]);
     }
 }
 
+// View distribution as a function of the natural parameter
+// select mu::real, scaled_mu::real, log_prob::real, score::real from norm;
+// select mu::real, scaled_mu::real, log_prob::real, score::real from norm order by log_prob desc;
+fn normal_log_prob() {
+    println!("mu,scaled_mu,log_prob,score");
+    let mut n = Normal::new(1000, Some(1.0), Some(2.0));
+    let y = n.sample();
+    // println!("{}", y);
+    // let y = DVector::from_column_slice(&[1.1, 2.2, 3.2, 1.3, 2.1, 2.2, 3.1, 2.2, 1.1, 1.0]);
+    let mle = Normal::mle(y.slice((0, 0), (1000, 1)));
+    // println!("{}", mle);
+    // println!("MLE: {}", mle);
+    // let var = mle.var()[0];
+    // let var = y.map(|y| (y - mle.mean()[0]).powf(2.) / 100. ).sum();
+    n.set_var(mle.var()[0]);
+    let prec = 1. / n.var()[0];
+    for i in 1..1000 {
+        let mu = DVector::from_element(1000, -25.0 + i as f64 * 0.05);
+        n.set_parameter((&mu).into(), true);
+        let lp = n.log_prob(y.slice((0, 0), (1000, 1)), None);
+        let score = n.grad(y.slice((0, 0), (1000, 1)), None);
+        println!("{},{},{},{}", mu[0], prec*mu[0], lp, score[0]);
+    }
+}
+
+// cargo run --example approx > /home/diego/Downloads/norm.csv
 fn main() {
-    bernoulli_log_prob();
+    normal_log_prob();
 }
 
 
