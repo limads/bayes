@@ -1,6 +1,7 @@
 use nalgebra::*;
 use crate::distr::*;
 use super::*;
+use crate::distr::multinormal;
 
 /// A hessian is approximated from two first derivative steps as:
 /// (1/(f(t) - f(t-1)) * [x][x]^T = [Δx][Δx]^T (unscaled outer product of the
@@ -19,8 +20,8 @@ pub fn hessian(mut dxs : DMatrix<f64>) -> DMatrix<f64> {
     // with a tall domain matrix).
     let hess_approx = dxs.clone() * dxs.transpose();
 
-    // Guarantees symmetry
-    let hess = (hess_approx.clone() + hess_approx.transpose()).scale(0.5);
+    // Guarantees symmetry and positive-definiteness
+    let hess = multinormal::approx_pd(hess_approx);
 
     hess
 }

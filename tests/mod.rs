@@ -5,7 +5,10 @@ use bayes::gsl::matrix_double::*;
 use bayes::gsl::utils::*;
 use bayes::distr::*;
 use bayes::sim::Histogram;
+use bayes::distr::multinormal;
 // use bayes::io::{Sequence, Surface};
+use rand;
+//use crate::utils;
 
 const EPS : f64 = 10E-8;
 
@@ -84,7 +87,7 @@ fn gamma() {
     }
 }
 
-fn gsl_multinormal_logprob(x : &DVector<f64>, mu : &DVector<f64>, sigma : &DMatrix<f64>) -> f64 {
+fn gsl_multinormal_pdf(x : &DVector<f64>, mu : &DVector<f64>, sigma : &DMatrix<f64>) -> f64 {
     let mut gsl_prob : f64 = 0.0;
     let lu = Cholesky::new(sigma.clone()).unwrap();
     let lower = lu.l();
@@ -111,23 +114,23 @@ fn gsl_multinormal_logprob(x : &DVector<f64>, mu : &DVector<f64>, sigma : &DMatr
 #[test]
 fn multinormal() {
 
-    let mut mu = DVector::from_element(5, 0.0);
-    mu[0] = 1.2;
-    mu[1] = 3.1;
-
-    let mut sigma = DMatrix::from_element(5, 5, 0.0);
-    sigma.set_diagonal(&DVector::from_element(5, 2.));
-    sigma.row_mut(0).copy_from_slice(&[1.0, 0.5, 0.0, 0.0, 0.0]);
-    sigma.row_mut(1).copy_from_slice(&[0.5, 1.0, 0.0, 0.0, 0.0]);
-
     // We pass samples organized row-by-row to bayes; but as a vector to gsl (as long as we
     // evaluate only a single probability).
-    let mut x = DMatrix::zeros(1, 5);
-    x[(0,0)] = 1.0;
-    x[(0,1)] = 2.0;
+    let mut x = DMatrix::from_fn(1, 5, |_,_| rand::random() );
     let xt = x.row(0).clone_owned().transpose();
 
-    let gsl_prob = gsl_multinormal_logprob(&xt, &mu, &sigma);
+    let mut mu = DVector::from_fn(5, |_,_| rand::random() );
+
+    /*let mut sigma = DMatrix::from_element(5, 5, 0.0);
+    sigma.set_diagonal(&DVector::from_element(5, 2.));
+    sigma.row_mut(0).copy_from_slice(&[1.0, 0.5, 0.0, 0.0, 0.0]);
+    sigma.row_mut(1).copy_from_slice(&[0.5, 1.0, 0.0, 0.0, 0.0]);*/
+    let sigma = multinormal::approx_pd(DMatrix::from_fn(5, 5, |_,_| rand::random() ) );
+    println!("mu = {}", mu);
+    println!("sigma = {}", sigma);
+    println!("x = {}", x);
+
+    let gsl_prob = gsl_multinormal_pdf(&xt, &mu, &sigma);
     let mn : MultiNormal = MultiNormal::new(mu.clone(), sigma);
     let bayes_prob = mn.prob(x.slice((0,0), (x.nrows(), x.ncols())), None);
     println!("GSL Prob: {}", gsl_prob);

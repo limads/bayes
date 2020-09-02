@@ -7,6 +7,7 @@ use std::default::Default;
 use std::ops::{SubAssign, MulAssign};
 use std::convert::TryInto;
 use crate::sim::RandomWalk;
+use nalgebra::linalg;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 enum CovFunction {
@@ -727,6 +728,61 @@ impl From<Normal> for MultiNormal {
         unimplemented!()
     }
 
+}
+
+const EPS : f32 = 1E-8;
+
+/// Verifies if the informed matrix is positive-definite (and can be used as a covariance matrix)
+pub fn is_pd<N : Scalar + RealField + From<f32>>(m : DMatrix<N>) -> bool {
+    let symm_m = build_symmetric(m.clone());
+    if (m - &symm_m).sum() < N::from(EPS) {
+        true
+    } else {
+        false
+    }
+}
+
+/// Builds a symmetric matrix from M as (1/2)*(M + M^T)
+pub fn build_symmetric<N : Scalar + RealField + From<f32>>(m : DMatrix<N>) -> DMatrix<N> {
+    assert!(m.nrows() == m.ncols(), "approx_pd: Informed non-square matrix");
+    let mt = m.transpose();
+    (m + mt).scale(N::from(0.5))
+}
+
+/// Computes the spectral decomposition of square matrix m by applying the SVD to M M^T.
+/// Returns the U matrix (left eigenvectors) and the eigenvalue diagonal D such that M = U D U^T
+///
+/// # References
+/// Singular value decomposition
+/// ([Wiki])(https://en.wikipedia.org/wiki/Singular_value_decomposition#Relation_to_eigenvalue_decomposition)
+pub fn spectral_dec<N : Scalar + RealField + From<f32>>(m : DMatrix<N>) -> (DMatrix<N>, DVector<N>) {
+    let mt = m.transpose();
+    let m_mt = m * mt;
+    let svd = linalg::SVD::new(m_mt, true, true);
+    let eign_vals = svd.singular_values.clone();
+    let u = svd.u.unwrap();
+    (u, eign_vals.map(|e| e.sqrt()))
+}
+
+/// Transforms a potentially non-positive definite square matrix m into a positive
+/// definite approximation (i.e. a matrix that defines a convex surface for the inner
+/// product of any vector, and can be used as a covariance matrix). If m is PD already,
+/// the output is no different that the input. This approximation minimizes the
+/// [Frobenius norm](https://en.wikipedia.org/wiki/Matrix_norm#Frobenius_norm)
+/// between the specified matrix and all the possible positive-definite matrices
+///
+/// # References
+///
+/// Higham, N. J. ([1988](https://www.sciencedirect.com/science/article/pii/0024379588902236)).
+/// Computing a nearest symmetric positive semidefinite matrix.
+/// Linear Algebra Appl., 103, 103–118. doi: 10.1016/0024-3795(88)90223-6 (Theorem 2.1).
+pub fn approx_pd<N : Scalar + RealField + From<f32>>(m : DMatrix<N>) -> DMatrix<N> {
+    let symm_m = build_symmetric(m);
+    let (u, mut diag) = spectral_dec(symm_m);
+    diag.iter_mut().for_each(|d| *d = if *d >= N::from(0.0) { *d } else { N::from(0.0) });
+    let diag_m = DMatrix::from_diagonal(&diag);
+    let u_t = u.transpose();
+    u * diag_m * u_t
 }
 
 /// Least squares algorithms
