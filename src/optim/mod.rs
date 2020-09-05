@@ -344,6 +344,31 @@ impl<T : Sized + Clone> Optimizer<T> for LBFGS<T> {
 }
 
 /*#[test]
-fn test_lbfgs() {
+fn optim_distr() {
 
+    use crate::distr::{Distribution, ExponentialFamily, Bernoulli};
+    use nalgebra::*;
+
+    let b = Bernoulli::new(1, Some(0.5));
+    let y = DMatrix::from_column_slice(5, 1, &[1., 1., 0.]);
+
+    let param = OptimParam::new()
+        .init_state(DVector::from_element(1, 1.))
+        .preserve(100)
+        .max_iter(100);
+    let grad = |x : &DVector<f64>, t : &mut ()| -> DVector<f64> {
+        let s = b.grad(y.slice((0, 0), (3, 1)), None);
+        s
+    };
+    let obj = |x : &DVector<f64>, t : &mut ()| -> f64 {
+        b.log_prob(y.slice((0, 0), (3, 1)), None)
+    };
+    let mut optim = LBFGS::prepare(param, ())
+        .with_gradient(grad)
+        .with_function(obj);
+    optim.minimize().map(|min| println!("{}", min) )
+        .expect("Minimization failed");
 }*/
+
+
+

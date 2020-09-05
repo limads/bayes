@@ -18,6 +18,13 @@ use crate::distr::*;
 /// sampler, which can be used to build a full posterior. This algorithm is useful any time you need
 /// to estimate latent variables via maximum likelihood: The mean of the gaussian approximation to
 /// the latent variables can be taken as their maximum likelihood.
+///
+/// # References
+/// Dempster, A. P., Laird, N. M., & Rubin, D. B.
+/// ([1977](https://rss.onlinelibrary.wiley.com/doi/abs/10.1111/j.2517-6161.1977.tb01600.x)).
+/// Maximum Likelihood from Incomplete Data
+/// Via the EM Algorithm. Journal of the Royal Statistical Society: Series B (Methodological),
+/// 39(1), 1–22. doi: 10.1111/j.2517-6161.1977.tb01600.x
 pub struct ExpectMax {
 
 }

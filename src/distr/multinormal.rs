@@ -5,9 +5,10 @@ use std::f64::consts::PI;
 use std::fmt::{self, Display};
 use std::default::Default;
 use std::ops::{SubAssign, MulAssign};
-use std::convert::TryInto;
+use std::convert::{TryFrom, TryInto};
 use crate::sim::RandomWalk;
 use nalgebra::linalg;
+use serde_json::{self, Value, map::Map};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 enum CovFunction {
@@ -209,7 +210,12 @@ impl MultiNormal {
         }
     }
 
-    fn multinormal_log_part(mu : DVectorSlice<'_, f64>, scaled_mu : DVectorSlice<'_, f64>, cov : &DMatrix<f64>, prec : &DMatrix<f64>) -> f64 {
+    fn multinormal_log_part(
+        mu : DVectorSlice<'_, f64>,
+        scaled_mu : DVectorSlice<'_, f64>,
+        cov : &DMatrix<f64>,
+        prec : &DMatrix<f64>
+    ) -> f64 {
         let sigma_lu = LU::new(cov.clone());
         let sigma_det = sigma_lu.determinant();
 
@@ -923,6 +929,35 @@ mod ls {
             Ok(Self { ols, cov, x_star, y_star, low_inv })
         }
     }*/
+}
+
+impl TryFrom<serde_json::Value> for MultiNormal {
+
+    type Error = String;
+
+    fn try_from(val : Value) -> Result<Self, String> {
+        let mean_val = val.get("mean").ok_or("Missing 'mean' entry of MultiNormal node")?;
+        let cov_val = val.get("cov").ok_or("Missing 'cov' entry of MultiNormal node")?;
+        let mut mean = crate::parse::parse_vector(mean_val)?;
+        let mut cov = crate::parse::parse_matrix(cov_val)?;
+        Ok(MultiNormal::new(mean, cov))
+    }
+
+}
+
+impl Into<serde_json::Value> for MultiNormal {
+
+    fn into(self) -> serde_json::Value {
+        let mu = crate::parse::vector_to_value(&self.mu);
+        let sigma = crate::parse::matrix_to_value(&Self::invert_scale(&self.sigma_inv));
+        let mut child = Map::new();
+        child.insert(String::from("mean"), mu);
+        child.insert(String::from("cov"), sigma);
+        let mut parent = Map::new();
+        parent.insert(String::from("multinormal"), Value::Object(child));
+        Value::Object(parent)
+    }
+
 }
 
 /*mod estimation {

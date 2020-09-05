@@ -17,7 +17,6 @@ use nalgebra::storage::Storage;
 use std::default::Default;
 use super::Sample;
 use std::cmp::{Ord, Ordering};
-
 pub mod csv;
 
 // #[cfg(feature = "sql")]
