@@ -5,6 +5,8 @@ use std::ops::AddAssign;
 use crate::decision::BayesFactor;
 use std::fmt::Display;
 use crate::sim::RandomWalk;
+use anyhow;
+use thiserror::Error;
 
 pub mod poisson;
 
@@ -65,6 +67,13 @@ where Self : Debug + Display //+ Sized
     /// Returns the expected value of the distribution, which is a function of
     /// the current parameter vector.
     fn mean(&self) -> &DVector<f64>;
+
+    // TODO transform API to:
+    // "natural" is always the linear (or scaled in the normal case) parameter;
+    // "canonical" is always the non-linear (or unscaled in the normal case) parameter.
+
+    // view_natural() / set_natural()
+    // view_canonical() / set_canonical()
 
     /// Acquires reference to internal parameter vector; either in
     /// natural form (eta) or canonical form (theta).
@@ -166,6 +175,12 @@ pub trait Conditional<D>
 /// holding this factor is calculated relative to a random draw from
 /// the parent MultiNormal distribution, which is interpreted as a
 /// set of natural parameters for each realization of this random variable.
+/// Conjugate factors express stochastic relationships between a prior (
+/// which might be an observed group label, unobserved prior assumtion
+/// or marginal ML prior estimate) and the factor, i.e. sampling the factor
+/// is conditional on sampling the conjugate parameter; CondExpect factors
+/// express a deterministic relationship (the factor parameter IS the realization
+/// of the linear combination of the factors).
 #[derive(Debug, Clone)]
 pub enum UnivariateFactor<D>
 where D : Distribution
@@ -198,7 +213,15 @@ where D : Distribution
             d.log_prob(sf.slice((0,0), sf.shape()), None)
         },
         UnivariateFactor::CondExpect(m) => {
-            m.log_prob(eta_s.slice((0,1), (eta_s.nrows(), eta_s.ncols() - 1)), x)
+            // If we are considering a conditional expectation factor, we consider not the
+            // column sample vector, but a single row realization of a multivariate normal.
+            // Assume here distribution is already scaled by the x argument we receive
+            // (we shouldn't have to re-scale at every iteration).
+            // let eta_t = DMatrix::from_rows(&[eta_s.clone_owned().transpose()]);
+            // m.log_prob(eta_t.slice((0, 0), (1, eta_t.ncols())), x)
+
+            // Just eval the log-probability of self, by changing parameters of factor.
+            0.
         },
         UnivariateFactor::Empty => 0.
     };
@@ -285,14 +308,16 @@ where
                 DVector::from_element(1, s)
             },
             d => {
-                let cov_inv = self.cov_inv().unwrap();
+                // See specialized grad implementation at MultiNormal
+                panic!("Unimplemented")
+                /*let cov_inv = self.cov_inv().unwrap();
                 assert!(cov_inv.nrows() == cov_inv.ncols());
                 assert!(cov_inv.nrows() == self.mean().nrows());
                 let yt = y.transpose();
                 let yt_scaled = cov_inv.clone() * yt;
                 let m_scaled = cov_inv * self.mean();
                 let ys = yt_scaled.column_sum();
-                yt_scaled - m_scaled
+                yt_scaled - m_scaled*/
             }
         }
     }
@@ -400,9 +425,18 @@ pub trait Likelihood<C>
         BayesFactor::new(&self, &other)
     }
 
+    /*/// Here, we approximate the relative entropy, or KL-divergence
+    /// E[log_p(x) - log_q(x)] by the average of a few data point pairs (y, x)
+    fn entropy<'a, D>(&'a self, other : &'a D, y : DMatrixSlice<'_, f64>, x : Option<DMatrixSlice<'_, f64>>) -> f64
+        where D : Distribution + Sized
+    {
+        BayesFactor::new(&self, &other).log_diff(y, x)
+    }*/
+
+
     /// Returns the distribution with the parameters set to its
     /// gaussian approximation (mean and standard error).
-    fn mle(y : DMatrixSlice<'_, f64>) -> Self;
+    fn mle(y : DMatrixSlice<'_, f64>) -> Result<Self, anyhow::Error>;
     //{
     //    (Self::mean_mle(y), Self::se_mle(y))
     //}
@@ -597,6 +631,27 @@ where P : Posterior
     let param = get_posterior_eta(&*post).clone_owned();
     post.set_parameter(param.rows(0, param.nrows()), true);
 }
+
+/*#[derive(Debug, Clone, Error)]
+pub enum UnivariateError {
+
+    #[error("Informed parameter value {0} outside distribution domain")]
+    ParameterBounds(f64),
+
+    #[error("Sample value {0} outside domain for distribution")]
+    SampleDomain(f64)
+
+}
+
+#[derive(Debug, Clone, Error)]
+pub enum CategoricalError {
+
+}
+
+#[derive(Debug, Clone, Error)]
+pub enum MultivariateError {
+
+}*/
 
 /*/// Generic factor of distributions which have more than one factor
 /// children of the same type. This structure implements Likelihood,

@@ -8,6 +8,7 @@ use nalgebra::*;
 use bayes::parse::AnyLikelihood;
 use bayes::sample::Sample;
 
+/// Fit and compare probabilistic models from the command line
 #[derive(StructOpt, Debug)]
 pub enum Bayes {
 
@@ -80,7 +81,8 @@ fn main() -> Result<(), String> {
                         .map_err(|e| format!("{}", e) )?;
                     match &method[..] {
                         "mle" => {
-                            let mle = model.mle(tbl.at((0, tbl.ncols())).unwrap());
+                            let mle = model.mle(tbl.at((0, tbl.ncols())).unwrap())
+                                .map_err(|e| format!("{}", e) )?;
                             print_or_save(mle, output)
                         },
                         m => Err(format!("Unknown method: {}", m)),

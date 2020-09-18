@@ -6,6 +6,7 @@ use std::f64::consts::PI;
 use crate::sim::*;
 use std::fmt::{self, Display};
 use crate::gsl::rand_utils::GslRng;
+use anyhow;
 
 /// The Normal is the exponential-family distribution
 /// used as the likelihood for continuous unbounded outcomes and as priors
@@ -333,11 +334,14 @@ impl Likelihood<U1> for Normal {
     }*/
 
     /// Biased maximum likelihood mean estimate
-    fn mle(y : DMatrixSlice<'_, f64>) -> Self {
+    fn mle(y : DMatrixSlice<'_, f64>) -> Result<Self, anyhow::Error> {
         let suff = Self::sufficient_stat(y);
         let mean = suff[0] / y.nrows() as f64;
         let var = suff[1] / y.nrows() as f64 - mean.powf(2.);
-        Normal::new(1, Some(mean), Some(var))
+        if var <= 0.0 {
+            return Err(anyhow::Error::msg("Variance of estimate cannot be zero"));
+        }
+        Ok(Normal::new(1, Some(mean), Some(var)))
     }
 
     fn visit_factors<F>(&mut self, f : F) where F : Fn(&mut dyn Posterior) {

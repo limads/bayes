@@ -188,8 +188,7 @@ pub struct Approximation {
 
         // Obtain approximate covariance from approximate hessian via QR inversion
         let sigma_approx = Self::invert_scale(&prec_approx);
-
-        MultiNormal::new(mu_approx, sigma_approx)
+        MultiNormal::new(mu_approx, sigma_approx).unwrap();
     }
 
     fn update(&mut self, eta : DMatrix<f64>) {
@@ -197,8 +196,12 @@ pub struct Approximation {
     }
 }*/
 
+// Perhaps leave T as plain ref here and allow mutation only at Objective?
 type Gradient<T> = Box<dyn FnMut(&DVector<f64>, &mut T)->DVector<f64>>;
 
+// Perhaps use move semantics? FnMut(mut DVector<f64>, &mut T)->DVector<f64>>.
+// The user should be able to still use a move || closure here, to send data
+// he has no interest in recovering?
 type Objective<T> = Box<dyn FnMut(&DVector<f64>, &mut T)->f64>;
 
 /// Wraps [GSL's](https://www.gnu.org/software/gsl/doc/html/multimin.html) implementation
@@ -212,9 +215,9 @@ type Objective<T> = Box<dyn FnMut(&DVector<f64>, &mut T)->f64>;
 /// use nalgebra::*;
 ///
 /// let param = OptimParam::new()
-///        .init_state(DVector::from_element(1, 1.))
-///        .preserve(100)
-///        .max_iter(100);
+///    .init_state(DVector::from_element(1, 1.))
+///    .preserve(100)
+///    .max_iter(100);
 /// let grad = |x : &DVector<f64>, t : &mut ()| -> DVector<f64> {
 ///     DVector::from_element(1, 6. * x[0])
 /// };

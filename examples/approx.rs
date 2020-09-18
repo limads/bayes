@@ -62,7 +62,7 @@ fn normal_log_prob() {
     let y = n.sample();
     // println!("{}", y);
     // let y = DVector::from_column_slice(&[1.1, 2.2, 3.2, 1.3, 2.1, 2.2, 3.1, 2.2, 1.1, 1.0]);
-    let mle = Normal::mle(y.slice((0, 0), (1000, 1)));
+    let mle = Normal::mle(y.slice((0, 0), (1000, 1))).unwrap();
     // println!("{}", mle);
     // println!("MLE: {}", mle);
     // let var = mle.var()[0];

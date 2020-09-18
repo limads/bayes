@@ -67,7 +67,7 @@ impl AnyLikelihood {
             AnyLikelihood::MN(m) => m.clone().into(),
             AnyLikelihood::Other => unimplemented!()
         };
-        let content = serde_json::to_string(&val)?;
+        let content = serde_json::to_string_pretty(&val)?;
         writer.write_all(content.as_bytes())?;
         Ok(())
     }
@@ -99,9 +99,9 @@ impl AnyLikelihood {
 
     /// Dispatches to the MLE of the variant, returning the result
     /// wrapped in the same variant.
-    pub fn mle(&self, y : DMatrixSlice<'_, f64>) -> Self {
+    pub fn mle(&self, y : DMatrixSlice<'_, f64>) -> Result<Self, anyhow::Error> {
         match self {
-            AnyLikelihood::MN(m) => AnyLikelihood::MN(MultiNormal::mle(y)),
+            AnyLikelihood::MN(m) => Ok(AnyLikelihood::MN(MultiNormal::mle(y)?)),
             _ => unimplemented!()
         }
     }

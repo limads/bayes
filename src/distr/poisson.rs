@@ -9,6 +9,7 @@ use std::default::Default;
 use serde::ser::{Serializer};
 use serde::de::Deserializer;
 use std::fmt::{self, Display};
+use anyhow;
 
 pub type PoissonFactor = UnivariateFactor<Gamma>;
 
@@ -261,9 +262,9 @@ impl Conditional<Gamma> for Poisson {
 
 impl Likelihood<U1> for Poisson {
 
-    fn mle(y : DMatrixSlice<'_, f64>) -> Self {
+    fn mle(y : DMatrixSlice<'_, f64>) -> Result<Self, anyhow::Error> {
         let lambda = y.sum() as f64 / y.nrows() as f64;
-        Self::new(1, Some(lambda))
+        Ok(Self::new(1, Some(lambda)))
     }
 
     /*fn mean_mle(y : DMatrixSlice<'_, f64>) -> f64 {

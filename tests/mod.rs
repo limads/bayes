@@ -131,7 +131,7 @@ fn multinormal() {
     println!("x = {}", x);
 
     let gsl_prob = gsl_multinormal_pdf(&xt, &mu, &sigma);
-    let mn : MultiNormal = MultiNormal::new(mu.clone(), sigma);
+    let mn : MultiNormal = MultiNormal::new(mu.clone(), sigma).unwrap();
     let bayes_prob = mn.prob(x.slice((0,0), (x.nrows(), x.ncols())), None);
     println!("GSL Prob: {}", gsl_prob);
     println!("Bayes Prob: {}", bayes_prob);

@@ -75,10 +75,10 @@ fn interpolate(
     if x.len() < 2 {
         return Err("Invalid length");
     }
+    let step = define_step(x, n);
+    let mut x_compl = Vec::new();
+    let mut interp = Vec::new();
     unsafe {
-        let step = define_step(x, n);
-        let mut x_compl = Vec::new();
-        let mut interp = Vec::new();
         for i in 0..n {
             x_compl.push(x[0] + step * (i as f64));
             interp.push(spline::gsl_spline_eval(spline, x_compl[i], acc));

@@ -140,11 +140,11 @@ pub struct BayesFactor<'a, D, E>
         E : Distribution
 {
 
-    _a : &'a D,
+    a : &'a D,
 
-    _b : &'a E,
+    b : &'a E,
 
-    _bound : Decision<'a>
+    bound : Option<Decision<'a>>
 }
 
 impl<'a, D,E> BayesFactor<'a, D, E>
@@ -152,6 +152,10 @@ impl<'a, D,E> BayesFactor<'a, D, E>
         D : Distribution,
         E : Distribution
 {
+
+    pub fn log_diff(&self, y : DMatrixSlice<'_, f64>, x : Option<DMatrixSlice<'_, f64>>) -> f64 {
+        self.a.log_prob(y.clone(), x.clone()) - self.b.log_prob(y, x)
+    }
 
     /// Decision boundary accepts Default::default() for a standard
     /// cost to positive/negative errors.
@@ -187,9 +191,10 @@ impl<'a, D,E> BayesFactor<'a, D, E>
         unimplemented!()
     }
 
-    pub fn new(_a : &'a D, _b : &'a E) -> Self {
-        unimplemented!()
+    pub fn new(a : &'a D, b : &'a E) -> Self {
+        Self{ a, b, bound : None }
     }
+
 }
 
 

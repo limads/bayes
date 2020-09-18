@@ -9,13 +9,15 @@ use std::convert::{TryFrom, TryInto};
 use crate::sim::RandomWalk;
 use nalgebra::linalg;
 use serde_json::{self, Value, map::Map};
+use anyhow;
+use crate::parse::AnyLikelihood;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/*#[derive(Debug, Clone, Serialize, Deserialize)]
 enum CovFunction {
     None,
     Log,
     Logit
-}
+}*/
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct LinearOp {
@@ -26,24 +28,12 @@ struct LinearOp {
 
     pub shift : DVector<f64>,
 
-    pub lin_mu : DVector<f64>,
+    // pub scale_t : DMatrix<f64>,
 
-    pub lin_scaled_mu : DVector<f64>,
-
-    pub lin_sigma_inv : DMatrix<f64>,
-
-    pub lin_log_part : DVector<f64>,
-
-    /*pub transf_sigma_inv : Option<DMatrix<f64>>,
-
-    /// For situations when the covariance is a known
-    /// function of the mean parameter vector, usually
-    /// because we are making inferences conditional on an
-    /// ML estimate of the scale parameter.
-    pub cov_func : CovFunction*/
+    dst : Box<MultiNormal>
 }
 
-impl Default for LinearOp {
+/*impl Default for LinearOp {
 
     fn default() -> Self {
         let scale = DMatrix::from_element(1,1,1.);
@@ -67,36 +57,53 @@ impl Default for LinearOp {
         }
     }
 
-}
+}*/
 
 impl LinearOp {
 
-    pub fn new_from_shift(shift : DVector<f64>) -> Self {
-        let mut op : LinearOp = Default::default();
-        let mut scale = DMatrix::zeros(shift.nrows(), shift.nrows());
-        scale.set_diagonal(&DVector::from_element(shift.nrows(), 1.));
-        op.shift = shift;
-        op.scale_t = scale.clone().transpose();
-        op.scale = scale;
+    pub fn new(
+        src : &MultiNormal,
+        shift : Option<DVector<f64>>,
+        scale : Option<DMatrix<f64>>
+    ) -> Self {
+        let n = shift.clone().map(|s| s.nrows()).unwrap_or(scale.clone().unwrap().nrows());
+        let create_ident = || {
+            let mut m = DMatrix::zeros(n, n);
+            m.fill_with_identity();
+            m
+        };
+        let scale = scale.unwrap_or_else(create_ident);
+        let scale_t = scale.transpose();
+        let shift = shift.unwrap_or_else(|| DVector::from_element(n, 0.));
+        let mut m = MultiNormal::new(shift.clone(), create_ident()).unwrap();
+        let mut op = Self{ scale, scale_t, shift, dst : Box::new(m) };
+        op.update_from(&src);
         op
     }
 
-    pub fn new_from_scale(scale : DMatrix<f64>) -> Self {
-        let mut op : LinearOp = Default::default();
-        op.shift = DVector::from_element(scale.nrows(), 0.);
-        op.scale_t = scale.clone().transpose();
-        op.scale = scale;
-        op
+    pub fn update_from(&mut self, src : &MultiNormal) {
+        let new_mu = self.shift.clone() + &self.scale * src.mean();
+        let src_cov = MultiNormal::invert_scale(&src.sigma_inv);
+        let new_sigma = self.scale.clone() * src_cov * &self.scale_t;
+        self.dst.set_parameter(new_mu.rows(0, new_mu.nrows()), false);
+        self.dst.set_cov(new_sigma);
     }
 
-    pub fn update(&mut self, mu : &DVector<f64>, sigma_inv : &DVector<f64>) {
-        self.lin_mu = self.scale.clone() * mu;
-        self.lin_sigma_inv = self.scale.clone() * sigma_inv * &self.scale_t;
-        self.lin_scaled_mu = self.lin_sigma_inv.clone() * &self.lin_mu
+    pub fn update_scale(&mut self, src : &MultiNormal, scale : DMatrix<f64>) {
+        assert!(self.scale.nrows() == scale.nrows());
+        assert!(self.scale.ncols() == scale.ncols());
+        self.scale = scale.clone();
+        self.scale_t = scale.transpose();
+        let cov = MultiNormal::invert_scale(&src.sigma_inv);
+        let new_sigma = self.scale.clone() * cov * &self.scale_t;
+        self.dst.set_cov(new_sigma);
     }
 
-    pub fn output(&self) -> (&DVector<f64>, &DMatrix<f64>) {
-        (&self.lin_mu, &self.lin_sigma_inv)
+    pub fn update_shift(&mut self, src : &MultiNormal, shift : DVector<f64>) {
+        assert!(self.shift.nrows() == shift.nrows());
+        self.shift = shift;
+        let new_mu = self.shift.clone() + self.scale.clone() * src.mean();
+        self.dst.set_parameter(new_mu.rows(0, new_mu.nrows()), false);
     }
 
 }
@@ -159,10 +166,36 @@ impl MultiNormal {
         diag_m
     }
 
-    pub fn new(mu : DVector<f64>, sigma : DMatrix<f64>) -> Self {
+    /// Creates a centered multinormal with identity covariance of size n.
+    pub fn new_standard(n : usize) -> Self {
+        let mu = DVector::zeros(n);
+        let mut cov = DMatrix::zeros(n, n);
+        cov.fill_with_identity();
+        Self::new(mu, cov).unwrap()
+    }
+
+    /// Creates a non-centered multinormal with specified diagonal covariance.
+    pub fn new_homoscedastic(mu : DVector<f64>, var : f64) -> Self {
+        let n = mu.nrows();
+        let mut cov = DMatrix::zeros(n, n);
+        cov.set_diagonal(&DVector::from_element(n, var));
+        Self::new(mu, cov).unwrap()
+    }
+
+    /// Builds a new multivariate distribution from a mu vector and positive-definite
+    /// covariance matrix sigma.
+    pub fn new(mu : DVector<f64>, sigma : DMatrix<f64>) -> Result<Self, anyhow::Error> {
         // let suff_scale = None;
         let log_part = DVector::from_element(1, 0.0);
-        let sigma_inv = Self::invert_scale(&sigma);
+        if !is_pd(sigma.clone()) {
+            return Err(anyhow::Error::msg("Informed matrix is not positive-definite").into());
+        }
+        if mu.nrows() != sigma.nrows() || mu.nrows() != sigma.ncols() {
+            return Err(anyhow::Error::msg("Mismatch between mean vector and sigma covariance sizes"));
+        }
+        //println!("sigma = {}", sigma);
+        let sigma_inv = QR::new(sigma.clone()).try_inverse()
+            .ok_or(anyhow::Error::msg("Informed matrix is not invertible"))?;
         // let func = CovFunction::None;
         // let lin_sigma_inv = LinearCov::None;
         /*let mu = param.0;
@@ -185,27 +218,33 @@ impl MultiNormal {
         };
         norm.set_parameter(mu.rows(0, mu.nrows()), true);
         norm.set_cov(sigma.clone());
-        norm
+        Ok(norm)
     }
 
-    pub fn scale(&mut self, scale : DMatrix<f64>) {
-        match self.op {
-            Some(ref mut op) => {
-                op.scale = scale;
+    /// Scales this multinormal by the informed value.
+    pub fn scale_by(&mut self, scale : DMatrix<f64>) {
+        match self.op.take() {
+            Some(mut op) => {
+                assert!(op.scale.nrows() == scale.nrows());
+                assert!(op.scale.ncols() == scale.ncols());
+                op.update_scale(&self, scale);
+                self.op = Some(op);
             },
             None => {
-                self.op = Some(LinearOp::new_from_scale(scale));
+                self.op = Some(LinearOp::new(&self, None, Some(scale)));
             }
         }
     }
 
-    pub fn shift(&mut self, shift : DVector<f64>) {
-        match self.op {
-            Some(ref mut op) => {
-                op.shift = shift;
+    /// Shifts this multinormal by the informed value.
+    pub fn shift_by(&mut self, shift : DVector<f64>) {
+        match self.op.take() {
+            Some(mut op) => {
+                op.update_shift(&self, shift);
+                self.op = Some(op);
             },
             None => {
-                self.op = Some(LinearOp::new_from_shift(shift));
+                self.op = Some(LinearOp::new(&self, Some(shift), None));
             }
         }
     }
@@ -320,7 +359,7 @@ impl MultiNormal {
         let ols = ls::OLS::estimate(&y, &x);
         let mu = ols.beta;
         let cov = (x.clone().transpose() * x).scale(ols.err.unwrap().sum() / n);
-        Self::new(mu, cov)
+        Self::new(mu, cov).unwrap()
     }
 
     pub fn set_cov(&mut self, cov : DMatrix<f64>) {
@@ -329,6 +368,10 @@ impl MultiNormal {
         self.sigma_inv = prec;
         let mu = self.mu.clone();
         self.update_log_partition(mu.rows(0, mu.nrows()));
+        if let Some(mut op) = self.op.take() {
+            op.update_from(&self);
+            self.op = Some(op);
+        }
     }
 
     /*pub fn new(mu : DVector<f64>, w : Wishart) -> Self {
@@ -361,7 +404,8 @@ impl ExponentialFamily<Dynamic> for MultiNormal {
     /// Returs the matrix [sum(yi) | sum(yi yi^T)]
     /// TODO if there is a constant scale factor, the sufficient statistic
     /// is the sample row-sum. If there is a random scale factor (wishart) the sufficient
-    /// statistic is the matrix [rowsum(x)^T sum(x x^T)]
+    /// statistic is the matrix [rowsum(x)^T sum(x x^T)], which is guaranteed to be
+    /// positive-definite.
     fn sufficient_stat(y : DMatrixSlice<'_, f64>) -> DMatrix<f64> {
         /*let r_sum = y.row_sum();
         let cross_p = y.clone_owned().transpose() * &y;
@@ -380,24 +424,18 @@ impl ExponentialFamily<Dynamic> for MultiNormal {
     }
 
     fn suf_log_prob(&self, t : DMatrixSlice<'_, f64>) -> f64 {
-        let scaled_mu = match self.op {
-            Some(ref op) => &(op.lin_scaled_mu),
-            None => &self.scaled_mu
-        };
-        let sigma_inv = match self.op {
-            Some(ref op) => &(op.lin_sigma_inv),
-            None => &self.sigma_inv
-        };
+        if let Some(op) = &self.op {
+            return op.dst.suf_log_prob(t);
+        }
         let mut lp = 0.0;
-        lp += scaled_mu.dot(&t.column(0));
+        println!("suff stat = {:?}", t.shape());
+        println!("scaled mu = {:?}", self.scaled_mu.shape());
+        lp += self.scaled_mu.dot(&t.column(0));
         let t_cov = t.columns(1, t.ncols() - 1);
-        for (s_inv_row, tc_row) in sigma_inv.row_iter().zip(t_cov.row_iter()) {
+        for (s_inv_row, tc_row) in self.sigma_inv.row_iter().zip(t_cov.row_iter()) {
             lp += (-0.5) * s_inv_row.dot(&tc_row);
         }
-        let log_part = match self.op {
-            Some(ref op) => &op.lin_log_part,
-            None => &self.log_partition()
-        };
+        let log_part = self.log_partition();
         lp + log_part[0]
     }
 
@@ -420,21 +458,6 @@ impl ExponentialFamily<Dynamic> for MultiNormal {
             &self.sigma_inv
         );
         self.log_part = DVector::from_element(1, log_part);
-        if let Some(ref mut op) = self.op {
-            // The new lin_mu should have already been set at self.set_parameter()
-            let lin_mu = op.lin_mu.clone_owned();
-            let lin_sigma_inv = op.lin_sigma_inv.clone_owned();
-            let lin_cov = Self::invert_scale(&lin_sigma_inv);
-
-            // pass scaled_lin_mu here instead
-            let lin_log_part = Self::multinormal_log_part(
-                lin_mu.rows(0, lin_mu.nrows()),
-                lin_mu.rows(0, lin_mu.nrows()),
-                &lin_cov,
-                &lin_sigma_inv
-            );
-            op.lin_log_part = DVector::from_element(1, lin_log_part);
-        }
         //let sigma_lu = LU::new(cov.clone());
         //let sigma_det = sigma_lu.determinant();
         //let p_eta_cov = -0.25 * eta.clone().transpose() * cov * &eta;
@@ -467,6 +490,28 @@ impl ExponentialFamily<Dynamic> for MultiNormal {
         unimplemented!()
     }
 
+    // Remember that data should be passed as wide rows here.
+    // We have that dbeta/dy = sigma_inv*(y - mu)
+    // If the multinormal is linearized, we apply the linear operator
+    // to the derivative: x^T sigma_inv*(y - mu).
+    fn grad(&self, y : DMatrixSlice<'_, f64>, x : Option<DMatrix<f64>>) -> DVector<f64> {
+        let cov_inv = self.cov_inv().unwrap();
+        assert!(cov_inv.nrows() == cov_inv.ncols());
+        assert!(cov_inv.nrows() == self.mean().nrows());
+
+        // Remember that y comes as wide rows - We make them columns here.
+        let yt = y.transpose();
+        let yt_scaled = cov_inv.clone() * yt;
+        // same as self.scaled_mu - But we need to reallocate here
+        let m_scaled = cov_inv * self.mean();
+        let ys = yt_scaled.column_sum(); // or mean?
+        let mut score = yt_scaled - m_scaled;
+        if let Some(op) = &self.op {
+            score = op.scale.transpose() * score.clone();
+        }
+        score
+    }
+
     /*fn update_grad(&mut self, _eta : DVectorSlice<'_, f64>) {
         unimplemented!()
     }
@@ -489,9 +534,11 @@ fn suff_stat() {
 
 impl Distribution for MultiNormal {
 
-    fn view_parameter(&self, _natural : bool) -> &DVector<f64> {
-        // see mu; vs. see sigma_inv*mu
-        unimplemented!()
+    fn view_parameter(&self, natural : bool) -> &DVector<f64> {
+        match natural {
+            true => &self.scaled_mu,
+            false => &self.mu
+        }
     }
 
     /// Set parameter should verify if there is a scale factor. If there is,
@@ -499,44 +546,50 @@ impl Distribution for MultiNormal {
     /// into self. Only after the new covariance is set to self, call self.update_log_partition().
     fn set_parameter(&mut self, p : DVectorSlice<'_, f64>, _natural : bool) {
         self.mu.copy_from(&p.column(0));
-        if let Some(ref mut op) = self.op {
-            op.lin_mu = &op.scale * p.clone_owned();
-            /*match op.cov_func {
-                CovFunction::Log => {
-                    // op.transf_sigma_inv = Some(self.sigma_inv[(0, 0)] * op.scale.clone() * op.scale.clone().transpose());
-                },
-                CovFunction::Logit => {
-
-                }
-            }
-            op.lin_mu = op.scale.clone() * p.column(0);
-            op.lin_sigma_inv = op.scale.clone() * self.sigma_inv * op.scale.clone().transpose();*/
-        }
         self.scaled_mu = self.sigma_inv.clone() * &self.mu;
         self.update_log_partition(p);
+        if let Some(mut op) = self.op.take() {
+            op.update_from(&self);
+            self.op = Some(op);
+        }
     }
 
     fn mean<'a>(&'a self) -> &'a DVector<f64> {
-        &self.mu
+        match &self.op {
+            Some(op) => op.dst.mean(),
+            None => &self.mu
+        }
     }
 
     fn mode(&self) -> DVector<f64> {
-        self.mu.clone()
+        self.mean().clone()
     }
 
     fn var(&self) -> DVector<f64> {
-        self.cov().unwrap().diagonal()
+        match &self.op {
+            Some(op) => op.dst.cov().unwrap().diagonal(),
+            None => self.cov().unwrap().diagonal()
+        }
     }
 
     fn cov(&self) -> Option<DMatrix<f64>> {
-        Some(Self::invert_scale(&self.sigma_inv))
+        match &self.op {
+            Some(op) => Some(Self::invert_scale(&op.dst.sigma_inv)),
+            None => Some(Self::invert_scale(&self.sigma_inv))
+        }
     }
 
     fn cov_inv(&self) -> Option<DMatrix<f64>> {
-        Some(self.sigma_inv.clone())
+        match &self.op {
+            Some(op) => Some(op.dst.sigma_inv.clone()),
+            None => Some(self.sigma_inv.clone())
+        }
     }
 
     fn log_prob(&self, y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>) -> f64 {
+        if let Some(op) = &self.op {
+            return op.dst.log_prob(y, x);
+        }
         let t = Self::sufficient_stat(y);
         let lp = self.suf_log_prob(t.slice((0, 0), (t.nrows(), t.ncols())));
         let loc_lp = match &self.loc_factor {
@@ -592,8 +645,11 @@ impl Likelihood<Dynamic> for MultiNormal {
 
     /// Returns the distribution with the parameters set to its
     /// gaussian approximation (mean and standard error).
-    fn mle(y : DMatrixSlice<'_, f64>) -> Self {
+    fn mle(y : DMatrixSlice<'_, f64>) -> Result<Self, anyhow::Error> {
         let n = y.nrows() as f64;
+        if y.nrows() < y.ncols() {
+            return Err(anyhow::Error::msg("MLE cannot be calculated if n is smaller than the number of parameters"));
+        }
         let suf = Self::sufficient_stat(y);
         let mut mu : DVector<f64> = suf.column(0).clone_owned();
         mu.unscale_mut(n);
@@ -940,7 +996,20 @@ impl TryFrom<serde_json::Value> for MultiNormal {
         let cov_val = val.get("cov").ok_or("Missing 'cov' entry of MultiNormal node")?;
         let mut mean = crate::parse::parse_vector(mean_val)?;
         let mut cov = crate::parse::parse_matrix(cov_val)?;
-        Ok(MultiNormal::new(mean, cov))
+        Ok(MultiNormal::new(mean, cov).map_err(|e| format!("{}", e))?)
+    }
+
+}
+
+impl TryFrom<AnyLikelihood> for MultiNormal {
+
+    type Error = String;
+
+    fn try_from(lik : AnyLikelihood) -> Result<Self, String> {
+        match lik {
+            AnyLikelihood::MN(m) => Ok(m),
+            _ => Err(format!("Object does not have a top-level multinormal node"))
+        }
     }
 
 }
@@ -958,6 +1027,27 @@ impl Into<serde_json::Value> for MultiNormal {
         Value::Object(parent)
     }
 
+}
+
+#[test]
+fn regression() {
+    let norm = Normal::new(100, None, None);
+    let noise = [norm.sample(), norm.sample(), norm.sample()];
+    let beta = DVector::from_column_slice(&[1., 1., 1.]);
+    let x1 = DVector::from_fn(100, |i,_| beta[0] * i as f64 + noise[0][i]);
+    let x2 = DVector::from_fn(100, |i,_| beta[1] * i as f64 + noise[1][i]);
+    let x3 = DVector::from_fn(100, |i,_| beta[2] * i as f64 + noise[2][i]);
+    let mut y = norm.sample().column(0).clone_owned();
+    y += &x1;
+    y += &x2;
+    y += &x3;
+    let x = DMatrix::from_columns(&[x1, x2, x3]);
+    let x = utils::append_intercept(x.clone());
+
+    let beta = MultiNormal::linear_mle(&x, &y);
+    println!("Linear MLE = {}", beta.mean());
+
+    // let yh = x * beta.mean();
 }
 
 /*mod estimation {
