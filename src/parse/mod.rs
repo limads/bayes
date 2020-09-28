@@ -9,6 +9,7 @@ use std::io::{Read, Write};
 use std::fmt::{self, Display};
 use std::convert::{AsRef, AsMut};
 use std::path::Path;
+use std::str::FromStr;
 
 /// Enumeration representing any probabilistic model read from the outside world
 /// (e.g. JSON file), anchored by its top-level node (its likelihood). AnyLikelihood
@@ -27,7 +28,8 @@ use std::path::Path;
 #[derive(Clone)]
 pub enum AnyLikelihood {
     Other,
-    MN(MultiNormal)
+    MN(MultiNormal),
+    Bern(Bernoulli)
 }
 
 impl AnyLikelihood {
@@ -65,6 +67,7 @@ impl AnyLikelihood {
     {
         let val : Value = match self {
             AnyLikelihood::MN(m) => m.clone().into(),
+            AnyLikelihood::Bern(b) => b.clone().into(),
             AnyLikelihood::Other => unimplemented!()
         };
         let content = serde_json::to_string_pretty(&val)?;
@@ -110,6 +113,7 @@ impl AnyLikelihood {
     pub fn visit_factors<F>(&mut self, f : F) where F : Fn(&mut dyn Posterior) {
         match self {
             AnyLikelihood::MN(m) => m.visit_factors(f),
+            AnyLikelihood::Bern(b) => b.visit_factors(f),
             _ => unimplemented!()
         }
     }
@@ -121,28 +125,35 @@ impl<'a> From<&'a mut AnyLikelihood> for &'a mut dyn Distribution {
     fn from(distr : &'a mut AnyLikelihood) -> Self {
         match distr {
             AnyLikelihood::MN(ref mut m) => m as &mut _,
+            AnyLikelihood::Bern(ref mut b) => b as &mut _,
             _ => unimplemented!()
         }
     }
 
 }
 
-impl<'a> From<&'a mut AnyLikelihood> for &'a mut dyn Posterior {
+impl<'a> TryFrom<&'a mut AnyLikelihood> for &'a mut dyn Posterior {
 
-    fn from(distr : &'a mut AnyLikelihood) -> Self {
+    type Error = ();
+
+    fn try_from(distr : &'a mut AnyLikelihood) -> Result<Self, ()> {
         match distr {
-            AnyLikelihood::MN(ref mut m) => m as &mut _,
+            AnyLikelihood::MN(ref mut m) => Ok(m as &mut _),
+            AnyLikelihood::Bern(ref mut b) => Err(()),
             _ => unimplemented!()
         }
     }
 
 }
 
-impl<'a> From<&'a AnyLikelihood> for &'a dyn Posterior {
+impl<'a> TryFrom<&'a AnyLikelihood> for &'a dyn Posterior {
 
-    fn from(distr : &'a AnyLikelihood) -> Self {
+    type Error = ();
+
+    fn try_from(distr : &'a AnyLikelihood) -> Result<Self, ()> {
         match distr {
-            AnyLikelihood::MN(ref m) => m as &_,
+            AnyLikelihood::MN(ref m) => Ok(m as &_),
+            AnyLikelihood::Bern(ref b) => Err(()),
             _ => unimplemented!()
         }
     }
@@ -154,8 +165,22 @@ impl<'a> From<&'a AnyLikelihood> for &'a dyn Distribution {
     fn from(distr : &'a AnyLikelihood) -> Self {
         match distr {
             AnyLikelihood::MN(ref m) => m as &_,
+            AnyLikelihood::Bern(ref b) => b as &_,
             _ => unimplemented!()
         }
+    }
+
+}
+
+impl FromStr for AnyLikelihood {
+
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let v: Value = serde_json::from_str(s)
+            .map_err(|e| format!("{}", e) )?;
+        let m = Self::try_from(v)?;
+        Ok(m)
     }
 
 }
@@ -174,7 +199,10 @@ impl TryFrom<serde_json::Value> for AnyLikelihood {
     fn try_from(mut val : Value) -> Result<Self, String> {
         match val.get("multinormal") {
             Some(v) => Ok(AnyLikelihood::MN(MultiNormal::try_from(v.clone())?)),
-            _ => Err(format!("Invalid likelihood node"))
+            _ => match val.get("bernoulli") {
+                Some(v) => Ok(AnyLikelihood::Bern(Bernoulli::try_from(v.clone())?)),
+                _ => Err(format!("Invalid likelihood node"))
+            }
         }
     }
 
@@ -185,6 +213,7 @@ impl Into<serde_json::Value> for AnyLikelihood {
     fn into(self) -> serde_json::Value {
         match self {
             AnyLikelihood::MN(m) => m.into(),
+            AnyLikelihood::Bern(b) => b.into(),
             AnyLikelihood::Other => unimplemented!()
         }
     }

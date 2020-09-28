@@ -61,7 +61,7 @@ pub use vonmises::*;
 /// which facilitate their use as conditional expectations and/or to represent multivariate
 /// sampling and calculation of log-probabilities.
 pub trait Distribution
-where Self : Debug + Display //+ Sized
+    where Self : Debug + Display //+ Sized
 {
 
     /// Returns the expected value of the distribution, which is a function of
@@ -106,6 +106,10 @@ where Self : Debug + Display //+ Sized
 
     fn corr(&self) -> Option<DMatrix<f64>> {
         // D^{-1/2} self.cov { D^{-1/2} }
+        unimplemented!()
+    }
+
+    fn observations(&self) -> Option<&DMatrix<f64>> {
         unimplemented!()
     }
 
@@ -169,6 +173,29 @@ pub trait Conditional<D>
 
 }
 
+/// Implemented by distributions which compose together to yield multivariate
+/// distributions. Implementors are Normal(Normal)->MultiNormal and
+/// MultiNormal(Normal)->MultiNormal.
+pub trait Joint<D>
+where
+    Self : Distribution + Sized,
+    // Self : Distribution + Sized,
+    D : Distribution,
+    Self::Output : Distribution
+{
+
+    type Output;
+
+    /// Changes self by assuming joint normality with another
+    /// independent distribution (extends self to have a block-diagonal
+    /// covariance composed of the covariance of self (top-left block)
+    /// with the covariance of other (bottom-right block). The parameter
+    /// corr is used to specify the partial correlations between the parameters
+    /// of the implementor and the parameter of the added element.
+    /// (this would be the entry at the "standardized" precision matrix).
+    fn joint(self, other : D, corr : Option<&[f64]>) -> Option<Self>;
+}
+
 /// Univariate factors can either have a conjugate distribution
 /// factor (as all distribution implementors have) or a conditional
 /// expectation factor: The sampling and log-prob of the distribution
@@ -197,7 +224,7 @@ fn univariate_log_prob<D>(
     x : Option<DMatrixSlice<f64>>,
     factor : &UnivariateFactor<D>,
     eta : &DVector<f64>,
-    lp : &DVector<f64>, /*f64*/
+    log_part : &DVector<f64>, /*f64*/
     suf_factor : Option<DMatrix<f64>>
 ) -> f64
 where D : Distribution
@@ -226,7 +253,7 @@ where D : Distribution
         UnivariateFactor::Empty => 0.
     };
     // eta_s.dot(&y.slice((0, 0), (y.nrows(), 1))) - lp + factor_lp
-    (eta_s.component_mul(&y.slice((0, 0), (y.nrows(), 1))) - lp).sum() + factor_lp
+    (eta_s.component_mul(&y.slice((0, 0), (y.nrows(), 1))) - log_part).sum() + factor_lp
 }
 
 /// Generic trait shared by all exponential-family distributions. Encapsulate
@@ -437,6 +464,7 @@ pub trait Likelihood<C>
     /// Returns the distribution with the parameters set to its
     /// gaussian approximation (mean and standard error).
     fn mle(y : DMatrixSlice<'_, f64>) -> Result<Self, anyhow::Error>;
+
     //{
     //    (Self::mean_mle(y), Self::se_mle(y))
     //}

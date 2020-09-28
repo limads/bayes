@@ -7,6 +7,8 @@ use std::convert::TryFrom;
 use nalgebra::*;
 use bayes::parse::AnyLikelihood;
 use bayes::sample::Sample;
+use bayes::inference;
+use std::convert::TryInto;
 
 /// Fit and compare probabilistic models from the command line
 #[derive(StructOpt, Debug)]
@@ -70,6 +72,14 @@ fn print_or_save(lik : AnyLikelihood, opt_path : &Option<String>) -> Result<(), 
     }
 }
 
+fn split_table(tbl : &Table) -> (DMatrix<f64>, DMatrix<f64>) {
+    let y = tbl.at(1).unwrap().clone_owned();
+    let x = multinormal::utils::append_intercept(
+        tbl.at(0).unwrap().clone_owned()
+    );
+    (y, x)
+}
+
 fn main() -> Result<(), String> {
     let bayes = Bayes::from_args();
     match &bayes {
@@ -84,6 +94,20 @@ fn main() -> Result<(), String> {
                             let mle = model.mle(tbl.at((0, tbl.ncols())).unwrap())
                                 .map_err(|e| format!("{}", e) )?;
                             print_or_save(mle, output)
+                        },
+                        "irls" => {
+                            let mut bern : Bernoulli = model.try_into()?;
+                            let (y, x) = split_table(&tbl);
+                            let mn : &mut MultiNormal = bern.factor_mut().unwrap();
+                            mn.scale_by(x.clone());
+                            let eta = mn.mean().clone_owned();
+                            bern.set_parameter((&eta).into(), false);
+                            let bern_out = inference::irls(
+                                bern,
+                                y,
+                                x
+                            )?;
+                            print_or_save(AnyLikelihood::Bern(bern_out), output)
                         },
                         m => Err(format!("Unknown method: {}", m)),
                     }

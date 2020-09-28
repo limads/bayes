@@ -13,6 +13,8 @@
 //! (Metropolis-Hastings posterior sampler) which returns
 //! a non-parametric marginal histogram for each node.
 
+#![feature(vec_into_raw_parts)]
+
 /// Traits and implementations for exponential-family probability distributions
 /// with support for sampling, summary statistics, and conditioning.
 pub mod distr;
@@ -48,5 +50,16 @@ pub mod sample;
 pub mod feature;
 
 pub mod parse;
+
+// Perhaps add mod bayes::inference containing the estimation algorithms:
+// bayes::inference::exact::SumProduct;
+// bayes::inference::optim::{ExpectMax, IRLS};
+// bayes::inference::sim::{Metropolis};
+// The top-level modules then would be: distr, inference, decision, feature, model, graph, sample.
+// distr would contain all model validation/comparison machinery.
+pub mod inference;
+
+#[cfg(feature="api")]
+mod api;
 
 

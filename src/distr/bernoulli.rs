@@ -9,7 +9,10 @@ use crate::sim::*;
 use std::default::Default;
 use std::fmt::{self, Display};
 use anyhow;
-
+use serde_json::{self, Value, map::Map};
+use crate::parse::AnyLikelihood;
+use std::convert::{TryFrom, TryInto};
+use crate::parse;
 pub type BernoulliFactor = UnivariateFactor<Beta>;
 
 /// The Bernoulli is the exponential-family distribution
@@ -58,6 +61,8 @@ pub struct Bernoulli {
     /// In case this has a beta factor, when updating the parameter, also update this buffer
     /// with [log(theta) log(1-theta)]; and pass it instead of the eta as the log-prob argument.
     suf_theta : Option<DMatrix<f64>>,
+
+    obs : Option<DMatrix<f64>>
 
 }
 
@@ -178,6 +183,9 @@ impl ExponentialFamily<U1> for Bernoulli
     }
 
     fn update_log_partition<'a>(&'a mut self, eta : DVectorSlice<'_, f64>) {
+        if self.log_part.nrows() != eta.nrows() {
+            self.log_part = DVector::zeros(eta.nrows());
+        }
         self.log_part.iter_mut()
             .zip(eta.iter())
             .for_each(|(l,e)| { *l = (1. + e.exp()).ln(); } );
@@ -338,6 +346,10 @@ where Self : Sized
         }
     }
 
+    fn observations(&self) -> Option<&DMatrix<f64>> {
+        self.obs.as_ref()
+    }
+
     fn mean<'a>(&'a self) -> &'a DVector<f64> {
         &self.theta
     }
@@ -359,6 +371,7 @@ where Self : Sized
     }
 
     fn log_prob(&self, y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>) -> f64 {
+        println!("lp = {}; y = {}", self.log_part, y);
         super::univariate_log_prob(
             y,
             x,
@@ -374,6 +387,68 @@ where Self : Sized
         for (i, _) in self.theta.iter().enumerate() {
             dst[(i,0)] = (self.sampler[i].sample(&mut rand::thread_rng()) as i32) as f64;
         }
+    }
+
+}
+
+impl TryFrom<serde_json::Value> for Bernoulli {
+
+    type Error = String;
+
+    fn try_from(val : Value) -> Result<Self, String> {
+        let mut bern : Bernoulli = Default::default();
+        let prop_val = val.get("prop").ok_or("Missing 'prop' entry for Bernoulli node")?;
+        bern.obs = if let Some(obs) = val.get("obs") {
+            let v = parse::parse_vector(obs)?;
+            Some(DMatrix::from_columns(&[v]))
+        } else {
+            None
+        };
+        if let Ok(prop) = crate::parse::parse_vector(prop_val) {
+            bern.set_parameter((&prop).into(), false);
+            Ok(bern)
+        } else {
+            let mn_fact = MultiNormal::try_from(prop_val.clone()).map_err(|e| format!("{}", e))?;
+            bern.set_parameter(mn_fact.mean().into(), true);
+            bern.factor = BernoulliFactor::CondExpect(mn_fact);
+            Ok(bern)
+        }
+    }
+
+}
+
+impl TryFrom<AnyLikelihood> for Bernoulli {
+
+    type Error = String;
+
+    fn try_from(lik : AnyLikelihood) -> Result<Self, String> {
+        match lik {
+            AnyLikelihood::Bern(b) => Ok(b),
+            _ => Err(format!("Object does not have a top-level bernoulli node"))
+        }
+    }
+
+}
+
+impl Into<serde_json::Value> for Bernoulli {
+
+    fn into(mut self) -> serde_json::Value {
+        let mut child = Map::new();
+        if let Some(mut obs) = self.obs.take() {
+            let obs_vec : Vec<f64> = obs.data.into();
+            let obs_value : Value = obs_vec.into();
+            child.insert(String::from("obs"), obs_value);
+        }
+        if let BernoulliFactor::CondExpect(mn) = self.factor {
+            let fv : Value = mn.into();
+            child.insert(String::from("prop"), fv);
+        } else {
+            child.insert(String::from("prop"), crate::parse::vector_to_value(&self.theta));
+        }
+
+        let mut parent = Map::new();
+        parent.insert(String::from("bernoulli"), Value::Object(child));
+        Value::Object(parent)
     }
 
 }
@@ -443,6 +518,7 @@ impl Default for Bernoulli {
             sampler : Vec::new(),
             log_part : DVector::from_element(1, (2.).ln()),
             suf_theta : None,
+            obs : None
         }
     }
 

@@ -99,6 +99,9 @@ impl ExponentialFamily<U1> for Poisson
     }
 
     fn update_log_partition<'a>(&'a mut self, eta : DVectorSlice<'_, f64>) {
+        if self.log_part.nrows() != eta.nrows() {
+            self.log_part = DVector::zeros(eta.nrows());
+        }
         self.log_part.iter_mut()
             .zip(eta.iter())
             .for_each(|(l,e)| { *l = e.exp() } );

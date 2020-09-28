@@ -19,6 +19,13 @@ enum CovFunction {
     Logit
 }*/
 
+/// Represents a linear operator applied to a MultiNormal.
+/// This linear operator might be a (row) vector applied to
+/// the multivariate coefficient vector to yield a univariate quantity
+/// (such as in the generalized linear model), or a generic full-rank matrix
+/// transformation (as is done in dynamic linear models). If the informed scale
+/// is not full rank, the linearized covariance will not be PD, and the
+/// operation will panic (for now).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct LinearOp {
 
@@ -84,19 +91,36 @@ impl LinearOp {
     pub fn update_from(&mut self, src : &MultiNormal) {
         let new_mu = self.shift.clone() + &self.scale * src.mean();
         let src_cov = MultiNormal::invert_scale(&src.sigma_inv);
+        println!("src sigma = {}", src_cov);
+        println!("scale = {}", self.scale);
+        println!("scale_t = {}", self.scale_t);
         let new_sigma = self.scale.clone() * src_cov * &self.scale_t;
         self.dst.set_parameter(new_mu.rows(0, new_mu.nrows()), false);
-        self.dst.set_cov(new_sigma);
+        println!("dst sigma = {}", new_sigma);
+        if let Some(cov) = QR::new(new_sigma.clone()).try_inverse() {
+            self.dst.set_cov(new_sigma);
+        } else {
+            panic!("Scaling did not produce valid covariance");
+        }
     }
 
     pub fn update_scale(&mut self, src : &MultiNormal, scale : DMatrix<f64>) {
+        // Assert that there cannot be colinearities among scale columns, or repeated rows,
+        // or else X S X^T won't be invertible and PD if S is identity.
         assert!(self.scale.nrows() == scale.nrows());
         assert!(self.scale.ncols() == scale.ncols());
         self.scale = scale.clone();
         self.scale_t = scale.transpose();
         let cov = MultiNormal::invert_scale(&src.sigma_inv);
         let new_sigma = self.scale.clone() * cov * &self.scale_t;
-        self.dst.set_cov(new_sigma);
+
+        // For linear modelling, the X matrix do not need to yield a valid
+        // inversion here.
+        if let Some(cov) = QR::new(new_sigma.clone()).try_inverse() {
+            self.dst.set_cov(new_sigma);
+        } else {
+            panic!("Scaling did not produce valid covariance");
+        }
     }
 
     pub fn update_shift(&mut self, src : &MultiNormal, shift : DVector<f64>) {
@@ -108,13 +132,18 @@ impl LinearOp {
 
 }
 
-/// Multivariate normal parametrized by μ (px1) and Σ (pxp).
+/// Multivariate normal parametrized by μ (px1) and Σ (pxp). While the public API always
+/// work by receiving covariance matrices, this structure holds both the covariance and
+/// the precision (inverse covariance) matrices internally. Re-setting the covariance
+/// is potentially a costly operation, since a QR inversion is performed.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MultiNormal {
     mu : DVector<f64>,
 
     /// (sigma_inv * mu)^T
     scaled_mu : DVector<f64>,
+
+    sigma : DMatrix<f64>,
 
     /// This is a constant or a draw from the Wishart factor.
     sigma_inv : DMatrix<f64>,
@@ -151,6 +180,7 @@ impl MultiNormal {
 
     pub fn invert_scale(s : &DMatrix<f64>) -> DMatrix<f64> {
         let s_qr = QR::<f64, Dynamic, Dynamic>::new(s.clone());
+        // println!("s = {}", s);
         s_qr.try_inverse().unwrap()
         //
         // self.prec = self.
@@ -208,6 +238,7 @@ impl MultiNormal {
         // Self { mu, sigma, sigma_qr, sigma_lu, sigma_det, prec, eta }
         let mut norm = Self {
             mu : mu.clone(),
+            sigma : sigma.clone(),
             sigma_inv,
             loc_factor: None,
             scale_factor : None,
@@ -346,14 +377,6 @@ impl MultiNormal {
         self.scaled_mu = self.sigma_inv.clone() * &self.mu;
     }
 
-    /// Changes self by assuming joint normality with another
-    /// independent distribution (extends self to have a block-diagonal
-    /// covariance composed of the covariance of self (top-left block)
-    /// with the covariance of other (bottom-right block).
-    pub fn joint(&mut self, other : MultiNormal) {
-        unimplemented!()
-    }
-
     pub fn linear_mle(x : &DMatrix<f64>, y : &DVector<f64>) -> Self {
         let n = x.nrows() as f64;
         let ols = ls::OLS::estimate(&y, &x);
@@ -363,6 +386,8 @@ impl MultiNormal {
     }
 
     pub fn set_cov(&mut self, cov : DMatrix<f64>) {
+        // assert!(crate::distr::is_pd(cov.clone()));
+        self.sigma.copy_from(&cov);
         let prec = Self::invert_scale(&cov);
         self.scaled_mu = prec.clone() * &self.mu;
         self.sigma_inv = prec;
@@ -450,11 +475,11 @@ impl ExponentialFamily<Dynamic> for MultiNormal {
     /// has half the log of the determinant of the covariance (scaled by -2) subtracted from it.
     fn update_log_partition<'a>(&'a mut self, eta : DVectorSlice<'_, f64>) {
         // TODO update eta parameter here.
-        let cov = Self::invert_scale(&self.sigma_inv);
+        // let cov = Self::invert_scale(&self.sigma_inv);
         let log_part = Self::multinormal_log_part(
             eta,
             self.scaled_mu.rows(0, self.scaled_mu.nrows()),
-            &cov,
+            &self.sigma,
             &self.sigma_inv
         );
         self.log_part = DVector::from_element(1, log_part);
@@ -574,8 +599,8 @@ impl Distribution for MultiNormal {
 
     fn cov(&self) -> Option<DMatrix<f64>> {
         match &self.op {
-            Some(op) => Some(Self::invert_scale(&op.dst.sigma_inv)),
-            None => Some(Self::invert_scale(&self.sigma_inv))
+            Some(op) => Some(op.dst.sigma.clone()),
+            None => Some(self.sigma.clone())
         }
     }
 
@@ -713,7 +738,7 @@ impl Display for MultiNormal {
 
 }
 
-mod utils {
+pub mod utils {
 
     use nalgebra::*;
     //use num_traits::identities::Zero;
@@ -1018,7 +1043,7 @@ impl Into<serde_json::Value> for MultiNormal {
 
     fn into(self) -> serde_json::Value {
         let mu = crate::parse::vector_to_value(&self.mu);
-        let sigma = crate::parse::matrix_to_value(&Self::invert_scale(&self.sigma_inv));
+        let sigma = crate::parse::matrix_to_value(&self.sigma);
         let mut child = Map::new();
         child.insert(String::from("mean"), mu);
         child.insert(String::from("cov"), sigma);

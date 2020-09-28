@@ -18,6 +18,8 @@ pub mod pca;
 // Polynomial and spline basis expansion
 // pub mod poly;
 
+pub mod rbf;
+
 mod extraction;
 
 pub use extraction::*;
