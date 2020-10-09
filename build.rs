@@ -1,5 +1,6 @@
 use std::env;
 use std::fs;
+use cc;
 
 fn main() {
 
@@ -17,8 +18,8 @@ fn main() {
     let man_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     let lib_dir = format!("{}/{}", man_dir, "target/c");
     let can_dir = fs::canonicalize(&lib_dir).unwrap().to_string_lossy().to_string();
-    println!("cargo:rustc-link-search=native={}", lib_dir);
-    println!("cargo:rustc-link-lib=static={}", "pg_helper");
+    // println!("cargo:rustc-link-search=native={}", can_dir);
+    // println!("cargo:rustc-link-lib=static={}", "pghelper");
 }
 
 

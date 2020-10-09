@@ -12,7 +12,7 @@ fn main() -> Result<(), &'static str> {
         .condition(Beta::new(1, 1));
     b.visit_factors(|f| println!("Factor: {}", f) );
 
-    println!("Hierarchical normal model:");
+    println!("Multilevel normal model:");
     let mut m1 = Normal::new(1,None,None)
         .condition(Normal::new(1,None,None));
     let mut m2 = Normal::new(1,None,None).condition(m1)

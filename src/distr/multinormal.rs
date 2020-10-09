@@ -171,6 +171,8 @@ pub struct MultiNormal {
 
     rw : Option<RandomWalk>,
 
+    obs : Option<DMatrix<f64>>
+
     // Vector of scale parameters; against which the Wishart factor
     // can be updated. Will be none if there is no scale factor.
     // suff_scale : Option<DVector<f64>>
@@ -245,7 +247,8 @@ impl MultiNormal {
             op : None,
             log_part,
             rw : None,
-            scaled_mu : mu.clone()
+            scaled_mu : mu.clone(),
+            obs : None
         };
         norm.set_parameter(mu.rows(0, mu.nrows()), true);
         norm.set_cov(sigma.clone());
@@ -619,7 +622,11 @@ impl Distribution for MultiNormal {
         let lp = self.suf_log_prob(t.slice((0, 0), (t.nrows(), t.ncols())));
         let loc_lp = match &self.loc_factor {
             Some(loc) => {
-                let mu_row : DMatrix<f64> = DMatrix::from_row_slice(self.mu.nrows(), 1, self.mu.data.as_slice());
+                let mu_row : DMatrix<f64> = DMatrix::from_row_slice(
+                    self.mu.nrows(),
+                    1,
+                    self.mu.data.as_slice()
+                );
                 loc.log_prob(mu_row.slice((0, 0), (0, self.mu.nrows())), None)
             },
             None => 0.0
@@ -636,6 +643,19 @@ impl Distribution for MultiNormal {
 
     fn sample_into(&self, _dst : DMatrixSliceMut<'_, f64>) {
         unimplemented!()
+    }
+
+    fn observations(&self) -> Option<&DMatrix<f64>> {
+        self.obs.as_ref()
+    }
+
+    fn set_observations(&mut self, obs : &DMatrix<f64>) {
+        assert!(obs.ncols() == self.mu.nrows());
+        if let Some(ref mut old_obs) = self.obs {
+            old_obs.copy_from(&obs);
+        } else {
+            self.obs = Some(obs.clone());
+        }
     }
 
 }

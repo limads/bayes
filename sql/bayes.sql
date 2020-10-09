@@ -1,5 +1,4 @@
 -- Normal
-
 -- select norm(NULL, 0.0, 1.0); will create a hidden variable.
 
 create type normal as (
@@ -23,7 +22,7 @@ create aggregate norm(next real, mean real, var real) (
 );
 
 -- Bernoulli
-
+-- select row(array['t', 'f'], 0.2)::bernoulli;
 create type bernoulli as (
     data boolean[],
     prop real
@@ -43,6 +42,20 @@ create aggregate bern(next boolean, prop real) (
     finalfunc = build_bern
 );
 
+create aggregate bernoulli(next boolean, prop real) (
+    sfunc = agg_bern,
+    stype = bernoulli
+);
+
+-- Example usage:
+-- create table obs(p boolean);
+-- insert into obs values ('t'), ('f'), ('t'), ('f');
+
+-- Represent prior
+-- select bernoulli(t, 0.2) from obs;
+
+-- Represent posterior for given prior.
+-- select posterior(bernoulli(t, 0.2)) from obs;
 -- Poisson
 
 create type poisson as (
@@ -66,7 +79,11 @@ create aggregate poiss(next integer, rate real) (
 
 -- General-purpose model building
 
--- Create a single factor with informed correlation
+create function log_prob(distr text) returns double precision as
+    '$libdir/libbayes.so', 'log_prob'
+language c strict;
+
+/*-- Create a single factor with informed correlation
 create function factor(distr json, corr real) returns json as $$
 
 $$ language sql;
@@ -83,17 +100,13 @@ $$ language sql;
 
 -- C-level functions that evaluate distributions
 
-create function log_prob(distr text) returns double precision as $$
-    'log_prob', 'bayes.so'
-$$ language c strict;
-
 create function log_prob(distr json) returns double precision as $$
     select log_prob(cast(distr as text));
 $$ language sql;
 
-/*create function prob(distr text) returns real as $$
+create function prob(distr text) returns real as $$
     'log_prob', 'pgbayes.so'
-$$ language sql;*/
+$$ language sql;
 
 create function mean(distr json) returns real as $$
     'mean', 'pgbayes.so'
@@ -131,10 +144,4 @@ $$ language c strict;
 -- sample(distr).
 create function set_sample(distr json, obs json) returns json as $$
 
-$$ language c strict;
-
-
-
-
-
-
+$$ language c strict;*/

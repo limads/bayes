@@ -14,6 +14,8 @@ use crate::parse::AnyLikelihood;
 use std::convert::{TryFrom, TryInto};
 use crate::parse;
 pub type BernoulliFactor = UnivariateFactor<Beta>;
+// use argmin::prelude::*;
+use argmin;
 
 /// The Bernoulli is the exponential-family distribution
 /// used as the likelihood for binary outcomes. Each realization is parametrized
@@ -532,4 +534,47 @@ impl Display for Bernoulli {
 
 }
 
+/*impl Solver<DVector<f64>> for Bernoulli {
+
+    const NAME : &'static str = "Bernoulli";
+
+    // Defines the computations performed in a single iteration.
+    fn next_iter(
+        &mut self,
+        op: &mut OpWrapper<DVector<f64>>,
+        state: &IterState<O>
+    ) -> Result<ArgminIterData<O>, argmin::core::Error> {
+        /*// First we obtain the current parameter vector from the `state` struct (`x_k`).
+        let xk = state.get_param();
+        // Then we compute the gradient at `x_k` (`\nabla f(x_k)`)
+        let grad = op.gradient(&xk)?;
+        // Now subtract `\nabla f(x_k)` scaled by `omega` from `x_k` to compute `x_{k+1}`
+        let xkp1 = xk.scaled_sub(&self.omega, &grad);
+        // Return new paramter vector which will then be used by the `Executor` to update
+        // `state`.
+        Ok(ArgminIterData::new().param(xkp1))*/
+        unimplemented!()
+    }
+} */
+
+impl argmin::core::ArgminOp for Bernoulli {
+
+    type Param = DVector<f64>;
+
+    type Output = f64;
+
+    type Hessian = ();
+
+    type Jacobian = DVector<f64>;
+
+    type Float = f64;
+
+    fn apply(&self, p: &Self::Param) -> Result<Self::Output, argmin::core::Error> {
+        Ok(self.log_prob(self.obs.as_ref().unwrap().into(), None))
+    }
+
+    fn jacobian(&self, p: &Self::Param) -> Result<Self::Jacobian, argmin::core::Error> {
+        Ok(self.grad(self.obs.as_ref().unwrap().into(), None))
+    }
+}
 
