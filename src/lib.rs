@@ -61,7 +61,7 @@ pub mod parse;
 pub mod inference;
 
 // #[cfg(feature="api")]
-pub mod api;
+// pub mod api;
 
 /// Stochastic processes (functions of time or space built from distribution compositions)
 pub mod stochastic;

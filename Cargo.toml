@@ -36,7 +36,7 @@ anyhow = "1.0.32"
 thiserror = "1.0.20"
 argmin = { git="https://github.com/argmin-rs/argmin", features = ["nalgebral"] }
 # pgdatum = { git = "https://github.com/limads/pgdatum.git" }
-pgdatum = { path = "../pgdatum" }
+# pgdatum = { path = "../pgdatum" }
 either = "1.6.1"
 
 [build-dependencies]
