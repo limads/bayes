@@ -1,1 +1,6 @@
-{ "bernoulli" : { "beta" : { "alpha" : 1.0, "beta" : 1.0 } } }
+{
+    "bernoulli" : {
+        "prop" : { "alpha" : 1.0, "beta" : 1.0 },
+        "n" : 10
+    }
+}

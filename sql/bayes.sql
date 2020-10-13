@@ -1,7 +1,72 @@
+/*-- # Model building
+
+-- Creates a bivariate normal (correlated)
+-- select bivariate(normal(v1, 10, 2), normal(v2, 10, 4), 0.3);
+create function bivariate(a text, b text, cor double precision) returns text as $$
+
+$$ language sql;
+
+-- Creates a multivariate normal distribution from continuous variables assumed un-correlated
+create function joint(variadic data double precision) returns text as $$
+    select array_agg(data);
+$$ language sql;
+
+-- Creates a multivariate normal from a pair of bivariates, conditioning the correlations
+-- to the informed higher-order correlation.
+create function joint(biv text, new text, cor double precision) returns text as $$
+
+$$ language sql;
+
+-- Conditions distribution a over distribution b, such
+-- that the resulting distribution now factors as p(a|b)p(b)
+create function condition(a text, b text) returns text as $$
+
+$$ language sql;*/
+
+-- # General-purpose distribution evaluation and sampling
+
+create function log_prob(distr text) returns double precision as
+    '$libdir/libbayes.so', 'log_prob'
+language c strict;
+
+create function sample_from(distr text) returns text as
+    '$libdir/libbayes.so', 'sample_from'
+language c strict;
+
+create function sample(distr text) returns setof double precision as $$
+    select cast(
+        cast(json_array_elements(sample_from(distr))::json as text) as double precision
+    )
+$$ language sql;
+
+-- # Specific distribtions
+-- ## Bernoulli
+-- Create with:
+-- select row(array['t', 'f'], 0.2)::bernoulli;
+create type bernoulli as (
+    data boolean[],
+    n integer,
+    prop real
+);
+
+-- Converts a bernoulli type to JSON
+create function build_bern_json(b bernoulli) returns json as $$
+    select json_build_object('obs', b.data, 'prop', b.prop, 'n' b.n);
+$$ language sql;
+
+create function bern_add_sample(b bernoulli, next boolean, prop real) returns bernoulli as $$
+    select array_append(b.data, next) as data, prop;
+$$ language sql;
+
+create aggregate bernoulli(next boolean, prop real) (
+    sfunc = bern_add_sample,
+    stype = bernoulli
+);
+
 -- Normal
 -- select norm(NULL, 0.0, 1.0); will create a hidden variable.
 
-create type normal as (
+/*create type normal as (
     data real[],
     mean real,
     var real
@@ -19,33 +84,16 @@ create aggregate norm(next real, mean real, var real) (
     sfunc = agg_normal,
     stype = normal,
     finalfunc = build_normal
-);
+);*/
 
--- Bernoulli
--- select row(array['t', 'f'], 0.2)::bernoulli;
-create type bernoulli as (
-    data boolean[],
-    prop real
-);
 
-create function build_bern(b bernoulli) returns json as $$
-    select json_build_object('obs', b.data, 'prop', b.prop);
-$$ language sql;
+-- Aggregates into JSON
+-- create aggregate bern(next boolean, prop real) (
+--    sfunc = agg_bern,
+--    stype = bernoulli,
+--    finalfunc = build_bern_json
+-- );
 
-create function agg_bern(b bernoulli, next boolean, prop real) returns bernoulli as $$
-    select array_append(b.data, next) as data, prop;
-$$ language sql;
-
-create aggregate bern(next boolean, prop real) (
-    sfunc = agg_bern,
-    stype = bernoulli,
-    finalfunc = build_bern
-);
-
-create aggregate bernoulli(next boolean, prop real) (
-    sfunc = agg_bern,
-    stype = bernoulli
-);
 
 -- Example usage:
 -- create table obs(p boolean);
@@ -58,7 +106,7 @@ create aggregate bernoulli(next boolean, prop real) (
 -- select posterior(bernoulli(t, 0.2)) from obs;
 -- Poisson
 
-create type poisson as (
+/*create type poisson as (
     data integer[],
     rate real
 );
@@ -75,13 +123,7 @@ create aggregate poiss(next integer, rate real) (
     sfunc = agg_poiss,
     stype = poisson,
     finalfunc = build_poiss
-);
-
--- General-purpose model building
-
-create function log_prob(distr text) returns double precision as
-    '$libdir/libbayes.so', 'log_prob'
-language c strict;
+);*/
 
 /*-- Create a single factor with informed correlation
 create function factor(distr json, corr real) returns json as $$

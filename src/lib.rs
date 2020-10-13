@@ -60,7 +60,7 @@ pub mod parse;
 // distr would contain all model validation/comparison machinery.
 pub mod inference;
 
-#[cfg(feature="api")]
+// #[cfg(feature="api")]
 pub mod api;
 
 /// Stochastic processes (functions of time or space built from distribution compositions)

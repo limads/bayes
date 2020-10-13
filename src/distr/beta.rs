@@ -9,6 +9,8 @@ use std::default::Default;
 use std::fmt::{self, Display};
 use super::MultiNormal;
 use crate::sim::RandomWalk;
+use std::convert::TryFrom;
+use serde_json::{self, Value, Number};
 
 /// A beta distribution yields ratios over the interval [0, 1], produced by taking the
 /// ratio of two independent gamma distributions: If u ~ Gamma(n/2, 0.5) and v ~ Gamma(m/2, 0.5)
@@ -268,6 +270,46 @@ impl Display for Beta {
 
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Beta(1)")
+    }
+
+}
+
+impl TryFrom<serde_json::Value> for Beta {
+
+    type Error = String;
+
+    fn try_from(val : Value) -> Result<Self, String> {
+        match val.get("a") {
+            Some(Value::Number(na)) => if let Some(a) = na.as_u64() {
+                match val.get("b") {
+                    Some(Value::Number(nb)) => if let Some(b) = nb.as_u64() {
+                        Ok(Self::new(a as usize, b as usize))
+                    } else {
+                        Err(format!("Could not parse 'b' parameter as usize"))
+                    },
+                    _ => Err(format!("No valid 'b' parameter found"))
+                }
+            } else {
+                Err(format!("Could not parse 'a' parameter as usize"))
+            },
+            _ => Err(format!("No valid a parameter found"))
+        }
+    }
+
+}
+
+impl Into<serde_json::Value> for Beta {
+
+    fn into(mut self) -> serde_json::Value {
+        let mut child = serde_json::Map::new();
+        /*if let Some(mut obs) = self.obs.take() {
+            let obs_vec : Vec<f64> = obs.data.into();
+            let obs_value : Value = obs_vec.into();
+            child.insert(String::from("obs"), obs_value);
+        }*/
+        child.insert(String::from("a"), Value::Number(Number::from_f64(self.ab[0]).unwrap()));
+        child.insert(String::from("b"), Value::Number(Number::from_f64(self.ab[1]).unwrap()));
+        Value::Object(child)
     }
 
 }
