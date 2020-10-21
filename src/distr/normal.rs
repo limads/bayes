@@ -3,7 +3,7 @@ use crate::distr::gamma::Gamma;
 use rand_distr;
 use rand;
 use std::f64::consts::PI;
-use crate::sim::*;
+use crate::inference::sim::*;
 use std::fmt::{self, Display};
 use crate::gsl::rand_utils::GslRng;
 use anyhow;

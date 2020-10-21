@@ -1,14 +1,12 @@
 use nalgebra::*;
 use crate::distr::*;
-// use super::*;
-// use crate::optim::*;
 use std::ops::AddAssign;
 use serde::{Serialize, Deserialize};
 use std::ops::Index;
 use std::ops::Range;
 use super::*;
 
-/// Marginal is a collection of 1D posterior marginals, recovered via indexing.
+/*/// Marginal is a collection of 1D posterior marginals, recovered via indexing.
 pub struct Marginal {
 
     /// Applies link function to eta_traj to get this field.
@@ -59,6 +57,6 @@ impl Index<Range<usize>> for Marginal {
         unimplemented!()
     }
 
-}
+}*/
 
 

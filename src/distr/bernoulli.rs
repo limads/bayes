@@ -4,15 +4,15 @@ use super::*;
 // use serde::{Serialize, Deserialize};
 use rand_distr;
 use rand;
-use crate::sim::*;
+use crate::inference::sim::*;
 // use std::ops::AddAssign;
 use std::default::Default;
 use std::fmt::{self, Display};
 use anyhow;
 use serde_json::{self, Value, map::Map};
-use crate::parse::AnyLikelihood;
+use crate::model::Model;
 use std::convert::{TryFrom, TryInto};
-use crate::parse;
+use crate::model;
 pub type BernoulliFactor = UnivariateFactor<Beta>;
 // use argmin::prelude::*;
 use argmin;
@@ -41,7 +41,6 @@ use either::Either;
 /// let post : Beta = bern_cond.take_factor().unwrap();
 /// assert!(post.mean()[0] - mle.mean()[0] < 1E-3);
 /// ```
-///
 #[derive(Debug, Clone)]
 pub struct Bernoulli {
 
@@ -373,6 +372,10 @@ where Self : Sized
         None
     }
 
+    fn set_observations(&mut self, obs : &DMatrix<f64>) {
+        self.obs = Some(obs.clone());
+    }
+
     fn log_prob(&self, y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>) -> f64 {
         println!("lp = {}; y = {}", self.log_part, y);
         super::univariate_log_prob(
@@ -394,142 +397,39 @@ where Self : Sized
 
 }
 
-fn parse_sample_n<D>(d : &D, val : &Value) -> Result<usize, String>
-where
-    D : Distribution
-{
-    if let Some(Value::Number(nv)) = val.get("n") {
-        if let Some(n) = nv.as_u64() {
-            if let Some(obs) = d.observations() {
-                if obs.nrows() != n as usize {
-                    return Err(format!(
-                        "Entry 'n' has size {} but observation vector has size {}",
-                        n,
-                        obs.nrows()
-                    ));
-                }
-            }
-            Ok(n as usize)
-        } else {
-            Err(format!("n should be a positive integer"))
-        }
-    } else {
-        Err(format!("Missing sample size (n) entry"))
-    }
-}
-
-type Parameter = Either<f64, DVector<f64>>;
-
-/// If reading from a multinormal failed, and reading from a conjugate factor failed,
-/// then the parameter can only be a scalar (left) or vector (right), determined from
-/// this function.
-fn reset_numeric_parameter<D>(d : &mut D, val : &Value, loc_name : &str) -> Result<(), String>
-where
-    D : Distribution
-{
-    let loc_val = val.get(loc_name)
-        .ok_or(format!("Missing {} parameter", loc_name))?;
-    let res_param = match loc_val.as_f64() {
-        Some(loc) => Ok(Parameter::Left(loc)),
-        None => match parse::parse_vector(loc_val) {
-            Ok(loc_vec) => Ok(Parameter::Right(loc_vec)),
-            Err(e) => Err(format!("Invalid entry for parameter {}: {}", loc_name, e))
-        }
-    };
-    match res_param {
-        Ok(Parameter::Left(loc_val)) => {
-            let n = match d.observations() {
-                Some(obs) => obs.nrows(),
-                None => parse_sample_n(d, &val)?
-            };
-            let param = DVector::from_element(n, loc_val);
-            d.set_parameter((&param).into(), false);
-            Ok(())
-        },
-        Ok(Parameter::Right(loc_vec)) => {
-            if let Some(obs) = d.observations() {
-                if loc_vec.nrows() != obs.nrows() {
-                    return Err(format!(
-                        "Entry observation vector has size {} but parameter vector has size {}",
-                        obs.nrows(),
-                        loc_vec.nrows()
-                    ));
-                }
-            }
-            d.set_parameter((&loc_vec).into(), false);
-            Ok(())
-        },
-        Err(e) => Err(e)
-    }
-}
-
-/// Reset the parameter of this distribution (the parameter can be either a constant
-/// vector or scalar, conjugate factor or multinormal factor). The distribution observations
-/// (if any) are already assumed to have been read from val into D.
-fn reset_parameter<D, P>(d : &mut D, val : &Value, loc_name : &str) -> Result<(), String>
-where
-    D : Distribution + Default + Conditional<P> + Conditional<MultiNormal>,
-    P : Distribution + TryFrom<serde_json::Value>
-{
-    let mut d : D = Default::default();
-    let loc_val = val.get(loc_name).ok_or(format!("Missing {} parameter", loc_name))?;
-    match MultiNormal::try_from(loc_val.clone()) {
-        Ok(mn) => {
-            let eta = mn.sample();
-            let mut d = d.condition(mn);
-            d.set_parameter((&eta).into(), true);
-            Ok(())
-        },
-        Err(_) => {
-            match P::try_from(loc_val.clone()) {
-                Ok(p) => {
-                    let theta = p.sample();
-                    let mut d = d.condition(p);
-                    d.set_parameter((&theta).into(), false);
-                    Ok(())
-                },
-                Err(_) => reset_numeric_parameter(&mut d, &val, loc_name)
-            }
-        }
-    }
-}
-
-fn parse_univariate<D, P>(val : &Value, loc_name : &str) -> Result<D,String>
-where
-    D : Distribution + Default + Conditional<P> + Conditional<MultiNormal>,
-    P : Distribution + TryFrom<serde_json::Value>
-{
-    let mut d : D = Default::default();
-    if let Some(obs) = val.get("obs") {
-        let v = parse::parse_vector(&obs)?;
-        let obs = DMatrix::from_columns(&[v]);
-        d.set_observations((&obs).into());
-    }
-    reset_parameter::<D, P>(&mut d, &val, loc_name);
-    Ok(d)
-}
-
 impl TryFrom<serde_json::Value> for Bernoulli {
 
     type Error = String;
 
     fn try_from(val : Value) -> Result<Self, String> {
-        parse_univariate::<Bernoulli, Beta>(&val, "prop")
+        crate::model::parse::parse_univariate::<Bernoulli, Beta>(&val, "prop")
     }
 
 }
 
-impl TryFrom<AnyLikelihood> for Bernoulli {
+impl TryFrom<Model> for Bernoulli {
 
     type Error = String;
 
-    fn try_from(lik : AnyLikelihood) -> Result<Self, String> {
+    fn try_from(lik : Model) -> Result<Self, String> {
         match lik {
-            AnyLikelihood::Bern(b) => Ok(b),
+            Model::Bern(b) => Ok(b),
             _ => Err(format!("Object does not have a top-level bernoulli node"))
         }
     }
 
+}
+
+impl<'a> TryFrom<&'a Model> for &'a Bernoulli {
+
+    type Error = String;
+
+    fn try_from(lik : &'a Model) -> Result<Self, String> {
+        match lik {
+            Model::Bern(b) => Ok(b),
+            _ => Err(format!("Object does not have a top-level bernoulli node"))
+        }
+    }
 }
 
 impl Into<serde_json::Value> for Bernoulli {
@@ -549,7 +449,7 @@ impl Into<serde_json::Value> for Bernoulli {
                 let bv : Value = beta.into();
                 child.insert(String::from("prop"), bv);
             } else {
-                child.insert(String::from("prop"), crate::parse::vector_to_value(&self.theta));
+                child.insert(String::from("prop"), crate::model::vector_to_value(&self.theta));
             }
         }
         // let mut parent = Map::new();

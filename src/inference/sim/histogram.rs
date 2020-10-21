@@ -139,7 +139,7 @@ impl Histogram {
 
 }
 
-/// Useful to represent the joint distribution of pairs of non-parametric
+/*/// Useful to represent the joint distribution of pairs of non-parametric
 /// posterior parameters and to calculate pair-wise statistics for them, such
 /// as their covariance and correlation.
 pub struct SurfaceHistogram {
@@ -188,5 +188,6 @@ impl MarginalHistogram {
     }
 
 }
+*/
 
 

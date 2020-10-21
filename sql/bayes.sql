@@ -25,19 +25,22 @@ $$ language sql;*/
 
 -- # General-purpose distribution evaluation and sampling
 
+-- Note: $libdir is actually pkglibdir of pg_config, NOT libdir
+
 create function log_prob(distr text) returns double precision as
     '$libdir/libbayes.so', 'log_prob'
 language c strict;
 
+-- select * from sample_from('{ "prop":0.5, "n":10 }');
 create function sample_from(distr text) returns text as
     '$libdir/libbayes.so', 'sample_from'
 language c strict;
 
-create function sample(distr text) returns setof double precision as $$
+/*create function sample(distr text) returns setof double precision as $$
     select cast(
         cast(json_array_elements(sample_from(distr))::json as text) as double precision
     )
-$$ language sql;
+$$ language sql;*/
 
 -- # Specific distribtions
 -- ## Bernoulli
@@ -49,7 +52,7 @@ create type bernoulli as (
     prop real
 );
 
--- Converts a bernoulli type to JSON
+/*-- Converts a bernoulli type to JSON
 create function build_bern_json(b bernoulli) returns json as $$
     select json_build_object('obs', b.data, 'prop', b.prop, 'n' b.n);
 $$ language sql;
@@ -61,7 +64,7 @@ $$ language sql;
 create aggregate bernoulli(next boolean, prop real) (
     sfunc = bern_add_sample,
     stype = bernoulli
-);
+);*/
 
 -- Normal
 -- select norm(NULL, 0.0, 1.0); will create a hidden variable.

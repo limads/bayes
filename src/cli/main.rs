@@ -5,7 +5,7 @@ use std::default::Default;
 use serde_json::{self, Value};
 use std::convert::TryFrom;
 use nalgebra::*;
-use bayes::parse::AnyLikelihood;
+use bayes::model::Model;
 use bayes::sample::Sample;
 use bayes::inference;
 use std::convert::TryInto;
@@ -65,7 +65,7 @@ fn open_table(src : &str) -> Result<Table, String> {
     }
 }
 
-fn print_or_save(lik : AnyLikelihood, opt_path : &Option<String>) -> Result<(), String> {
+fn print_or_save(lik : Model, opt_path : &Option<String>) -> Result<(), String> {
     match opt_path {
         Some(path) => lik.save_to_path(path).map_err(|e| format!("{}", e)),
         None => { println!("{}", lik); Ok(()) }
@@ -87,7 +87,7 @@ fn main() -> Result<(), String> {
             match (model, data) {
                 (Some(model_path), Some(data_path)) => {
                     let tbl = open_table(data_path)?;
-                    let model = AnyLikelihood::load_from_path(model_path)
+                    let model = Model::load_from_path(model_path)
                         .map_err(|e| format!("{}", e) )?;
                     match &method[..] {
                         "mle" => {
@@ -107,7 +107,7 @@ fn main() -> Result<(), String> {
                                 y,
                                 x
                             )?;
-                            print_or_save(AnyLikelihood::Bern(bern_out), output)
+                            print_or_save(Model::Bern(bern_out), output)
                         },
                         m => Err(format!("Unknown method: {}", m)),
                     }

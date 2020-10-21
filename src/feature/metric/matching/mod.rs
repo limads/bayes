@@ -1,5 +1,5 @@
 use super::*;
-use crate::optim::{Optimizer, Minimum};
+use crate::inference::optim::{Optimizer, Minimum};
 use std::collections::HashMap;
 
 /// Unlike clustering algorithms, match algorithms must interpret the

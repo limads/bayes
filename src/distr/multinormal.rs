@@ -6,11 +6,11 @@ use std::fmt::{self, Display};
 use std::default::Default;
 use std::ops::{SubAssign, MulAssign};
 use std::convert::{TryFrom, TryInto};
-use crate::sim::RandomWalk;
+use crate::inference::sim::RandomWalk;
 use nalgebra::linalg;
 use serde_json::{self, Value, map::Map};
 use anyhow;
-use crate::parse::AnyLikelihood;
+use crate::model::Model;
 
 /*#[derive(Debug, Clone, Serialize, Deserialize)]
 enum CovFunction {
@@ -1039,31 +1039,43 @@ impl TryFrom<serde_json::Value> for MultiNormal {
     fn try_from(val : Value) -> Result<Self, String> {
         let mean_val = val.get("mean").ok_or("Missing 'mean' entry of MultiNormal node")?;
         let cov_val = val.get("cov").ok_or("Missing 'cov' entry of MultiNormal node")?;
-        let mut mean = crate::parse::parse_vector(mean_val)?;
-        let mut cov = crate::parse::parse_matrix(cov_val)?;
+        let mut mean = crate::model::parse_vector(mean_val)?;
+        let mut cov = crate::model::parse_matrix(cov_val)?;
         Ok(MultiNormal::new(mean, cov).map_err(|e| format!("{}", e))?)
     }
 
 }
 
-impl TryFrom<AnyLikelihood> for MultiNormal {
+impl TryFrom<Model> for MultiNormal {
 
     type Error = String;
 
-    fn try_from(lik : AnyLikelihood) -> Result<Self, String> {
+    fn try_from(lik : Model) -> Result<Self, String> {
         match lik {
-            AnyLikelihood::MN(m) => Ok(m),
+            Model::MN(m) => Ok(m),
             _ => Err(format!("Object does not have a top-level multinormal node"))
         }
     }
 
 }
 
+impl<'a> TryFrom<&'a Model> for &'a MultiNormal {
+
+    type Error = String;
+
+    fn try_from(lik : &'a Model) -> Result<Self, String> {
+        match lik {
+            Model::MN(m) => Ok(m),
+            _ => Err(format!("Object does not have a top-level bernoulli node"))
+        }
+    }
+}
+
 impl Into<serde_json::Value> for MultiNormal {
 
     fn into(self) -> serde_json::Value {
-        let mu = crate::parse::vector_to_value(&self.mu);
-        let sigma = crate::parse::matrix_to_value(&self.sigma);
+        let mu = crate::model::vector_to_value(&self.mu);
+        let sigma = crate::model::matrix_to_value(&self.sigma);
         let mut child = Map::new();
         child.insert(String::from("mean"), mu);
         child.insert(String::from("cov"), sigma);

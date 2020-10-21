@@ -2,7 +2,21 @@ use nalgebra::*;
 use crate::distr::*;
 use super::*;
 use crate::distr::multinormal;
-use crate::optim::*;
+use crate::inference::optim::*;
+
+/// Utilities to build inference algorithms that can be passed into Posterior::visit_factors(.).
+/// Although the utilities here are primarily used to implemented the algorithms re-exported
+/// at the other modules, you might find the functions here useful to build your own
+/// Estimator implementations.
+pub mod visitors;
+
+/// Algorithm for approximating posteriors with multivariate normals
+/// (Expectation Maximization; work in progress).
+pub mod optim;
+
+/// Full posterior estimation via simulation (Metropolis-Hastings algorithm)
+/// and related non-parametric distribution representation (work in progress).
+pub mod sim;
 
 /*// Call the iteratively re-weighted least squares algorithm over random y (data).
 // Assume x is already constant for the multinormal.

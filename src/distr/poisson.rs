@@ -3,7 +3,7 @@ use super::*;
 use serde::{Serialize, Deserialize};
 use rand_distr;
 // use rand;
-use crate::sim::*;
+use crate::inference::sim::*;
 // use std::ops::AddAssign;
 use std::default::Default;
 use serde::ser::{Serializer};

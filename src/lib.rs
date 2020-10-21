@@ -20,22 +20,11 @@
 /// with support for sampling, summary statistics, and conditioning.
 pub mod distr;
 
-/// Algorithm for approximating posteriors with multivariate normals
-/// (Expectation Maximization; work in progress).
-pub mod optim;
-
 //pub mod basis;
 
 /// Supports the derivation of optimized decision rules based on comparison
 /// of posterior log-probabilities (work in progress).
 pub mod decision;
-
-// Structure for expressing models with probabilistic dependencies built at runtime.
-// pub mod graph;
-
-/// Full posterior estimation via simulation (Metropolis-Hastings algorithm)
-/// and related non-parametric distribution representation (work in progress).
-pub mod sim;
 
 /// Auto-generated bindings to Intel MKL (mostly for basis transformation).
 #[cfg(feature = "mkl")]
@@ -50,7 +39,9 @@ pub mod sample;
 /// Feature extraction traits, structures and algorithms.
 pub mod feature;
 
-pub mod parse;
+/// Abstraction for probability models defined at runtime, such as models
+/// parsed from JSON.
+pub mod model;
 
 // Perhaps add mod bayes::inference containing the estimation algorithms:
 // bayes::inference::exact::SumProduct;
@@ -61,7 +52,7 @@ pub mod parse;
 pub mod inference;
 
 // #[cfg(feature="api")]
-// pub mod api;
+pub mod api;
 
 /// Stochastic processes (functions of time or space built from distribution compositions)
 pub mod stochastic;

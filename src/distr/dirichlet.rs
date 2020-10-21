@@ -3,7 +3,7 @@ use nalgebra::*;
 use super::*;
 use serde::{Serialize, Deserialize};
 use std::fmt::{self, Display};
-use crate::sim::RandomWalk;
+use crate::inference::sim::RandomWalk;
 use super::MultiNormal;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

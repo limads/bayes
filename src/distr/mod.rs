@@ -4,7 +4,7 @@ use std::fmt::Debug;
 use std::ops::AddAssign;
 use crate::decision::BayesFactor;
 use std::fmt::Display;
-use crate::sim::RandomWalk;
+use crate::inference::sim::RandomWalk;
 use anyhow;
 use thiserror::Error;
 
@@ -216,10 +216,29 @@ where
 pub enum UnivariateFactor<D>
 where D : Distribution
 {
+
+    /// Represents a stand-alone parametric distribution. The joint distribution
+    /// p(y|theta) does not factor anymore.
     Empty,
+
+    /// Represents a conditional expectation (deterministic link). The conditional distribution
+    /// p(y|eta) does not factor into a pair of parametric distributions,
+    /// but we have that eta = E[y|b] = x*b, where
+    /// x is a constant vector of known realizations, and b ~ mnorm[p] is a prior or posterior
+    /// for the linear combination coefficients x1 b1 + ... + xp bp. Since y is assumed iid.
+    /// (conditional on b), var[y|b] is a fixed function of (x, b). We still evaluate only the
+    /// probability of p(y|eta) for inference, but instead of using a constant eta, we use the
+    /// realized samples of x to calculate for eta = x*b. The multivariate normality of b
+    /// comes from the iid assumption, since p(y|eta)
+    /// also factors as p(y1|eta_1)...p(yn|eta_n) during inference
+    /// We can say that for the deterministic link we have this "sample factorization", while
+    /// for the stochastic link (present at conjugate inference and multilevel models)
+    /// we have sample and parameter factorization. Perhaps rename variant to Deterministic?
     CondExpect(MultiNormal),
 
-    // TODO load the sufficient stat as a field for conjugate.
+    /// Represents a conjugate pair (stochastic link).
+    /// The joint distribution p(y) factors as
+    /// p(y|theta)p(theta). Perhaps rename variant to Stochastic?
     Conjugate(D)
 }
 
@@ -357,7 +376,8 @@ where
     /// location (first derivative) and scale (second derivative).
     /// This is a vector of the same size as the sample for univariate
     /// quantities, assuming the values according to the conditional expectation;
-    /// but is a vector holding a single value for multivariate quantities, which are evaluated against a single parameter value.
+    /// but is a vector holding a single value for multivariate quantities,
+    /// which are evaluated against a single parameter value.
     fn log_partition<'a>(&'a self) -> &'a DVector<f64>;
 
     /// Normalized probability of the independent sample y. Probabilities can only
@@ -404,8 +424,8 @@ where
 /// Inference algorithm, parametrized by the distribution output.
 pub trait Estimator<D>
     where
-        Self : Sized,
-        D : Distribution
+        // Self : ?Sized,
+        D : Distribution //+ ?Sized
 {
 
     /// Runs the inference algorithm for the informed sample matrix,
@@ -488,6 +508,8 @@ pub trait Likelihood<C>
         (Self::var_mle(y) / n).sqrt()
     }*/
 
+    /// Calls the closure for each distribution that composes the factored
+    /// joint distribution, in a depth-first fashion.
     fn visit_factors<F>(&mut self, f : F) where F : Fn(&mut dyn Posterior);
 
     /*/// Returns a mutable iterator over this likelihood
@@ -603,6 +625,8 @@ pub trait Posterior
 
     fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>);
 
+    /// Calls the closure for each distribution that composes the factored
+    /// joint distribution, in a depth-first fashion.
     fn visit_post_factors(&mut self, f : &dyn Fn(&mut dyn Posterior)) {
         let (opt_lhs, opt_rhs) = self.dyn_factors_mut();
         if let Some(lhs) = opt_lhs {
@@ -658,7 +682,7 @@ where P : Posterior
 /// using the random walk last step (if available)
 /// or the approximation mean (if available).
 fn update_posterior_eta<P>(post : &mut P)
-where P : Posterior
+    where P : Posterior
 {
     let param = get_posterior_eta(&*post).clone_owned();
     post.set_parameter(param.rows(0, param.nrows()), true);

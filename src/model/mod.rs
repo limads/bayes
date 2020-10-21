@@ -11,8 +11,10 @@ use std::convert::{AsRef, AsMut};
 use std::path::Path;
 use std::str::FromStr;
 
+pub mod parse;
+
 /// Enumeration representing any probabilistic model read from the outside world
-/// (e.g. JSON file), anchored by its top-level node (its likelihood). AnyLikelihood
+/// (e.g. JSON file), anchored by its top-level node (its likelihood). Model
 /// has methods mle(.) and visit_factors(.) just like the Likelihood implementors; those
 /// calls dispatch to the respective implementations internally.
 ///
@@ -20,19 +22,21 @@ use std::str::FromStr;
 /// conversion to the dynamic (mutable or plain) references Distribution or Posterior:
 ///
 /// ```
-/// let a : &dyn Distribution = (&AnyLikelihood).into();
-/// let a : &dyn Posterior = (&AnyLikelihood).into();
+/// let a : &dyn Distribution = (&Model).into();
+/// let a : &dyn Posterior = (&Model).into();
 /// ```
 ///
 /// Which will allow you to write code that applies to any variant.
-#[derive(Clone)]
-pub enum AnyLikelihood {
+#[derive(Clone, Debug)]
+pub enum Model {
     Other,
     MN(MultiNormal),
     Bern(Bernoulli)
 }
 
-impl AnyLikelihood {
+// TODO implement AsRef<dyn Likelihood> for the model
+
+impl Model {
 
     pub fn load_from_path<P>(path : P) -> Result<Self, Box<dyn Error>>
     where
@@ -66,9 +70,9 @@ impl AnyLikelihood {
             W : Write
     {
         let val : Value = match self {
-            AnyLikelihood::MN(m) => m.clone().into(),
-            AnyLikelihood::Bern(b) => b.clone().into(),
-            AnyLikelihood::Other => unimplemented!()
+            Model::MN(m) => m.clone().into(),
+            Model::Bern(b) => b.clone().into(),
+            Model::Other => unimplemented!()
         };
         let content = serde_json::to_string_pretty(&val)?;
         writer.write_all(content.as_bytes())?;
@@ -92,7 +96,7 @@ impl AnyLikelihood {
         C : Dim
     {
         match self {
-            AnyLikelihood::MN(ref mut m) => {
+            Model::MN(ref mut m) => {
                 let r = f(m);
                 r
             },
@@ -104,7 +108,7 @@ impl AnyLikelihood {
     /// wrapped in the same variant.
     pub fn mle(&self, y : DMatrixSlice<'_, f64>) -> Result<Self, anyhow::Error> {
         match self {
-            AnyLikelihood::MN(m) => Ok(AnyLikelihood::MN(MultiNormal::mle(y)?)),
+            Model::MN(m) => Ok(Model::MN(MultiNormal::mle(y)?)),
             _ => unimplemented!()
         }
     }
@@ -112,67 +116,81 @@ impl AnyLikelihood {
     /// Dispatches to the visit_factors of the respective variant.
     pub fn visit_factors<F>(&mut self, f : F) where F : Fn(&mut dyn Posterior) {
         match self {
-            AnyLikelihood::MN(m) => m.visit_factors(f),
-            AnyLikelihood::Bern(b) => b.visit_factors(f),
+            Model::MN(m) => m.visit_factors(f),
+            Model::Bern(b) => b.visit_factors(f),
             _ => unimplemented!()
         }
     }
 
 }
 
-impl<'a> From<&'a mut AnyLikelihood> for &'a mut dyn Distribution {
+impl<'a> From<&'a mut Model> for &'a mut dyn Distribution {
 
-    fn from(distr : &'a mut AnyLikelihood) -> Self {
+    fn from(distr : &'a mut Model) -> Self {
         match distr {
-            AnyLikelihood::MN(ref mut m) => m as &mut _,
-            AnyLikelihood::Bern(ref mut b) => b as &mut _,
+            Model::MN(ref mut m) => m as &mut _,
+            Model::Bern(ref mut b) => b as &mut _,
             _ => unimplemented!()
         }
     }
 
 }
 
-impl<'a> TryFrom<&'a mut AnyLikelihood> for &'a mut dyn Posterior {
+impl<'a> TryFrom<&'a mut Model> for &'a mut dyn Posterior {
 
     type Error = ();
 
-    fn try_from(distr : &'a mut AnyLikelihood) -> Result<Self, ()> {
+    fn try_from(distr : &'a mut Model) -> Result<Self, ()> {
         match distr {
-            AnyLikelihood::MN(ref mut m) => Ok(m as &mut _),
-            AnyLikelihood::Bern(ref mut b) => Err(()),
+            Model::MN(ref mut m) => Ok(m as &mut _),
+            Model::Bern(ref mut b) => Err(()),
             _ => unimplemented!()
         }
     }
 
 }
 
-impl<'a> TryFrom<&'a AnyLikelihood> for &'a dyn Posterior {
+impl<'a> TryFrom<&'a Model> for &'a dyn Posterior {
 
     type Error = ();
 
-    fn try_from(distr : &'a AnyLikelihood) -> Result<Self, ()> {
+    fn try_from(distr : &'a Model) -> Result<Self, ()> {
         match distr {
-            AnyLikelihood::MN(ref m) => Ok(m as &_),
-            AnyLikelihood::Bern(ref b) => Err(()),
+            Model::MN(ref m) => Ok(m as &_),
+            Model::Bern(ref b) => Err(()),
             _ => unimplemented!()
         }
     }
 
 }
 
-impl<'a> From<&'a AnyLikelihood> for &'a dyn Distribution {
+impl<'a> From<&'a Model> for &'a dyn Distribution {
 
-    fn from(distr : &'a AnyLikelihood) -> Self {
+    fn from(distr : &'a Model) -> Self {
         match distr {
-            AnyLikelihood::MN(ref m) => m as &_,
-            AnyLikelihood::Bern(ref b) => b as &_,
+            Model::MN(ref m) => m as &_,
+            Model::Bern(ref b) => b as &_,
             _ => unimplemented!()
         }
     }
 
 }
 
-impl FromStr for AnyLikelihood {
+impl From<Bernoulli> for Model {
+
+    fn from(bern : Bernoulli) -> Self {
+        Self::Bern(bern)
+    }
+}
+
+impl From<MultiNormal> for Model {
+
+    fn from(mn : MultiNormal) -> Self {
+        Self::MN(mn)
+    }
+}
+
+impl FromStr for Model {
 
     type Err = String;
 
@@ -185,22 +203,22 @@ impl FromStr for AnyLikelihood {
 
 }
 
-impl fmt::Display for AnyLikelihood {
+impl fmt::Display for Model {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let v : Value = self.clone().into();
         write!(f, "{}", v)
     }
 }
 
-impl TryFrom<serde_json::Value> for AnyLikelihood {
+impl TryFrom<serde_json::Value> for Model {
 
     type Error = String;
 
     fn try_from(mut val : Value) -> Result<Self, String> {
-        match val.get("multinormal") {
-            Some(v) => Ok(AnyLikelihood::MN(MultiNormal::try_from(v.clone())?)),
-            _ => match val.get("bernoulli") {
-                Some(v) => Ok(AnyLikelihood::Bern(Bernoulli::try_from(v.clone())?)),
+        match MultiNormal::try_from(val.clone()) {
+            Ok(mn) => Ok(Model::MN(mn)),
+            _ => match Bernoulli::try_from(val) {
+                Ok(bern) => Ok(Model::Bern(bern)),
                 _ => Err(format!("Invalid likelihood node"))
             }
         }
@@ -208,16 +226,27 @@ impl TryFrom<serde_json::Value> for AnyLikelihood {
 
 }
 
-impl Into<serde_json::Value> for AnyLikelihood {
+impl Into<serde_json::Value> for Model {
 
     fn into(self) -> serde_json::Value {
         match self {
-            AnyLikelihood::MN(m) => m.into(),
-            AnyLikelihood::Bern(b) => b.into(),
-            AnyLikelihood::Other => unimplemented!()
+            Model::MN(m) => m.into(),
+            Model::Bern(b) => b.into(),
+            Model::Other => unimplemented!()
         }
     }
 
+}
+
+impl Into<Box<dyn Distribution>> for Model {
+
+    fn into(self) -> Box<dyn Distribution> {
+        match self {
+            Model::MN(m) => Box::new(m),
+            Model::Bern(b) => Box::new(b),
+            Model::Other => unimplemented!()
+        }
+    }
 }
 
 pub fn vector_to_value(dvec : &DVector<f64>) -> Value {

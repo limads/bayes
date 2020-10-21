@@ -4,7 +4,7 @@ use bayes::gsl::vector_double::*;
 use bayes::gsl::matrix_double::*;
 use bayes::gsl::utils::*;
 use bayes::distr::*;
-use bayes::sim::Histogram;
+use bayes::inference::sim::Histogram;
 use bayes::distr::multinormal;
 // use bayes::io::{Sequence, Surface};
 use rand;

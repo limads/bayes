@@ -4,7 +4,7 @@ use super::*;
 use serde::{Serialize, Deserialize};
 // use super::Gamma;
 use std::fmt::{self, Display};
-use crate::sim::RandomWalk;
+use crate::inference::sim::RandomWalk;
 use super::MultiNormal;
 
 /// Exponential-family distribution defined over -π ≥ θ ≥ π, resulting
