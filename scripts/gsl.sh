@@ -70,20 +70,6 @@ bindgen /usr/include/gsl/gsl_errno.h -o src/gsl/errno.rs \
 	--no-rustfmt-bindings --no-layout-tests --no-derive-copy --no-derive-debug
 rustfmt src/gsl/errno.rs --force
 
-bindgen /usr/include/gsl/gsl_spline.h -o src/gsl/spline.rs \
-	--no-rustfmt-bindings --no-layout-tests --no-recursive-whitelist \
-	--whitelist-type "gsl_.*" \
-	--whitelist-function "gsl_.*" \
-	--whitelist-var "gsl_.*"
-rustfmt src/gsl/spline.rs --force
-
-bindgen /usr/include/gsl/gsl_spline2d.h -o src/gsl/spline2d.rs \
-	--no-rustfmt-bindings --no-layout-tests --no-recursive-whitelist \
-	--whitelist-type "gsl_.*" \
-	--whitelist-function "gsl_.*" \
-	--whitelist-var "gsl_.*"
-rustfmt src/gsl/spline2d.rs --force
-
 bindgen /usr/include/gsl/gsl_multimin.h -o src/gsl/multimin.rs \
 	--no-rustfmt-bindings --no-layout-tests --no-recursive-whitelist \
 	--whitelist-type "gsl_multimin.*" \
@@ -91,23 +77,6 @@ bindgen /usr/include/gsl/gsl_multimin.h -o src/gsl/multimin.rs \
 	--whitelist-var "gsl_multimin.*"
 rustfmt src/gsl/multimin.rs --force
 sed -i '1s;^;use crate::gsl::vector_double::*\;\nuse crate::gsl::matrix_double::*\;\nuse crate::gsl::block_double::*\;\n\n;' src/gsl/multimin.rs
-
-bindgen /usr/include/gsl/gsl_wavelet.h -o src/gsl/wavelet_src.rs \
-    --no-layout-tests --no-derive-copy --no-derive-debug --no-rustfmt-bindings \
-    --no-recursive-whitelist \
-    --whitelist-type "gsl_wavelet.*" --whitelist-function "gsl_wavelet.*" \
-    --whitelist-var "gsl_wavelet.*"
-rustfmt src/gsl/wavelet_src.rs --force
-sed '1s;^;use crate::gsl::vector_double::*\;\n\n;' src/gsl/wavelet_src.rs > src/gsl/wavelet.rs
-rm src/gsl/wavelet_src.rs
-
-bindgen /usr/include/gsl/gsl_wavelet2d.h -o src/gsl/wavelet2d_src.rs \
-    --no-layout-tests --no-derive-copy --no-derive-debug --no-rustfmt-bindings \
-    --no-recursive-whitelist \
-    --whitelist-function "gsl_wavelet2d.*"
-rustfmt src/gsl/wavelet2d_src.rs --force
-sed '1s;^;use crate::gsl::vector_double::*\;\nuse crate::gsl::matrix_double::*\;\nuse crate::gsl::wavelet::*;\n\n;' src/gsl/wavelet2d_src.rs > src/gsl/wavelet2d.rs
-rm src/gsl/wavelet2d_src.rs
 
 bindgen /usr/include/gsl/gsl_bspline.h -o src/gsl/bspline_src.rs \
     --no-layout-tests --no-derive-copy --no-derive-debug --no-rustfmt-bindings \

@@ -233,7 +233,12 @@ where D : Distribution
     /// also factors as p(y1|eta_1)...p(yn|eta_n) during inference
     /// We can say that for the deterministic link we have this "sample factorization", while
     /// for the stochastic link (present at conjugate inference and multilevel models)
-    /// we have sample and parameter factorization. Perhaps rename variant to Deterministic?
+    /// we have sample and parameter factorization. The conjugate parameter theta is replaced by
+    /// the natural parameter vector conditional upon which the sample is generated. If the conditional
+    /// has a prior over the parameter vector, we evaluate the probability of this parameter vector wrt.
+    /// the prior, but otherwise only the log-likelihood of the likelihood node is evaluated.
+    /// Perhaps rename variant to Deterministic? (Deterministic links do not add a LL term: We only
+    /// create a distribution that serves as a "proxy" for the parameter of the actual likelihood.
     CondExpect(MultiNormal),
 
     /// Represents a conjugate pair (stochastic link).
