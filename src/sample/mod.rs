@@ -1,11 +1,48 @@
 use nalgebra::*;
 use std::iter::FromIterator;
 
-pub mod table;
+// pub mod table;
+// pub use table::*;
 
-pub use table::*;
+pub mod csv;
 
 use rand;
+
+/// A sample is a data structure from which three iterators can be retrieved:
+/// One iterator over variable names (&str), another iterator over potentially non-contiguous row values (f64),
+/// and another iterator over contiguous columns values &[f64]. No assumption
+/// is made about how the names or values are laid out in memory, so the user can return both slices or
+/// vectors built on-demand depending on how the structure organizes the data. Reading happens either row-wise
+/// (A probabilistic model reads the first row (having the same layout as the variable names; then
+/// the second row, and so on) or column-wise. The user might chose to implement only one iteration strategy
+/// (and return a plain empty iterator for the other), and is up to the algorithm to decide how to read the data.
+/// Typical implementors include strict or liberal CSV parsers and byte arrays
+/// returned from database drivers, or homogeneous memory arrays carrying name metadata.
+/// All the provided methods for random sampling works by manipulating
+/// the iterators implemented by the user. All sample-reading methods will required that the length of
+/// values is an integer multiple of the length of names. If the user implements columns(.) the rows(.) method
+/// is already provided. But the user might decide to just return an empty columns structure and implement rows(.)
+/// if the structure is not column-contiguous.
+pub trait Sample<'a>
+where
+    Self::Names : IntoIterator<Item=&'a str>,
+    Self::Rows : IntoIterator<Item=&'a f64>,
+    Self::Columns : IntoIterator<Item=&'a [f64]>
+{
+
+    type Names;
+
+    type Rows;
+
+    type Columns;
+
+    fn names(&self) -> Self::Names;
+
+    fn rows(&self) -> Self::Rows;
+
+    fn columns(&self) -> Self::Columns;
+
+}
 
 /* By leaving the observation type as IntoIterator<f64> we have the possibility
 of returning both owned Vec<f64> for structures that must pool data before
@@ -43,7 +80,7 @@ let n = Normal::new(5, Some("my_field"), None, None);
 let mn = MultiNormal::new(10, Some("my_field_$i"), None, None);
 */
 
-/// Samples are types which hold independent (or at least conditionally independent)
+/*/// Samples are types which hold independent (or at least conditionally independent)
 /// observations, and interface directly with the likelihood of probabilistic models.
 /// The ability to iterate over those observations via conversion into
 /// a dynamically-allocated matrix is the basis for calculating
@@ -129,7 +166,6 @@ pub trait Sample<'a, O>
             .collect();
         self.repopulate(&selected[..]);
     }
-
-}
+}*/
 
 

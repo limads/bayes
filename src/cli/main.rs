@@ -9,11 +9,18 @@ use bayes::model::Model;
 use bayes::sample::Sample;
 use bayes::inference;
 use std::convert::TryInto;
+// use warp::Filter;
 
 /// Fit and compare probabilistic models from the command line
 #[derive(StructOpt, Debug)]
 pub enum Bayes {
 
+    /* Serve {
+    
+        #[structopt(short)]
+        host
+    },*/
+    
     /// Builds a variable graph from a probabilistic model (which can be a prior or posterior)
     Graph {
         src : Option<String>,
@@ -80,9 +87,28 @@ fn split_table(tbl : &Table) -> (DMatrix<f64>, DMatrix<f64>) {
     (y, x)
 }
 
+/*async fn serve() -> Result<(), String> {
+    /*GET /model/what 
+    Host: hyper.rs
+    User-Agent: reqwest/v0.8.6*/
+    let model_route = warp::path("model")
+        .and(warp::path::param())
+        .and(warp::header("user-agent"))
+        .map(|param: String, model: String| {
+            format!("Hello {}, whose agent is {}", param, model)
+        });
+    Ok(())
+}*/
+//fn serve(host : &str) -> Result<(), String> {
+//    Ok(())
+//}
+
 fn main() -> Result<(), String> {
     let bayes = Bayes::from_args();
     match &bayes {
+        /*Bayes::Serve { host } {
+            serve(&host)
+        },*/
         Bayes::Fit{ model, data, method, output, traj  } => {
             match (model, data) {
                 (Some(model_path), Some(data_path)) => {

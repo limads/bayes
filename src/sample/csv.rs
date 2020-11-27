@@ -10,7 +10,19 @@ use std::str::FromStr;
 use nalgebra::base::RowDVector;
 // use std::boxed::Box;
 
-use super::NullAction;
+pub enum NullAction {
+    IgnoreRow,
+    Error,
+    Impute(f64)
+}
+
+impl Default for NullAction {
+
+    fn default() -> Self {
+        NullAction::Error
+    }
+
+}
 
 /*/// Read from a text file, returning its contents as a String
 fn load_content_from_file(path : &str) -> Result<String,()> {

@@ -129,6 +129,12 @@ You might want to use bayes in different ways depending on you setup:
 - Command-line usage: Type `bayes --help` to perform inference at the command line. This is the
 easiest way to get started, and is fine to process small volumes of data structured as CSVs.
 
+- Web service: The command bayes serve -h [host] -p [port] will open a hyper server from which clients
+can instantiate and query models. This is useful as a component of a microserver architecture, or to 
+preserve a model across many call of fit/predict. With a model setup, you can work with any scripting
+language (Python/R/Js or even plain SQL by interpolating results from curl) to create new models, modify 
+a model, or predict from it.
+
 # License
 
 This crate is licensed under the [LGPL v3.0](https://www.gnu.org/licenses/lgpl-3.0.en.html).

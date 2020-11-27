@@ -5,6 +5,7 @@ use crate::distr::*;
 use std::ops::AddAssign;
 use serde::{Serialize, Deserialize};
 use std::ops::Index;
+use nalgebra::storage::*;
 
 /// Structure to represent one-dimensional empirical distributions non-parametrically (Work in progress).
 pub mod histogram;
@@ -25,8 +26,8 @@ pub use marginal::*;
 /// optimization or posterior sampling are considered as conditioned or unconditional priors.
 /// After optimization/simulation, this trajectory is used to build an approximation to the
 /// corresponding posterior entry, which can be retrieved via node.approximate() or node.marginal().
-///
-/// RandomWalk is the continuous analog of the MarkovChain structure.
+/// Samples are accumulated column-wise, so that sampling n times from a distribution of dimension p
+/// will generate a p x n matrix.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RandomWalk {
 
@@ -70,11 +71,37 @@ impl RandomWalk {
         self.pos += 1;
     }
 
+    /// Retrieves the current
     pub fn state<'a>(&'a self) -> DVectorSlice<'a, f64> {
         self.traj.column(self.pos)
     }
+
+    pub fn histogram(&self, ix : usize) -> Option<Histogram> {
+        if ix < self.traj.nrows() {
+            let samples = self.traj.row(ix).clone_owned().transpose();
+            Some(Histogram::build(&samples))
+        } else {
+            None
+        }
+    }
+
 }
 
+/// Builds a random walk from an external algorithm output, giving equal
+/// weight to any sample. The output is assumed to be organized column-wise,
+/// in the same representation hold by RandomWalk.
+impl<S> From<Matrix<f64, Dynamic, Dynamic, S>> for RandomWalk
+where
+    S : ContiguousStorage<f64, Dynamic, Dynamic>
+{
+
+    fn from(m : Matrix<f64, Dynamic, Dynamic, S>) -> Self {
+        let traj = m.clone_owned();
+        let pos = traj.ncols();
+        let weights = DVector::from_element(pos, 1. / pos as f64);
+        Self { traj, pos, weights }
+    }
+}
 
 /*/// RandomWalk is implemented by distributions who may
 /// maintain a history of changes in the natural parameter

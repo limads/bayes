@@ -17,12 +17,14 @@ use nalgebra::storage::Storage;
 use std::default::Default;
 use super::Sample;
 use std::cmp::{Ord, Ordering};
-pub mod csv;
+use super::csv;
 
 // #[cfg(feature = "sql")]
 pub mod sql;
 
 pub use sql::*;
+
+use super::csv::NullAction;
 
 #[derive(Clone, Copy)]
 pub enum ColumnType {
@@ -32,20 +34,6 @@ pub enum ColumnType {
     Float,
     Boolean,
     Numeric
-}
-
-pub enum NullAction {
-    IgnoreRow,
-    Error,
-    Impute(f64)
-}
-
-impl Default for NullAction {
-
-    fn default() -> Self {
-        NullAction::Error
-    }
-
 }
 
 impl Display for ColumnType {

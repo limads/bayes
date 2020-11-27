@@ -48,6 +48,8 @@ pub mod vonmises;
 
 pub use vonmises::*;
 
+use crate::inference::sim::histogram::Histogram;
+
 /// Trait shared by all parametric distributions in the exponential
 /// family. The Distribution immediate state is defined by a parameter vector
 /// (stored  both on a natural and canonical parameter scale) which can
@@ -489,7 +491,6 @@ pub trait Likelihood<C>
         BayesFactor::new(&self, &other).log_diff(y, x)
     }*/
 
-
     /// Returns the distribution with the parameters set to its
     /// gaussian approximation (mean and standard error).
     fn mle(y : DMatrixSlice<'_, f64>) -> Result<Self, anyhow::Error>;
@@ -651,6 +652,13 @@ pub trait Posterior
     fn trajectory(&self) -> Option<&RandomWalk>;
 
     fn trajectory_mut(&mut self) -> Option<&mut RandomWalk>;
+
+    /// Returns a non-parametric representation of this distribution
+    /// marginal parameter value at index ix.
+    fn marginal(&self, ix : usize) -> Option<Histogram> {
+        let traj = self.trajectory()?;
+        traj.histogram(ix)
+    }
 
     // Mark this variable fixed (e.g. at its current MLE) to avoid using it further as part of the
     // Inference algorithms by querying it via the fixed() method.

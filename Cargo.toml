@@ -16,9 +16,9 @@ description = "Composable abstractions to build probabilistic models and inferen
 crate-type = ["staticlib", "rlib", "dylib"]
 # crate-type = ["dylib"]
 
-[[bin]]
-path="src/cli/main.rs"
-name="bayes"
+# [[bin]]
+# path="src/cli/main.rs"
+# name="bayes"
 
 [dependencies]
 nalgebra = { version = "0.22.0", features = ["serde-serialize", "sparse"] }
@@ -37,8 +37,9 @@ anyhow = "1.0.32"
 thiserror = "1.0.20"
 argmin = { git="https://github.com/argmin-rs/argmin", features = ["nalgebral"] }
 # pgdatum = { git = "https://github.com/limads/pgdatum.git" }
-pgdatum = { path = "../pgdatum" }
+# pgdatum = { path = "../pgdatum", optional = true }
 either = "1.6.1"
+# warp = "0.2.5"
 
 [build-dependencies]
 cc = "1.0"
@@ -51,9 +52,9 @@ cc = "1.0"
 
 # To build with pgext, use
 # RUSTFLAGS="-C link-arg=-undefineddynamic_lookup" PG_INCLUDE_PATH=/usr/include/postgresql/11/server cargo build --features pgext
-# [features]
+[features]
 # mkl=[]
-# pgext=[]
+pgext=[]
 # api=[]
 # sql=[]
 

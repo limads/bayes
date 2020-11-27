@@ -27,6 +27,15 @@ $$ language sql;*/
 
 -- Note: $libdir is actually pkglibdir of pg_config, NOT libdir
 
+create or replace function observe_data(tbl text) returns json as $$
+declare
+    out json;
+begin
+    execute format('select array_to_json(array_agg(row_to_json(p))) from %I p;', tbl) into out;
+    return out;
+end
+$$ language plpgsql;
+
 create function log_prob(distr text) returns double precision as
     '$libdir/libbayes.so', 'log_prob'
 language c strict;
@@ -51,6 +60,71 @@ create type bernoulli as (
     n integer,
     prop real
 );
+
+create type distribution as (
+    data real[],
+    n integer,
+    loc real,
+    scale real
+);
+
+-- Conditioning function aggregates
+-- Supports the syntax condition(a, b) or a|b
+create function condition(a distribution, b distribution) returns distribution as $$
+    select a;
+$$ language sql;
+
+-- Supports the syntax condition(array[1.0,2.0], a) or array[1.0,2.0] | a
+create function condition(a real[], b distribution) returns distribution as $$
+    select b;
+$$ language sql;
+
+create operator | (
+    procedure = condition,
+    leftarg = distribution,
+    rightarg = distribution
+);
+
+create operator | (
+    procedure = condition,
+    leftarg = real[],
+    rightarg = distribution
+);
+
+create function append_distr(distribution, real) returns distribution as $$
+    select row(array_append(($1).data, $2), ($1).n + 1, ($1).loc, ($1).scale)::distribution;
+$$ language sql;
+
+create aggregate condition(real, distribution) (
+    sfunc = append_distr,
+    stype = (real[], distribution),
+    finalfunc = condition
+);
+
+-- Normal distribution functions
+
+create function norm(real[]) returns distribution as $$
+    select row($1, array_length($1, 1), avg(d), variance(d))::distribution
+    from unnest($1) d;
+$$ language sql;
+
+create function norm(real, real) returns distribution as $$
+    select row(NULL, 1, $1, $2)::distribution; 
+$$ language sql;
+
+create aggregate norm(real) (
+    sfunc = array_append,
+    stype = real[],
+    finalfunc = norm
+);
+
+-- We can define the method "sample" as the one that builds a JSON representation
+-- for the informed table from the catalog. Then, we condition this sample over the full
+-- probabilistic model
+-- select posterior(sample('patients') | model );
+
+-- We can define the conditioning operation as:
+-- select norm(bp) | norm(0.1, 0.2) from patients;
 
 /*-- Converts a bernoulli type to JSON
 create function build_bern_json(b bernoulli) returns json as $$

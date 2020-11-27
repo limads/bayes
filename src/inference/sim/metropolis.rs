@@ -9,10 +9,18 @@ use std::cell::RefCell;
 use std::convert::{TryFrom, TryInto};
 use crate::api::c_api::{DistrPtr, model_log_prob};
 
+/// Metropolis-Hastings settings.
 #[derive(Debug)]
 pub struct Settings {
+
+    /// Burn-in: Number of samples discarded before sampling.
     pub burn : usize,
-    pub n : usize
+
+    /// Total number of samples to collect.
+    pub n : usize,
+
+    /// How many parallel chains to run.
+    pub chains : usize
 }
 
 #[derive(Debug)]
@@ -74,8 +82,9 @@ where
         ) };
 
         if sample_ok {
-            self.samples = Some(out);
-            // Ok(&self.model.into())
+            self.samples = Some(out.transpose());
+
+
             (&self.model).try_into().map_err(|e| { println!("{}", e); "Invalid likelihood" })
         } else {
             Err("Sampling failed")

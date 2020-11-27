@@ -124,7 +124,7 @@ where
         let obs = DMatrix::from_columns(&[v]);
         d.set_observations((&obs).into());
     }
-    reset_parameter::<D, P>(&mut d, &val, loc_name);
+    reset_parameter::<D, P>(&mut d, &val, loc_name)?;
     println!("Parsed distribution: {:?}", d);
     Ok(d)
 }

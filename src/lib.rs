@@ -13,8 +13,8 @@
 //! (Metropolis-Hastings posterior sampler) which returns
 //! a non-parametric marginal histogram for each node.
 
-#![feature(vec_into_raw_parts)]
-#![feature(extern_types)]
+// #![feature(vec_into_raw_parts)]
+// #![feature(extern_types)]
 
 /// Traits and implementations for exponential-family probability distributions
 /// with support for sampling, summary statistics, and conditioning. TODO rename to

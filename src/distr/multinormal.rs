@@ -19,7 +19,15 @@ enum CovFunction {
     Logit
 }*/
 
-/// Represents a linear operator applied to a MultiNormal.
+/// A variable scale means a scale factor that varies from one sample to another
+/// (as we have in a multivariate regression setting), represented in a tall data matrix.
+/// A constant scale means a scale factor that is the same across all random variable realizations.
+enum Scale {
+    Variable(DMatrix<f64>),
+    Constant(DMatrix<f64>)
+}
+
+/// Represents a lazy-evaluated linear operator applied to a MultiNormal.
 /// This linear operator might be a (row) vector applied to
 /// the multivariate coefficient vector to yield a univariate quantity
 /// (such as in the generalized linear model), or a generic full-rank matrix
@@ -82,7 +90,7 @@ impl LinearOp {
         let scale = scale.unwrap_or_else(create_ident);
         let scale_t = scale.transpose();
         let shift = shift.unwrap_or_else(|| DVector::from_element(n, 0.));
-        let mut m = MultiNormal::new(shift.clone(), create_ident()).unwrap();
+        let mut m = MultiNormal::new(src.n, shift.clone(), create_ident()).unwrap();
         let mut op = Self{ scale, scale_t, shift, dst : Box::new(m) };
         op.update_from(&src);
         op
@@ -136,8 +144,16 @@ impl LinearOp {
 /// work by receiving covariance matrices, this structure holds both the covariance and
 /// the precision (inverse covariance) matrices internally. Re-setting the covariance
 /// is potentially a costly operation, since a QR inversion is performed.
+///
+/// Any graph of joint continuous distributions linked by a correlation coefficient
+/// resolves to a single MultiNormal distribution. The graph might have independent child
+/// nodes, which are represented by a top-level JSON array. Each element, then, link
+/// to an JSON array of parent nodes, whose elements are also distribution implementors.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MultiNormal {
+
+    n : usize,
+    
     mu : DVector<f64>,
 
     /// (sigma_inv * mu)^T
@@ -199,24 +215,24 @@ impl MultiNormal {
     }
 
     /// Creates a centered multinormal with identity covariance of size n.
-    pub fn new_standard(n : usize) -> Self {
-        let mu = DVector::zeros(n);
-        let mut cov = DMatrix::zeros(n, n);
+    pub fn new_standard(n : usize, p : usize) -> Self {
+        let mu = DVector::zeros(p);
+        let mut cov = DMatrix::zeros(p, p);
         cov.fill_with_identity();
-        Self::new(mu, cov).unwrap()
+        Self::new(n, mu, cov).unwrap()
     }
 
     /// Creates a non-centered multinormal with specified diagonal covariance.
-    pub fn new_homoscedastic(mu : DVector<f64>, var : f64) -> Self {
+    pub fn new_homoscedastic(n : usize, mu : DVector<f64>, var : f64) -> Self {
         let n = mu.nrows();
         let mut cov = DMatrix::zeros(n, n);
         cov.set_diagonal(&DVector::from_element(n, var));
-        Self::new(mu, cov).unwrap()
+        Self::new(n, mu, cov).unwrap()
     }
 
     /// Builds a new multivariate distribution from a mu vector and positive-definite
     /// covariance matrix sigma.
-    pub fn new(mu : DVector<f64>, sigma : DMatrix<f64>) -> Result<Self, anyhow::Error> {
+    pub fn new(n : usize, mu : DVector<f64>, sigma : DMatrix<f64>) -> Result<Self, anyhow::Error> {
         // let suff_scale = None;
         let log_part = DVector::from_element(1, 0.0);
         if !is_pd(sigma.clone()) {
@@ -239,6 +255,7 @@ impl MultiNormal {
         let prec = sigma_qr.try_inverse().unwrap();*/
         // Self { mu, sigma, sigma_qr, sigma_lu, sigma_det, prec, eta }
         let mut norm = Self {
+            n,
             mu : mu.clone(),
             sigma : sigma.clone(),
             sigma_inv,
@@ -381,11 +398,12 @@ impl MultiNormal {
     }
 
     pub fn linear_mle(x : &DMatrix<f64>, y : &DVector<f64>) -> Self {
+        assert!(y.nrows() == x.nrows());
         let n = x.nrows() as f64;
         let ols = ls::OLS::estimate(&y, &x);
         let mu = ols.beta;
         let cov = (x.clone().transpose() * x).scale(ols.err.unwrap().sum() / n);
-        Self::new(mu, cov).unwrap()
+        Self::new(y.nrows(), mu, cov).unwrap()
     }
 
     pub fn set_cov(&mut self, cov : DMatrix<f64>) {
@@ -700,7 +718,7 @@ impl Likelihood<Dynamic> for MultiNormal {
         mu.unscale_mut(n);
         let mut sigma = suf.remove_column(0);
         sigma.unscale_mut(n);
-        Self::new(mu, sigma)
+        Self::new(y.nrows(), mu, sigma)
     }
 
     fn visit_factors<F>(&mut self, f : F) where F : Fn(&mut dyn Posterior) {
@@ -1039,9 +1057,10 @@ impl TryFrom<serde_json::Value> for MultiNormal {
     fn try_from(val : Value) -> Result<Self, String> {
         let mean_val = val.get("mean").ok_or("Missing 'mean' entry of MultiNormal node")?;
         let cov_val = val.get("cov").ok_or("Missing 'cov' entry of MultiNormal node")?;
+        // let n = val.get("n").ok_or("Missing 'cov' entry of MultiNormal node")?;
         let mut mean = crate::model::parse_vector(mean_val)?;
         let mut cov = crate::model::parse_matrix(cov_val)?;
-        Ok(MultiNormal::new(mean, cov).map_err(|e| format!("{}", e))?)
+        Ok(MultiNormal::new(0, mean, cov).map_err(|e| format!("{}", e))?)
     }
 
 }
