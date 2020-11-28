@@ -1,7 +1,7 @@
 use std::ffi::c_void;
 use std::mem;
 use crate::model::Model;
-use crate::distr::*;
+use crate::prob::*;
 use std::convert::AsMut;
 use std::ptr;
 use std::slice;

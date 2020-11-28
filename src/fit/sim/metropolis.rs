@@ -1,7 +1,7 @@
 use nalgebra::*;
-use crate::distr::*;
+use crate::prob::*;
 use super::*;
-use crate::distr::Estimator;
+use crate::prob::Estimator;
 use crate::model::Model;
 use super::super::visitors;
 use std::ffi::c_void;

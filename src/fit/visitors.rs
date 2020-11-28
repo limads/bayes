@@ -1,4 +1,4 @@
-use crate::distr::*;
+use crate::prob::*;
 use anyhow::Error;
 use std::cell::RefCell;
 use nalgebra::*;

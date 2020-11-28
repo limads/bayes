@@ -4,7 +4,7 @@ use super::*;
 // use serde::{Serialize, Deserialize};
 use rand_distr;
 use rand;
-use crate::inference::sim::*;
+use crate::fit::sim::*;
 // use std::ops::AddAssign;
 use std::default::Default;
 use std::fmt::{self, Display};
@@ -221,6 +221,10 @@ impl ExponentialFamily<U1> for Bernoulli
 
 impl Likelihood<U1> for Bernoulli {
 
+    fn observe(&mut self, names : &[&str]) {
+        unimplemented!()
+    }
+    
     fn mle(y : DMatrixSlice<'_, f64>) -> Result<Self, anyhow::Error> {
         let prop = y.sum() / y.nrows() as f64;
         Ok(Self::new(1, Some(prop)))

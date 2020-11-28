@@ -8,7 +8,7 @@ use rand;
 use std::default::Default;
 use std::fmt::{self, Display};
 use super::MultiNormal;
-use crate::inference::sim::RandomWalk;
+use crate::fit::sim::RandomWalk;
 use std::convert::TryFrom;
 use serde_json::{self, Value, Number};
 

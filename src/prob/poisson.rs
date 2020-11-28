@@ -3,7 +3,7 @@ use super::*;
 use serde::{Serialize, Deserialize};
 use rand_distr;
 // use rand;
-use crate::inference::sim::*;
+use crate::fit::sim::*;
 // use std::ops::AddAssign;
 use std::default::Default;
 use serde::ser::{Serializer};
@@ -265,6 +265,10 @@ impl Conditional<Gamma> for Poisson {
 
 impl Likelihood<U1> for Poisson {
 
+    fn observe(&mut self, names : &[&str]) {
+        unimplemented!()
+    }
+    
     fn mle(y : DMatrixSlice<'_, f64>) -> Result<Self, anyhow::Error> {
         let lambda = y.sum() as f64 / y.nrows() as f64;
         Ok(Self::new(1, Some(lambda)))

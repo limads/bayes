@@ -1,5 +1,5 @@
 use nalgebra::*;
-use crate::distr::*;
+use crate::prob::*;
 use std::ops::AddAssign;
 use serde::{Serialize, Deserialize};
 use std::ops::Index;

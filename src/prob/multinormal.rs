@@ -6,7 +6,7 @@ use std::fmt::{self, Display};
 use std::default::Default;
 use std::ops::{SubAssign, MulAssign};
 use std::convert::{TryFrom, TryInto};
-use crate::inference::sim::RandomWalk;
+use crate::fit::sim::RandomWalk;
 use nalgebra::linalg;
 use serde_json::{self, Value, map::Map};
 use anyhow;
@@ -27,13 +27,8 @@ enum Scale {
     Constant(DMatrix<f64>)
 }
 
-/// Represents a lazy-evaluated linear operator applied to a MultiNormal.
-/// This linear operator might be a (row) vector applied to
-/// the multivariate coefficient vector to yield a univariate quantity
-/// (such as in the generalized linear model), or a generic full-rank matrix
-/// transformation (as is done in dynamic linear models). If the informed scale
-/// is not full rank, the linearized covariance will not be PD, and the
-/// operation will panic (for now).
+/// Represents a lazily-evaluated constant linear operator applied to 
+/// all realizations of a MultiNormal.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct LinearOp {
 
@@ -194,6 +189,15 @@ pub struct MultiNormal {
     // suff_scale : Option<DVector<f64>>
 }
 
+/// Results from MultiNormal::conditional. The output will depend on how many
+/// fixed and observed variables you have: For a single univariate observed variable,
+/// you will get a Univariate variant; For more than one observed variable, you will
+/// get a multivariate variant. 
+pub enum ConditionalNormal {
+    Univariate(Normal),
+    Multivariate(MultiNormal)
+}
+
 impl MultiNormal {
 
     pub fn invert_scale(s : &DMatrix<f64>) -> DMatrix<f64> {
@@ -336,10 +340,11 @@ impl MultiNormal {
     /// on a user-supplied constant and has nothing to do with the
     /// Conditional<Distribution> trait, which is used for conditioning over
     /// other random variables.
-    pub fn conditional(&self, value : DVector<f64>) -> MultiNormal {
-        let mut cond = self.marginal(0, value.nrows());
+    pub fn conditional(&self, value : DVector<f64>) -> ConditionalNormal {
+        /*let mut cond = self.marginal(0, value.nrows());
         cond.cond_update_from(&self, value);
-        cond
+        cond*/
+        unimplemented!()
     }
 
     fn update_cond_mean(
@@ -419,7 +424,21 @@ impl MultiNormal {
             self.op = Some(op);
         }
     }
-
+    
+    /// Watches for the informed variable names at any sample implementors, 
+    /// interpreting the variable values as fixed. For example, is this distribution is 
+    /// a multinormal of dimension p, after fixing for k informed variables, the distribution
+    /// will actually be a (p-k)-variate reduced joint distribution, which is a linear function of
+    /// the fixed k's and the current parameter vector. The basis for building a regression model
+    /// is creating an observed univariate node, and then creating a completely fixed (pass k names
+    /// for a k dimensional distribution) multinormal distribution. Alternatively, you can fix p-1
+    /// factors by passing p-1 names to fix and 1 name to observe (which will leave a single random obsserved node) 
+    /// and then call Self::conditional,
+    /// which will return a Multi or Univariate node with the remaining fixed nodes as factors.
+    fn fix(mut self, names : &[&str]) {
+    
+    }
+    
     /*pub fn new(mu : DVector<f64>, w : Wishart) -> Self {
         Self { mu : mu, cov : Covariance::new_random(w), shift : None, scale : None }
     }
@@ -706,6 +725,10 @@ impl Posterior for MultiNormal {
 
 impl Likelihood<Dynamic> for MultiNormal {
 
+    fn observe(&mut self, names : &[&str]) {
+        unimplemented!()
+    }
+    
     /// Returns the distribution with the parameters set to its
     /// gaussian approximation (mean and standard error).
     fn mle(y : DMatrixSlice<'_, f64>) -> Result<Self, anyhow::Error> {
@@ -910,12 +933,17 @@ pub fn approx_pd<N : Scalar + RealField + From<f32>>(m : DMatrix<N>) -> DMatrix<
     u * diag_m * u_t
 }
 
-/// Least squares algorithms
+/// Least squares algorithms. Those algorithms can be either treated as estimator in themselves
+/// or be used as building block for more complex optimization or sampling strategies. Moreover,
+/// conditioning a multivariate normal by fixing a subset of its variables is implemented via
+/// a least-squares problem.
 mod ls {
 
     use super::*;
 
-    /// Ordinary least square estimation.
+    /// Ordinary least square estimation. This estimator simply solves the linear system X^T X b = X^T y
+    /// using QR decomposition. It is useful if your have univariate homoscedastic observations conditional
+    /// on a set of linear predictors, and you don't have prior information to guide inference.
     #[derive(Debug)]
     pub struct OLS {
         pub beta : DVector<f64>,
@@ -924,6 +952,12 @@ mod ls {
 
     impl OLS {
 
+        /// Builds the bayesian OLS problem, using the distribution prior data. 
+        /// The only admissible distribution is the Normal, conditional on a MultiNormal.
+        pub fn new<D>(d : D) -> Option<Self> {
+            unimplemented!()
+        }
+        
         /// Carry estimation based on a prediction vector an a cross-products matrix.
         pub fn estimate_from_cp(xy : &DVector<f64>, xx : &DMatrix<f64>) -> Self {
             let xx_qr = xx.clone().qr();
@@ -945,7 +979,10 @@ mod ls {
     /// Weighted Least squares algorithm, which estimates
     /// the minimum squared error estimate weighting each
     /// sample by its corresponding entry in the inverse-diagonal
-    /// covariance (diagonal precision)
+    /// covariance (diagonal precision). This algorithm just the OLS estimator
+    /// applied to the transformed variables X* = X^T W X and y* = X^T W y, so it is
+    /// useful if you have heteroscedastic observations conditional on a set of linear
+    /// predictors, and you don't have informaiton to guide inference.
     #[derive(Debug)]
     pub struct WLS {
 
@@ -993,11 +1030,13 @@ mod ls {
     }
 
     /*/// Generalized Least squares algorithm. GLS generalizes WLS for
-    /// non-diagonal covariances (estimation under any error covariance).
-    /// This covariance has an n x n structure and represents the possible
-    /// correlations of all observations of dimensionality 1 with themselves. The solution is:
-    /// Multiply X and y by the Cholesky factor of this matrix; Then solve OLS for the standardized
-    /// quantities. The same equation for WLS can be applied here.
+    /// a specified non-diagonal covariance matrix of the **observations** (estimation under any error covariance,
+    /// such as when observations are temporally or spatially correlated, which leads to an observation block-diagonal
+    /// matrix). This covariance has an n x n structure and represents the possible
+    /// correlations of all univariate observations with themselves. The solution is:
+    /// Multiply X and y by the Cholesky factor of this observation covariance matrix; 
+    /// This will result in a diagonal observatino matrix, which gets us to a point for which we can solve the 
+    /// problem via OLS. To make predictions, we pre-multiply any generated quantities by the Cholesky factor again.
     #[derive(Debug)]
     pub struct GLS {
 
@@ -1048,6 +1087,17 @@ mod ls {
             Ok(Self { ols, cov, x_star, y_star, low_inv })
         }
     }*/
+    
+    /// The iteratively-reweighted least squares estimator recursively calculates the weighted
+    /// least squares solution to (y - ybar, X), using var(y bar) as the weights. This estimator
+    /// generalizes the WLS procedure to non-normal errors, and is widely used for maximum likelihood
+    /// estimation in logistic and poison regression problems. The resulting distribution represents a lower-bound on the
+    /// estimator covariance (the Cramer-Rao lower bound), and as such it might underestimate the error
+    /// of the observations. Importance sampling of the resulting distribution is a relatively cheap fully
+    /// bayesian follow-up procedure, which informs how severe this underestimation is.
+    pub struct IRLS {
+    
+    }
 }
 
 impl TryFrom<serde_json::Value> for MultiNormal {

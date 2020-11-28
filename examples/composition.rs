@@ -1,4 +1,4 @@
-use bayes::distr::*;
+use bayes::prob::*;
 
 fn main() -> Result<(), &'static str> {
     println!("Normal model:");

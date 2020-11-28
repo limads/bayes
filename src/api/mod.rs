@@ -1,7 +1,7 @@
 use std::os::raw::c_char;
 use std::ffi::CStr;
 use crate::model::*;
-use crate::distr::*;
+use crate::prob::*;
 // use pgdatum::{self, Text, Bytea};
 use std::convert::TryInto;
 use std::panic::catch_unwind;

@@ -1,4 +1,4 @@
-use crate::distr::multinormal::MultiNormal;
+use crate::prob::MultiNormal;
 
 pub enum Covariance {
     Constant,

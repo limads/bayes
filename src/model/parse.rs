@@ -1,7 +1,7 @@
 use super::*;
 use rand_distr;
 use rand;
-use crate::inference::sim::*;
+use crate::fit::sim::*;
 use std::default::Default;
 use std::fmt::{self, Display};
 use anyhow;

@@ -1,5 +1,5 @@
 use nalgebra::*;
-use crate::distr::*;
+use crate::prob::*;
 // use super::*;
 // use crate::optim::*;
 use std::ops::AddAssign;

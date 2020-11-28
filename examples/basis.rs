@@ -1,4 +1,4 @@
-use bayes::distr::{Normal, Distribution};
+use bayes::prob::{Normal, Distribution};
 //use bayes::basis::{ cov::*, poly::*, signal::*, cluster::* };
 
 fn main() {

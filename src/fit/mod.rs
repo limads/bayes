@@ -1,8 +1,8 @@
 use nalgebra::*;
-use crate::distr::*;
+use crate::prob::*;
 use super::*;
-use crate::distr::multinormal;
-use crate::inference::optim::*;
+// use crate::prob::multinormal;
+use crate::fit::optim::*;
 
 /// Utilities to build inference algorithms that can be passed into Posterior::visit_factors(.).
 /// Although the utilities here are primarily used to implemented the algorithms re-exported
@@ -47,7 +47,7 @@ where
 
 }*/
 
-pub fn irls<D>(mut distr : D, y : DMatrix<f64>, x : DMatrix<f64>) -> Result<D, String>
+/*pub fn irls<D>(mut distr : D, y : DMatrix<f64>, x : DMatrix<f64>) -> Result<D, String>
 where
     D : Distribution + Clone + Conditional<MultiNormal>
 {
@@ -154,5 +154,5 @@ fn logistic() {
     println!("y = {}", y);
     println!("x = {}", x);
     println!("{:?}", irls(bern, y, x));
-}
+}*/
 

@@ -1,5 +1,5 @@
 use nalgebra::*;
-use crate::distr::*;
+use crate::prob::*;
 use std::default::Default;
 
 /// Error rate, used by the user to obtain an optimized decision

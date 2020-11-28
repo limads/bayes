@@ -4,51 +4,52 @@ use std::fmt::Debug;
 use std::ops::AddAssign;
 use crate::decision::BayesFactor;
 use std::fmt::Display;
-use crate::inference::sim::RandomWalk;
+use crate::fit::sim::RandomWalk;
 use anyhow;
 use thiserror::Error;
+use crate::sample::*;
 
-pub mod poisson;
+mod poisson;
 
 pub use poisson::*;
 
-pub mod beta;
+mod beta;
 
 pub use beta::*;
 
-pub mod bernoulli;
+mod bernoulli;
 
 pub use bernoulli::*;
 
-pub mod gamma;
+mod gamma;
 
 pub use gamma::*;
 
-pub mod normal;
+mod normal;
 
 pub use normal::*;
 
-pub mod multinormal;
+mod multinormal;
 
 pub use multinormal::*;
 
-pub mod wishart;
+mod wishart;
 
 pub use wishart::*;
 
-pub mod categorical;
+mod categorical;
 
 pub use categorical::*;
 
-pub mod dirichlet;
+mod dirichlet;
 
 pub use dirichlet::*;
 
-pub mod vonmises;
+mod vonmises;
 
 pub use vonmises::*;
 
-use crate::inference::sim::histogram::Histogram;
+use crate::fit::sim::histogram::Histogram;
 
 /// Trait shared by all parametric distributions in the exponential
 /// family. The Distribution immediate state is defined by a parameter vector
@@ -119,6 +120,9 @@ pub trait Distribution
         unimplemented!()
     }
 
+    // Effectively updates the name of this distribution.
+    // fn rename(&mut self);
+    
     /// Evaluates the log-probability of the sample y with respect to the current
     /// parameter state, and optionally by transforming the random variable by the matrix x.
     /// This method just dispatches to a sufficient statistic log-probability
@@ -465,6 +469,12 @@ pub trait Estimator<D>
 /// and interact directly with data. If the model is composed of more than a single
 /// likelihood distribution of the same type, use Factor<D>
 /// (an iterator over distribution children).
+///
+/// Likelihood distributions (Normal, Poison, Bernoulli) have some extra information
+/// that pure prior-posterior distributions do not (Gamma, Beta): They carry a condition enumeration
+/// which tells how to interpret their natural parameter vector (is it a constant? a natural function?)
+/// and they carry a Observation enumeration, which tell the observation status: Is it bound to a variable
+/// name? If so, is this name related to a observation vector/matrix or only to a sufficient statistic?
 pub trait Likelihood<C>
     where
         Self : ExponentialFamily<C> + Distribution + Sized,
@@ -558,6 +568,10 @@ pub trait Likelihood<C>
         }
     }
 
+    /// Watches for the informed variable names at any sample
+    /// implementors, interpreting the variable values as random draws from this distribution.
+    fn observe(&mut self, names : &[&str]);
+    
     // Iterate over sister nodes if Factor; or returns a single distribution if
     // not a factor.
     // pub fn iter_sisters() -
@@ -754,10 +768,56 @@ where
 
 }*/
 
-enum Sample {
-    Missing,
-    Statistic{ value : DMatrix<f64>, dof : usize },
-    Observation{ value : DMatrix<f64> }
+/// Enum carried by distributions which potentially function as likelihood nodes. Those distributions
+/// might cache their observations or just a sufficient statistic of the observations. This field is
+/// usually modified by Likelihood::observe. For multivariate normals, it can also be set by
+/// MultiNormal::Fix.
+enum Variate {
+
+    /// This is the status when the distribution is created. To move to the Missing variant,
+    /// call Likelihood::observe with a slice of variable names.
+    Unspecified,
+    
+    /// Unobserved random variable. Can be a prior or hidden variable. Whether to move to the
+    /// statistic or sample variant will depend on the algorithm: Conjugate methods might want to
+    /// call self.set_statistic(.) While methods that need to preserve the full data vector
+    /// might want to call self.set_sample(.).
+    Missing{ vars : Vec<String> },
+    
+    /// An observed sample was compressed into a sufficient statistic and degrees of freedom (sample size).
+    /// Much more efficient than storing the full sample, but the values cannot be re-used in a model
+    /// with any conditionally-independent structure (the sample is assumed independent of the model formulation).
+    Statistic{ vars : Vec<String>, value : DMatrix<f64>, dof : usize },
+    
+    /// Distribution yielded a full matrix of observations. Requires more memory, but is required if
+    /// the sample is conditionally independent given the full model.
+    Sample{ vars : Vec<String>, value : DMatrix<f64> }
+}
+
+/// Enum carried by distributions which potentially function as likelihood nodes. Those nodes might be
+/// the top-level univariate or multivariate (mutually independent) leaves, observable "group" variables of
+/// multilevel models, or hidden variables. Those nodes are special in that their parameter vector might
+/// be interpreted in different ways depending on the conditioning strategy. Conditional models (e.g. GLMs)
+/// do not form a fully probabilistic graph, but their factored representation also depend on constant terms
+/// (which are not literally factors of the joint distribution, since the elements have been fixed and reduced
+/// the dimensionality of the joint.
+enum Condition {
+    
+    /// The parameter vector of this distribution is to be taken as is. This is the variant held by any
+    /// likelihood node which is at the root of the graph, which happens early at model construction
+    /// or if you are working with maximum likelihood methods.
+    Constant,
+    
+    /// The parameter vector of this distribution is to be interpreted as coefficients to a linear
+    /// combination of the columns of the fixed matrix (think about a regression model here). This
+    /// problem aries naturally when you have a p-dimensional distribution and hold k of those factors
+    /// fixed, effectively reducing the dimensionality of your joint. The linear formulation arises when
+    /// a multivariate normal is held fixed as a function of a few parameters, while the non-fixed dimensions
+    /// (mapping to the current distribution) are let free to vary.
+    Deterministic{ fixed : DMatrix<f64> },
+    
+    Stochastic
+    
 }
 
 // impl Sample {

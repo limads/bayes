@@ -1,23 +1,20 @@
 use nalgebra::*;
+// use rand_distr;
 use super::*;
-// use std::fmt::{self, Display};
 use serde::{Serialize, Deserialize};
-// use super::Gamma;
 use std::fmt::{self, Display};
-use crate::inference::sim::RandomWalk;
+use crate::fit::sim::RandomWalk;
 use super::MultiNormal;
 
-/// Exponential-family distribution defined over -π ≥ θ ≥ π, resulting
-/// from the observation of a periodic process.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VonMises {
-    approx : Option<Box<MultiNormal>>,
-    rw : Option<RandomWalk>
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Dirichlet {
+
+    rw : Option<RandomWalk>,
+
+    approx : Option<MultiNormal>
 }
 
-impl Distribution for VonMises
-    where Self : Sized
-{
+impl Distribution for Dirichlet {
 
     fn set_parameter(&mut self, _p : DVectorSlice<'_, f64>, _natural : bool) {
         unimplemented!()
@@ -43,7 +40,9 @@ impl Distribution for VonMises
         unimplemented!()
     }
 
-    fn sample_into(&self, _dst : DMatrixSliceMut<'_,f64>) {
+    fn sample_into(&self, _dst : DMatrixSliceMut<'_, f64>) {
+        // let dirichlet = Dirichlet::new(vec![1.0, 2.0, 3.0]).unwrap();
+        // let samples = dirichlet.sample(&mut rand::thread_rng());*/
         unimplemented!()
     }
 
@@ -55,20 +54,21 @@ impl Distribution for VonMises
         None
     }
 
+
 }
 
-impl Posterior for VonMises {
+impl Posterior for Dirichlet {
 
     fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>) {
         unimplemented!()
     }
 
     fn approximation_mut(&mut self) -> Option<&mut MultiNormal> {
-        self.approx.as_mut().map(|apprx| apprx.as_mut())
+        self.approx.as_mut()
     }
 
     fn approximation(&self) -> Option<&MultiNormal> {
-        self.approx.as_ref().map(|apprx| apprx.as_ref())
+        self.approx.as_ref()
     }
 
     fn trajectory(&self) -> Option<&RandomWalk> {
@@ -81,14 +81,12 @@ impl Posterior for VonMises {
 
 }
 
-impl ExponentialFamily<U1> for VonMises
+impl ExponentialFamily<Dynamic> for Dirichlet
     where
         Self : Distribution
 {
 
-    fn base_measure(_y : DMatrixSlice<'_, f64>) -> DVector<f64>
-        //where S : Storage<f64, Dynamic, U1>
-    {
+    fn base_measure(_y : DMatrixSlice<'_, f64>) -> DVector<f64> {
         unimplemented!()
     }
 
@@ -108,7 +106,7 @@ impl ExponentialFamily<U1> for VonMises
         unimplemented!()
     }
 
-    /*n update_grad(&mut self, _eta : DVectorSlice<'_, f64>) {
+    /*fn update_grad(&mut self, _eta : DVectorSlice<'_, f64>) {
         unimplemented!()
     }
 
@@ -130,10 +128,10 @@ impl ExponentialFamily<U1> for VonMises
 
 }
 
-impl Display for VonMises {
+impl Display for Dirichlet {
 
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "VMis(1)")
+        write!(f, "Dir(1)")
     }
 
 }

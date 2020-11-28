@@ -1,4 +1,4 @@
-use bayes::distr::*;
+use bayes::prob::*;
 use nalgebra::*;
 
 // Usage:

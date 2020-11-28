@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 use nalgebra::*;
-use crate::distr::*;
+use crate::prob::*;
 use std::fmt::{self, Display, Formatter};
 use std::error::Error;
 

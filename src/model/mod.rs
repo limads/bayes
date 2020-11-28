@@ -1,8 +1,8 @@
 use nalgebra::{DVector, DMatrix, RowDVector, Dim, DMatrixSlice};
 use serde_json::{self, Value};
 use std::error::Error;
-use crate::distr::*;
-use crate::distr::multinormal::*;
+use crate::prob::*;
+// use crate::prob::multinormal::*;
 use std::convert::{TryFrom, TryInto};
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};

@@ -1,8 +1,8 @@
 use nalgebra::*;
 use std::iter::FromIterator;
-
-// pub mod table;
-// pub use table::*;
+use std::collections::HashMap;
+use std::cmp::Eq;
+use std::hash::Hash;
 
 pub mod csv;
 
@@ -23,26 +23,105 @@ use rand;
 /// values is an integer multiple of the length of names. If the user implements columns(.) the rows(.) method
 /// is already provided. But the user might decide to just return an empty columns structure and implement rows(.)
 /// if the structure is not column-contiguous.
+///
+/// The trait sample works both for column-ordered data or row-ordered data, which is why you have
+/// the liberty to define the types Row and Column. If your data is column-oriented, you can define 
+/// column as a cheap reference access to &[f64] and row as a copy to Vec<f64>. If your data is row-
+/// oriented, you can do the opposite. If your data is not memory-contiguous, you can define copy for both
+/// methods. Some algorithms will work better with different options on how to organize your data. Data is assumed
+/// distributed as the likelihood node and iid, or at least conditionally iid given the non-likelihood 
+/// (prior and hyperprior) nodes. For performance reasons (for example, you want your user to just feed
+/// column-oriented or row-oriented data) you can add trait bounds over rows and columns such as:
+/// fn my_estimator(s : Sample<Row=R,Column=C> where R : AsRef<f64> or Col : AsRef<f64>.
 pub trait Sample<'a>
 where
-    Self::Names : IntoIterator<Item=&'a str>,
-    Self::Rows : IntoIterator<Item=&'a f64>,
-    Self::Columns : IntoIterator<Item=&'a [f64]>
+    // Self::Names : IntoIterator<Item=&'a str>,
+    Self::Row : IntoIterator<Item=&'a f64>,
+    Self::Column : IntoIterator<Item=&'a f64>
+    // Self::Names : IntoIterator<Item=&'a str>
 {
 
-    type Names;
+    // type Name;
+    
+    type Row;
+    
+    type Column;
+    
+    /// Offers column names in an order consistent with Self::row, so the model can query
+    /// the position of the name and use it to index into Self::row. Might return None
+    /// if column names do not have a fixed order.
+    fn variables(&'a self) -> Option<Vec<&'a str>>;
+    
+    /// For implementors which need to do operations row-wise (e.g. CSV parsers), it is best
+    /// to just implement row and leave column as a provided method. For already parsed
+    /// data structures, it is best to implement column and leave row as a provided method.
+    /// Implementing both row and column assume a certain order for Self::Name.
+    fn row(&'a self, ix : usize) -> Option<Self::Row>;
 
-    type Rows;
-
-    type Columns;
-
-    fn names(&self) -> Self::Names;
-
-    fn rows(&self) -> Self::Rows;
-
-    fn columns(&self) -> Self::Columns;
+    fn column(&'a self, name : &str) -> Option<Self::Column>;
 
 }
+
+impl<'a /*, K*/ > Sample<'a> for HashMap<String, Vec<f64>> 
+    where
+        //K : AsRef<str> + Eq + Hash
+{
+
+    //type names = Vec<&'a str>;
+    
+    type Row = Vec<&'a f64>;
+    
+    type Column = &'a [f64];
+    
+    // type Names = Vec<&'a str>;
+    
+    fn variables(&self) -> Option<Vec<&'a str>> {
+        None
+    }
+
+    /// This implementor does not know how to iterate over rows because
+    /// the hashmap stores the columns in random order.
+    fn row(&'a self, ix : usize) -> Option<Self::Row> {
+        None
+    }
+
+    fn column(&'a self, name : &str) -> Option<Self::Column> {
+        self.get(name).map(|col| col.as_ref() )
+    }
+    
+}
+
+/*/// If you want to use bayes with your custom type T (for a type-safe alternative to HashMap<S,Ve<f64>>, 
+/// you just have to implement this trait, and Vec<T> : Sample will be satisfied automatically. This implementation
+/// assumes your type satisfies serde::Serialize (which is used to retrieve the column name information).
+/// Only a single serialization is performed in the first data point to yield column names,
+/// and all other values are simply read by assuming the type yields the same column positions.
+pub trait Observation 
+where
+    Self : Serialize,
+    Self::Length : LengthAtMost32
+{
+    type Length;
+    
+    fn observation(&self) -> [f64; I];
+}*/
+
+/*/// A runtime-defined sample access pattern, which might be column-oriented, row-oriented, or unordered.
+/// If at the Estimator implementation you require that your sample satisfies Sample + Into<Table>,
+/// then you algorithm can make use of this enumeration to iterate over your sample in
+/// an optimal way (if it can), but still acquire the data successfully if it cannot. For example,
+/// If your are using Vec<T> for your custom T : Deserialize, then you can implement the
+/// conversion always to the Unstructured variant. If you are using a custom column container, you can implement
+/// the conversion to the Column variant; if you are using a custom row container, you can implement the 
+/// conversion to the Row variant. Note that using this runtime-defined data access strategy is completely
+/// optional: The generic implementation to Estimator::fit<.> only requires a Sample implementation, which
+/// just iterates over &'a f64 row-wise or column-wise. By requiring the trait bounds AsRef<[f64]> to either row
+/// or column at your sample implementation, you forbid at compile time how the data should be structured.
+pub enum Table<'a> {
+    ColWise(Vec<&'a [f64]>),
+    Row(Vec<&'a [f64]),
+    Unstructured
+}*/
 
 /* By leaving the observation type as IntoIterator<f64> we have the possibility
 of returning both owned Vec<f64> for structures that must pool data before

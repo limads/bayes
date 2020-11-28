@@ -18,8 +18,7 @@
 
 /// Traits and implementations for exponential-family probability distributions
 /// with support for sampling, summary statistics, and conditioning. TODO rename to
-/// bayes::prob.
-pub mod distr;
+pub mod prob;
 
 //pub mod basis;
 
@@ -45,13 +44,13 @@ pub mod sample;
 pub mod model;
 
 // Perhaps add mod bayes::inference containing the estimation algorithms:
-// bayes::inference::exact::SumProduct;
-// bayes::inference::optim::{ExpectMax, IRLS};
-// bayes::inference::sim::{Metropolis};
+// bayes::fit::graph::SumProduct;
+// bayes::fit::optim::{ExpectMax, IRLS};
+// bayes::fit::linear::{OLS, WLS, GLS, IRLS};
+// bayes::fit::sim::{Metropolis};
 // The top-level modules then would be: distr, inference, decision, feature, model, graph, sample.
 // distr would contain all model validation/comparison machinery.
-// TODO rename to bayes::fit.
-pub mod inference;
+pub mod fit;
 
 // #[cfg(feature="api")]
 pub mod api;

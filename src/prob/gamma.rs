@@ -7,7 +7,7 @@ use serde::{Serialize, Deserialize};
 use serde::ser::{Serializer};
 use serde::de::Deserializer;
 use std::fmt::{self, Display};
-use crate::inference::sim::RandomWalk;
+use crate::fit::sim::RandomWalk;
 
 /// The Gamma is a distribution for inverse-scale or rate parameters. For a location parameter centered
 /// at alpha (shape), Gamma(alpha, beta) represents the random distribution of
