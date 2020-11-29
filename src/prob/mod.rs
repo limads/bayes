@@ -9,6 +9,16 @@ use anyhow;
 use thiserror::Error;
 use crate::sample::*;
 
+/// Structure to represent one-dimensional empirical distributions non-parametrically (Work in progress).
+mod histogram;
+
+pub use histogram::*;
+
+/// Collection of histograms, product of marginalization.
+mod marginal;
+
+pub use marginal::*;
+
 mod poisson;
 
 pub use poisson::*;
@@ -48,8 +58,6 @@ pub use dirichlet::*;
 mod vonmises;
 
 pub use vonmises::*;
-
-use crate::fit::sim::histogram::Histogram;
 
 /// Trait shared by all parametric distributions in the exponential
 /// family. The Distribution immediate state is defined by a parameter vector
@@ -162,6 +170,9 @@ pub trait Distribution
 /// with a root likelihood node and branch/leaf nodes that are priors and hyperpriors (before inference)
 /// and posterior factors after inference. Undirected probabilistic relationships are implemented
 /// within dedicated structures (see MarkovChain and MarkovField).
+///
+/// This trait is also the basis for the bayes JSON model definition: To parse the next step in the graph,
+/// you have to verify that the JSON field D satisfies Conditional<D> for the current JSON node Self.
 pub trait Conditional<D>
     where
         Self : Distribution + Sized,
@@ -178,14 +189,21 @@ pub trait Conditional<D>
     /// Takes self by value and outputs its factor.
     fn take_factor(self) -> Option<D>;
 
-    /// Returns a mutable reference to the parent factor.
+    /// Returns a mutable reference to the parent factor. This is useful if you have to
+    /// iterate over the factor graph in a way that preserves some state: Just call your
+    /// function or closure recursively using factor_mut(.) as the argument at every call
+    /// until the full graph is visited.
     fn factor_mut(&mut self) -> Option<&mut D>;
 
 }
 
 /// Implemented by distributions which compose together to yield multivariate
-/// distributions. Implementors are Normal(Normal)->MultiNormal and
-/// MultiNormal(Normal)->MultiNormal.
+/// joint distributions. Implementors are Normal(Normal)->MultiNormal and
+/// MultiNormal(Normal)->MultiNormal for continuous variables; and Bernoulli->Bernoulli or
+/// Categorical->Categorical for joint discrete distributions linked via conditional probability
+/// tables (CPTs). This distribution is the basis to parse joint probabilistic models from JSON:
+/// if two variable names are field names of a same JSON object, those names are assumed part of a 
+/// joint distribution; the correlation or CPT argument define how those two elements will be linked.
 pub trait Joint<D>
 where
     Self : Distribution + Sized,
@@ -525,7 +543,9 @@ pub trait Likelihood<C>
     }*/
 
     /// Calls the closure for each distribution that composes the factored
-    /// joint distribution, in a depth-first fashion.
+    /// joint distribution, in a depth-first fashion. Any Posterior distribution
+    /// can be a part of a nested bayesian inference problem, justifying this
+    /// visitor.
     fn visit_factors<F>(&mut self, f : F) where F : Fn(&mut dyn Posterior);
 
     /*/// Returns a mutable iterator over this likelihood

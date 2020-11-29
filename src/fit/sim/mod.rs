@@ -6,20 +6,12 @@ use std::ops::AddAssign;
 use serde::{Serialize, Deserialize};
 use std::ops::Index;
 use nalgebra::storage::*;
-
-/// Structure to represent one-dimensional empirical distributions non-parametrically (Work in progress).
-pub mod histogram;
-
-pub use histogram::*;
+use crate::prob::Histogram;
 
 /// Metropolis-Hastings posterior sampler (Work in progress).
 pub mod metropolis;
 
 pub use metropolis::*;
-
-pub mod marginal;
-
-pub use marginal::*;
 
 /// A sequence of natural parameter iterations. The distribution at the current node
 /// holds the parameter trajectory of all distributions at the parent nodes, which during

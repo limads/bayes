@@ -5,7 +5,11 @@ use super::*;
 
 /// One-dimensional histogram, useful for representing univariate marginal distributions
 /// of sampled posteriors non-parametrically. Retrieved by indexing a Sample structure.
-/// The histogram resolution is a linear function of the sample size.
+/// The histogram resolution is a linear function of the sample size. Histograms can be
+/// thought of as a non-parametric counterpart to bayes::distr::Normal in the sense that it
+/// represents a distribution over an unbounded real variable. But unlike Normals, which are
+/// defined only by mean and variance, histograms can represent any empiric univariate distribution.
+/// Histogram implements Distribution API. 
 pub struct Histogram {
 
     ord_sample : DVector<f64>,
@@ -141,7 +145,13 @@ impl Histogram {
 
 /*/// Useful to represent the joint distribution of pairs of non-parametric
 /// posterior parameters and to calculate pair-wise statistics for them, such
-/// as their covariance and correlation.
+/// as their covariance and correlation. This can be thought of as a nonparametric
+/// counterpart to bayes::prob::MultiNormal of dimensionality 2. Representing distributions
+/// of higher-dimensions non-parametrically becomes computationally infeasible for dimensionality
+/// greater than two, so you must resort to a parametric formulation in this case; or at least
+/// to a mixture. Distributions can be through of as living in the continum of flexibility x tractability:
+/// <-- Flexibility         Tractability -->
+/// Histograms      Mixtures       Parametric (Expoential-family)
 pub struct SurfaceHistogram {
     comm_domain : DVector<f64>,
     joint_prob : DMatrix<f64>,
@@ -176,7 +186,7 @@ impl SurfaceHistogram {
 }
 
 /// Pair of marginal histograms.
-pub struct MarginalHistogram {
+pub struct Marginal {
     bottom : Histogram,
     right : Histogram
 }

@@ -18,6 +18,11 @@ pub mod optim;
 /// and related non-parametric distribution representation (work in progress).
 pub mod sim;
 
+/// Linear estimation methods (Least squares and iteratively-reweighted least squares).
+/// Those algorithms can be either treated as estimator in themselves
+/// or be used as building block for more complex optimization or sampling strategies. 
+pub mod linear;
+
 /*// Call the iteratively re-weighted least squares algorithm over random y (data).
 // Assume x is already constant for the multinormal.
 /// The formula for the IRLS solution is:

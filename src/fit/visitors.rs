@@ -6,7 +6,11 @@ use nalgebra::*;
 /// Iterates the factor graph in a depth-first fashion, copying all
 /// natural parameter values into the v vector buffer, if its size allows it.
 /// The iteration does not change the factors (although a mutable reference is
-/// required to satisfy the Posterior interface).
+/// required to satisfy the Posterior interface). The visitor pattern is not easy 
+/// to apply if your have to mutate some data across distribution nodes. In those
+/// cases, it is better to call factors_mut(.) at every node and call the distribution
+/// recursively, so you don't have to propagate mutable references down the call graph
+/// by wrapping them over RefCells.
 pub fn collect_parameters<V>(distr : &mut dyn Posterior, v : V) -> Result<V, Error>
 where
     V : AsMut<[f64]>

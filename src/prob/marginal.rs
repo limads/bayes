@@ -6,7 +6,9 @@ use std::ops::Index;
 use std::ops::Range;
 use super::*;
 
-/*/// Marginal is a collection of 1D posterior marginals, recovered via indexing.
+/*/// Marginal is a collection of Histograms resulting from marginalization of a complex multivariate distribution.
+/// Each index (which can be recovered by position or name) represents the result of marginalizing a distribution
+/// over all variables but the one of interest.
 pub struct Marginal {
 
     /// Applies link function to eta_traj to get this field.

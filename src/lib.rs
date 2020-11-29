@@ -16,6 +16,8 @@
 // #![feature(vec_into_raw_parts)]
 // #![feature(extern_types)]
 
+#![doc(html_logo_url = "assets.jpg")]
+
 /// Traits and implementations for exponential-family probability distributions
 /// with support for sampling, summary statistics, and conditioning. TODO rename to
 pub mod prob;
