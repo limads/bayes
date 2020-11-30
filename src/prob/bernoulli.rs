@@ -17,6 +17,7 @@ pub type BernoulliFactor = UnivariateFactor<Beta>;
 // use argmin::prelude::*;
 use argmin;
 use either::Either;
+use crate::fit::Estimator;
 
 /// The Bernoulli is the exponential-family distribution
 /// used as the likelihood for binary outcomes. Each realization is parametrized
@@ -64,7 +65,9 @@ pub struct Bernoulli {
     /// with [log(theta) log(1-theta)]; and pass it instead of the eta as the log-prob argument.
     suf_theta : Option<DMatrix<f64>>,
 
-    obs : Option<DMatrix<f64>>
+    obs : Option<DVector<f64>>,
+    
+    name : Option<String>
 
 }
 
@@ -221,8 +224,18 @@ impl ExponentialFamily<U1> for Bernoulli
 
 impl Likelihood<U1> for Bernoulli {
 
-    fn observe(&mut self, names : &[&str]) {
-        unimplemented!()
+    fn variables(&mut self, vars : &[&str]) -> &mut Self {
+        assert!(vars.len() == 1);
+        self.name = Some(vars[0].to_string());
+        self
+    }
+    
+    fn observe<'a, R,C>(&'a mut self, sample : &'a impl Sample<'a, Row=R,Column=C>)
+    where
+        R : IntoIterator<Item=&'a f64>,
+        C : IntoIterator<Item=&'a f64>
+    {
+        self.obs = Some(super::observe_univariate(self.name.clone(), self.theta.len(), self.obs.take(), sample));
     }
     
     fn mle(y : DMatrixSlice<'_, f64>) -> Result<Self, anyhow::Error> {
@@ -352,9 +365,9 @@ where Self : Sized
         }
     }
 
-    fn observations(&self) -> Option<&DMatrix<f64>> {
-        self.obs.as_ref()
-    }
+    // fn observations(&self) -> Option<&DMatrix<f64>> {
+    //    self.obs.as_ref()
+    // }
 
     fn mean<'a>(&'a self) -> &'a DVector<f64> {
         &self.theta
@@ -374,10 +387,6 @@ where Self : Sized
 
     fn cov_inv(&self) -> Option<DMatrix<f64>> {
         None
-    }
-
-    fn set_observations(&mut self, obs : &DMatrix<f64>) {
-        self.obs = Some(obs.clone());
     }
 
     fn log_prob(&self, y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>) -> f64 {
@@ -528,7 +537,8 @@ impl Default for Bernoulli {
             sampler : Vec::new(),
             log_part : DVector::from_element(1, (2.).ln()),
             suf_theta : None,
-            obs : None
+            obs : None,
+            name : None
         }
     }
 

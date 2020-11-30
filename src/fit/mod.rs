@@ -1,7 +1,6 @@
 use nalgebra::*;
 use crate::prob::*;
 use super::*;
-// use crate::prob::multinormal;
 use crate::fit::optim::*;
 
 /// Utilities to build inference algorithms that can be passed into Posterior::visit_factors(.).
@@ -22,6 +21,28 @@ pub mod sim;
 /// Those algorithms can be either treated as estimator in themselves
 /// or be used as building block for more complex optimization or sampling strategies. 
 pub mod linear;
+
+/// Trait shared by all inference algorithms, parametrized by the resulting posterior distribution. 
+/// You might wish to implement special-purpose estimators that return an exact type of distribution
+/// (for example, conjugate inference is implemented as Estimator<Beta>, Estimator<Gamma>, and so on)
+/// or you might build a general purpose algorithm that return a non-parametric representation
+/// (for example, Metropolis-Hastings is implemented as Estimator<Marginal>. Estimator does not care
+/// how you instantiate your object. If you are building a general-purpose estimator, it is recommended
+/// that your builder method is a generic function receiving Into<Model> as argument, which allows
+/// your method to work both for methods built in the source code or specified as JSON files. You can then
+/// match on the received model to decide the model admissibility for your algorithm.
+pub trait Estimator<D>
+    where
+        // Self : ?Sized,
+        D : Distribution //+ ?Sized
+{
+
+    /// Runs the inference algorithm for the informed sample matrix,
+    /// returning a reference to the modified model (from which
+    /// the posterior information of interest can be retrieved).
+    fn fit<'a>(&'a mut self, y : DMatrix<f64>, x : Option<DMatrix<f64>>) -> Result<&'a D, &'static str>;
+
+}
 
 /*// Call the iteratively re-weighted least squares algorithm over random y (data).
 // Assume x is already constant for the multinormal.

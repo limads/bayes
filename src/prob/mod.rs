@@ -120,13 +120,9 @@ pub trait Distribution
         unimplemented!()
     }
 
-    fn observations(&self) -> Option<&DMatrix<f64>> {
-        unimplemented!()
-    }
-
-    fn set_observations(&mut self, obs : &DMatrix<f64>) {
-        unimplemented!()
-    }
+    // fn observations(&self) -> Option<&DMatrix<f64>> {
+    //    unimplemented!()
+    // }
 
     // Effectively updates the name of this distribution.
     // fn rename(&mut self);
@@ -450,20 +446,6 @@ where
 
 }
 
-/// Inference algorithm, parametrized by the distribution output.
-pub trait Estimator<D>
-    where
-        // Self : ?Sized,
-        D : Distribution //+ ?Sized
-{
-
-    /// Runs the inference algorithm for the informed sample matrix,
-    /// returning a reference to the modified model (from which
-    /// the posterior information of interest can be retrieved).
-    fn fit<'a>(&'a mut self, y : DMatrix<f64>, x : Option<DMatrix<f64>>) -> Result<&'a D, &'static str>;
-
-}
-
 /// Implemented by distributions which can have their
 /// log-probability evaluated with respect to a random sample directly.
 /// Implemented by Normal, Poisson and Bernoulli. Other distributions
@@ -499,6 +481,19 @@ pub trait Likelihood<C>
         C : Dim
 {
 
+    /// Bind a sequence of variable names to this distribution. This causes calls to
+    /// Likelihood::observe to bind to the respective variable names for any Sample implementor.
+    fn variables(&mut self, vars : &[&str]) -> &mut Self;
+    
+    /// Updates the full probabilistic graph from this likelihood node to all its
+    /// parent factoring terms, binding any named likelihood nodes to the variable
+    /// names found at sample. This incurs in copying the data from the sample implementor
+    /// into a column-oriented data cache kept by each distribution separately.
+    fn observe<'a, R,V>(&'a mut self, sample : &'a impl Sample<'a, Row=R,Column=V>)
+    where
+        R : IntoIterator<Item=&'a f64>,
+        V : IntoIterator<Item=&'a f64>;
+    
     /// General-purpose comparison of two fitted estimates, used for
     /// determining predictive accuracy, running cross-validation, etc.
     /// Comparisons can be made between two fitted models
@@ -588,10 +583,6 @@ pub trait Likelihood<C>
         }
     }
 
-    /// Watches for the informed variable names at any sample
-    /// implementors, interpreting the variable values as random draws from this distribution.
-    fn observe(&mut self, names : &[&str]);
-    
     // Iterate over sister nodes if Factor; or returns a single distribution if
     // not a factor.
     // pub fn iter_sisters() -
@@ -840,7 +831,24 @@ enum Condition {
     
 }
 
-// impl Sample {
-//    pub fn statistic()
-//}
+fn observe_univariate<'a, R, C>(
+    name : Option<String>, 
+    n : usize,
+    mut obs : Option<DVector<f64>>, 
+    sample : &'a impl Sample<'a, Row=R,Column=C>
+) -> DVector<f64>
+where
+    R : IntoIterator<Item=&'a f64>,
+    C : IntoIterator<Item=&'a f64>
+{
+    let mut obs = obs.take().unwrap_or(DVector::zeros(n));
+    if let Some(name) = name {
+        if let Some(col) = sample.column(&name) {
+            for (tgt, src) in obs.iter_mut().zip(col.into_iter()) {
+                *tgt = *src;
+            }
+        }
+    }
+    obs
+}
 

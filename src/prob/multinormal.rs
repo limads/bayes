@@ -12,6 +12,7 @@ use serde_json::{self, Value, map::Map};
 use anyhow;
 use crate::model::Model;
 use crate::fit;
+use crate::fit::Estimator;
 
 /*#[derive(Debug, Clone, Serialize, Deserialize)]
 enum CovFunction {
@@ -183,8 +184,10 @@ pub struct MultiNormal {
 
     rw : Option<RandomWalk>,
 
-    obs : Option<DMatrix<f64>>
+    obs : Option<DMatrix<f64>>,
 
+    names : Vec<String>
+    
     // Vector of scale parameters; against which the Wishart factor
     // can be updated. Will be none if there is no scale factor.
     // suff_scale : Option<DVector<f64>>
@@ -270,7 +273,8 @@ impl MultiNormal {
             log_part,
             rw : None,
             scaled_mu : mu.clone(),
-            obs : None
+            obs : None,
+            names : Vec::new()
         };
         norm.set_parameter(mu.rows(0, mu.nrows()), true);
         norm.set_cov(sigma.clone());
@@ -438,8 +442,20 @@ impl MultiNormal {
     /// factors by passing p-1 names to fix and 1 name to observe (which will leave a single random obsserved node) 
     /// and then call Self::conditional,
     /// which will return a Multi or Univariate node with the remaining fixed nodes as factors.
-    fn fix(mut self, names : &[&str]) {
+    /// Informing n will fix the n last variables.
+    fn fix(mut self, n : usize) -> MultiNormal {
+        unimplemented!()
+    }
     
+    /// Fix all elements but the first one, returning a univariate node which has the
+    /// fixed nodes as its mean parameter.
+    fn fix_remaining(mut self) -> Normal {
+        unimplemented!()
+    }
+    
+    /// Fix all values.
+    fn fix_all(mut self) -> Normal {
+        unimplemented!()
     }
     
     /*pub fn new(mu : DVector<f64>, w : Wishart) -> Self {
@@ -685,18 +701,18 @@ impl Distribution for MultiNormal {
         unimplemented!()
     }
 
-    fn observations(&self) -> Option<&DMatrix<f64>> {
-        self.obs.as_ref()
-    }
+    //fn observations(&self) -> Option<&DMatrix<f64>> {
+    //    self.obs.as_ref()
+    //}
 
-    fn set_observations(&mut self, obs : &DMatrix<f64>) {
+    /*fn set_observations(&mut self, obs : &DMatrix<f64>) {
         assert!(obs.ncols() == self.mu.nrows());
         if let Some(ref mut old_obs) = self.obs {
             old_obs.copy_from(&obs);
         } else {
             self.obs = Some(obs.clone());
         }
-    }
+    }*/
 
 }
 
@@ -728,8 +744,24 @@ impl Posterior for MultiNormal {
 
 impl Likelihood<Dynamic> for MultiNormal {
 
-    fn observe(&mut self, names : &[&str]) {
-        unimplemented!()
+    fn variables(&mut self, vars : &[&str]) -> &mut Self {
+        self.names = vars.iter().map(|v| v.to_string()).collect();
+        self
+    }
+    
+    fn observe<'a, R,C>(&'a mut self, sample : &'a impl Sample<'a, Row=R,Column=C>)
+    where
+        R : IntoIterator<Item=&'a f64>,
+        C : IntoIterator<Item=&'a f64>
+    {
+        let mut obs = self.obs.take().unwrap_or(DMatrix::zeros(self.n, self.mu.len()));
+        for (i, name) in self.names.iter().cloned().enumerate() {
+            if let Some(col) = sample.column(&name) {
+                for (tgt, src) in obs.column_mut(i).iter_mut().zip(col.into_iter()) {
+                    *tgt = *src;
+                }
+            }
+        }
     }
     
     /// Returns the distribution with the parameters set to its

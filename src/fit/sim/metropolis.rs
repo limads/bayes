@@ -1,6 +1,6 @@
 use nalgebra::*;
 use crate::prob::*;
-use crate::prob::Estimator;
+use crate::fit::Estimator;
 use crate::model::Model;
 use super::super::visitors;
 use std::ffi::c_void;

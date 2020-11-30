@@ -10,6 +10,7 @@ use serde::ser::{Serializer};
 use serde::de::Deserializer;
 use std::fmt::{self, Display};
 use anyhow;
+use crate::fit::Estimator;
 
 pub type PoissonFactor = UnivariateFactor<Gamma>;
 
@@ -51,7 +52,11 @@ pub struct Poisson {
 
     sampler : Vec<rand_distr::Poisson<f64>>,
 
-    suf_lambda : Option<DMatrix<f64>>
+    suf_lambda : Option<DMatrix<f64>>,
+    
+    name : Option<String>,
+    
+    obs : Option<DVector<f64>>
 
 }
 
@@ -265,8 +270,18 @@ impl Conditional<Gamma> for Poisson {
 
 impl Likelihood<U1> for Poisson {
 
-    fn observe(&mut self, names : &[&str]) {
-        unimplemented!()
+    fn variables(&mut self, vars : &[&str]) -> &mut Self {
+        assert!(vars.len() == 1);
+        self.name = Some(vars[0].to_string());
+        self
+    }
+    
+    fn observe<'a, R,C>(&'a mut self, sample : &'a impl Sample<'a, Row=R,Column=C>)
+    where
+        R : IntoIterator<Item=&'a f64>,
+        C : IntoIterator<Item=&'a f64>
+    {
+        self.obs = Some(super::observe_univariate(self.name.clone(), self.lambda.len(), self.obs.take(), sample));
     }
     
     fn mle(y : DMatrixSlice<'_, f64>) -> Result<Self, anyhow::Error> {
@@ -375,6 +390,8 @@ impl Default for Poisson {
             sampler : Vec::new(),
             suf_lambda : None,
             log_part : DVector::from_element(1, (2.).ln()),
+            obs : None,
+            name : None
         }
     }
 

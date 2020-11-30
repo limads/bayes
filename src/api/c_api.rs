@@ -28,11 +28,12 @@ pub extern "C" fn model_log_prob(model : *mut c_void, param : *const f64, param_
         let param_vals = slice::from_raw_parts(param, param_len);
         let vs : DVectorSlice<'_, f64> = param_vals.into();
         distr.set_parameter(vs, true);
-        if let Some(obs) = distr.observations() {
+        /*if let Some(obs) = distr.observations() {
             distr.log_prob(obs.into(), None)
         } else {
             panic!("Distribution does not have observations");
-        }
+        }*/
+        unimplemented!()
     }
 }
 

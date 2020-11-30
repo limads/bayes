@@ -7,6 +7,7 @@ use crate::fit::sim::*;
 use std::fmt::{self, Display};
 use crate::gsl::rand_utils::GslRng;
 use anyhow;
+use crate::fit::Estimator;
 
 /// The Normal is the exponential-family distribution
 /// used as the likelihood for continuous unbounded outcomes and as priors
@@ -60,7 +61,11 @@ pub struct Normal {
 
     rw : Option<RandomWalk>,
 
-    rng : GslRng
+    rng : GslRng,
+    
+    name : Option<String>,
+    
+    obs : Option<DVector<f64>>
 
     // When updating the scale, also update this as
     // the second element to the sufficient statistic vector
@@ -87,8 +92,19 @@ impl Normal {
         let log_part = mu.map(|e| e.powf(2.) / 2. );
         let rand_seed : f64 = rand::random();
         let rng = GslRng::new(rand_seed as u64 * 32000);
-        let mut norm = Self{ mu : mu.clone(), scaled_mu : mu.clone(), loc_factor, rw : None, rng,
-            eta_traj, prec_suff : prec_suff.clone(), scale_factor, log_part, minus_half_prec : -prec_suff[1] / 2.};
+        let mut norm = Self{ 
+            mu : mu.clone(), 
+            scaled_mu : mu.clone(), 
+            loc_factor, rw : None, 
+            rng,
+            eta_traj, 
+            prec_suff : prec_suff.clone(), 
+            scale_factor, 
+            log_part, 
+            minus_half_prec : -prec_suff[1] / 2.,
+            name : None,
+            obs : None
+        };
         norm.set_var(var);
         norm.set_parameter(mu.rows(0, mu.nrows()), false);
         norm
@@ -323,8 +339,18 @@ impl Posterior for Normal {
 
 impl Likelihood<U1> for Normal {
 
-    fn observe(&mut self, names : &[&str]) {
-        unimplemented!()
+    fn variables(&mut self, vars : &[&str]) -> &mut Self {
+        assert!(vars.len() == 1);
+        self.name = Some(vars[0].to_string());
+        self
+    }
+    
+    fn observe<'a, R,C>(&'a mut self, sample : &'a impl Sample<'a, Row=R,Column=C>)
+    where
+        R : IntoIterator<Item=&'a f64>,
+        C : IntoIterator<Item=&'a f64>
+    {
+        self.obs = Some(super::observe_univariate(self.name.clone(), self.mu.len(), self.obs.take(), sample));
     }
     
     /*fn mean_mle(y : DMatrixSlice<'_, f64>) -> f64 {

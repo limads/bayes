@@ -6,6 +6,7 @@ use serde::{Serialize, Deserialize};
 use std::fmt::{self, Display};
 use crate::fit::sim::RandomWalk;
 use super::MultiNormal;
+use crate::fit::Estimator;
 
 /// Exponential-family distribution defined over -π ≥ θ ≥ π, resulting
 /// from the observation of a periodic process.

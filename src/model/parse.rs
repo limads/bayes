@@ -21,7 +21,7 @@ where
 {
     if let Some(Value::Number(nv)) = val.get("n") {
         if let Some(n) = nv.as_u64() {
-            if let Some(obs) = d.observations() {
+            /*if let Some(obs) = d.observations() {
                 if obs.nrows() != n as usize {
                     return Err(format!(
                         "Entry 'n' has size {} but observation vector has size {}",
@@ -30,7 +30,8 @@ where
                     ));
                 }
             }
-            Ok(n as usize)
+            Ok(n as usize)*/
+            unimplemented!()
         } else {
             Err(format!("n should be a positive integer"))
         }
@@ -57,16 +58,16 @@ where
     };
     match res_param {
         Ok(Parameter::Left(loc_val)) => {
-            let n = match d.observations() {
+            /*let n = match d.observations() {
                 Some(obs) => obs.nrows(),
                 None => parse_sample_n(d, &val)?
             };
             let param = DVector::from_element(n, loc_val);
-            d.set_parameter((&param).into(), false);
+            d.set_parameter((&param).into(), false);*/
             Ok(())
         },
         Ok(Parameter::Right(loc_vec)) => {
-            if let Some(obs) = d.observations() {
+            /*if let Some(obs) = d.observations() {
                 if loc_vec.nrows() != obs.nrows() {
                     return Err(format!(
                         "Entry observation vector has size {} but parameter vector has size {}",
@@ -74,7 +75,7 @@ where
                         loc_vec.nrows()
                     ));
                 }
-            }
+            }*/
             d.set_parameter((&loc_vec).into(), false);
             Ok(())
         },
@@ -122,7 +123,7 @@ where
     if let Some(obs) = val.get("obs") {
         let v = parse::parse_vector(&obs)?;
         let obs = DMatrix::from_columns(&[v]);
-        d.set_observations((&obs).into());
+        // d.set_observations((&obs).into());
     }
     reset_parameter::<D, P>(&mut d, &val, loc_name)?;
     println!("Parsed distribution: {:?}", d);

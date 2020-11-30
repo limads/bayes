@@ -1,5 +1,6 @@
 use nalgebra::*;
 use crate::prob::*;
+use crate::fit::Estimator;
 
 // use super::*;
 // use crate::optim::*;
