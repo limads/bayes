@@ -1,6 +1,7 @@
 use nalgebra::*;
 use crate::prob::*;
 use crate::fit::Estimator;
+use crate::sample::Sample;
 
 // use super::*;
 // use crate::optim::*;
@@ -31,11 +32,15 @@ pub struct ExpectMax {
 
 }
 
-impl<D> Estimator<D> for ExpectMax
+/*impl<D> Estimator<D> for ExpectMax
     where D : Distribution
 {
 
-    fn fit<'a>(&'a mut self, y : DMatrix<f64>, x : Option<DMatrix<f64>>) -> Result<&'a D, &'static str> {
+    fn predict<'a>(&'a self, cond : Option<&'a Sample<'a>>) -> Box<dyn Sample<'a>> {
+        unimplemented!()
+    }
+    
+    fn fit<'a>(&'a mut self) -> Result<&'a D, &'static str> {
         /*self.visit_factors(|f : &dyn mut Posterior| {
             *(f.approximation_mut()) = Some(MultiNormal::from_approximation(eta_traj, convx_traj));
         });
@@ -45,5 +50,5 @@ impl<D> Estimator<D> for ExpectMax
         unimplemented!()
     }
 
-}
+}*/
 

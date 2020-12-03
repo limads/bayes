@@ -2,11 +2,13 @@ use nalgebra::*;
 use crate::prob::*;
 use crate::fit::Estimator;
 use crate::model::Model;
-use super::super::visitors;
 use std::ffi::c_void;
 use std::cell::RefCell;
 use std::convert::{TryFrom, TryInto};
 use crate::api::c_api::{DistrPtr, model_log_prob};
+use crate::foreign::mcmc::distr_mcmc;
+use crate::fit::utils;
+use crate::sample::Sample;
 
 /// Metropolis-Hastings settings.
 #[derive(Debug)]
@@ -53,15 +55,18 @@ where
     for<'a> &'a D : TryFrom<&'a Model, Error=String>
 {
 
-    fn fit<'a>(&'a mut self, _y : DMatrix<f64>, _x : Option<DMatrix<f64>>) -> Result<&'a D, &'static str> {
+    fn predict<'a>(&'a self, cond : Option<&'a Sample /*<'a>*/ >) -> Box<dyn Sample /*<'a>*/ > {
+        unimplemented!()
+    }
+    
+    fn fit<'a>(&'a mut self) -> Result<&'a D, &'static str> {
         let (n, burn) = (self.n, self.burn);
         let distr : &dyn Distribution = (&self.model).into();
         let lik_len = distr.view_parameter(true).nrows();
-        let param_len_cell = RefCell::new(lik_len);
-        self.model.visit_factors(|post| {
-            *(param_len_cell.borrow_mut()) = visitors::param_vec_length(post);
-        });
-        let param_len = param_len_cell.into_inner();
+        let mut param_len = 0;
+        let (post_left, post_right) = self.model.factors_mut();
+        post_left.map(|pl| param_len += utils::param_vec_length(pl, param_len) );
+        post_right.map(|pr| param_len += utils::param_vec_length(pr, param_len) ); 
         println!("Parameter vector length = {}", param_len);
         assert!(param_len >= 1);
         let mut init_vec = DVector::zeros(param_len);
@@ -82,27 +87,11 @@ where
 
         if sample_ok {
             self.samples = Some(out.transpose());
-
-
             (&self.model).try_into().map_err(|e| { println!("{}", e); "Invalid likelihood" })
         } else {
             Err("Sampling failed")
         }
     }
-
-}
-
-// Linking happens at build.rs file, pointing to [crate-root]/lib/libmcmcwrapper.so
-extern "C" {
-
-    fn distr_mcmc(
-        init_vals : *const f64,
-        out : *mut f64,
-        n : usize,
-        p : usize,
-        burn : usize,
-        distr : *mut DistrPtr
-    ) -> bool;
 
 }
 

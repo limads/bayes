@@ -8,7 +8,7 @@ use std::ops::Index;
 use nalgebra::storage::*;
 use crate::prob::Histogram;
 
-/// Metropolis-Hastings posterior sampler (Work in progress).
+// Metropolis-Hastings posterior sampler (Work in progress).
 pub mod metropolis;
 
 pub use metropolis::*;

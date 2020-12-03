@@ -1,3 +1,14 @@
+/*
+This files contain SQL code (compatible with PostgreSQL) to manipulate the
+bayes JSON probability distribution specification. It might be useful if you
+are storing your models in a database as a JSON field. Using those routines,
+you will be able to:
+- Sample from probabilistic models
+- Access probability distirbution parameters
+For actual inference, it is best to use the bayes CLI. Use those routines to
+make predictions after you inference step is over.
+*/
+
 /*-- # Model building
 
 -- Creates a bivariate normal (correlated)

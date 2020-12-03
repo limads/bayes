@@ -2,7 +2,7 @@ use nalgebra::*;
 use nalgebra::storage::*;
 use std::fmt::Debug;
 use std::ops::AddAssign;
-use crate::decision::BayesFactor;
+use crate::model::decision::BayesFactor;
 use std::fmt::Display;
 use crate::fit::sim::RandomWalk;
 use anyhow;
@@ -190,6 +190,9 @@ pub trait Conditional<D>
     /// function or closure recursively using factor_mut(.) as the argument at every call
     /// until the full graph is visited.
     fn factor_mut(&mut self) -> Option<&mut D>;
+    
+    // Searches the given factor by variable name, returning it if successful.
+    // fn search_factor(&self, name : &str) -> Option<&D>;
 
 }
 
@@ -489,10 +492,10 @@ pub trait Likelihood<C>
     /// parent factoring terms, binding any named likelihood nodes to the variable
     /// names found at sample. This incurs in copying the data from the sample implementor
     /// into a column-oriented data cache kept by each distribution separately.
-    fn observe<'a, R,V>(&'a mut self, sample : &'a impl Sample<'a, Row=R,Column=V>)
-    where
-        R : IntoIterator<Item=&'a f64>,
-        V : IntoIterator<Item=&'a f64>;
+    fn observe<'a>(&'a mut self, sample : &'a dyn Sample<'a>);
+    // where
+    //    R : IntoIterator<Item=&'a f64>,
+    //    V : IntoIterator<Item=&'a f64>;
     
     /// General-purpose comparison of two fitted estimates, used for
     /// determining predictive accuracy, running cross-validation, etc.
@@ -543,6 +546,10 @@ pub trait Likelihood<C>
     /// visitor.
     fn visit_factors<F>(&mut self, f : F) where F : Fn(&mut dyn Posterior);
 
+    /// Access this distribution factor at the informed index. An collection of factors
+    /// cannot be returned here because it would violate mutable exclusivity.
+    fn factors_mut<'a>(&'a mut self) -> (Option<&'a mut dyn Posterior>, Option<&'a mut dyn Posterior>);
+    
     /*/// Returns a mutable iterator over this likelihood
     /// distribution factor(s).
     ///
@@ -831,24 +838,42 @@ enum Condition {
     
 }
 
-fn observe_univariate<'a, R, C>(
+/*fn observe_univariate<'a>(
     name : Option<String>, 
     n : usize,
     mut obs : Option<DVector<f64>>, 
-    sample : &'a impl Sample<'a, Row=R,Column=C>
-) -> DVector<f64>
-where
-    R : IntoIterator<Item=&'a f64>,
-    C : IntoIterator<Item=&'a f64>
-{
+    sample : &'a dyn Sample<'a>
+) -> DVector<f64> {
     let mut obs = obs.take().unwrap_or(DVector::zeros(n));
     if let Some(name) = name {
-        if let Some(col) = sample.column(&name) {
-            for (tgt, src) in obs.iter_mut().zip(col.into_iter()) {
+        if let Some(col) = sample.variable(&name) {
+            for (tgt, src) in obs.iter_mut().zip(col) {
                 *tgt = *src;
             }
         }
     }
     obs
+}*/
+
+fn univariate_factor<'a, D>(factor : &'a mut UnivariateFactor<D>) -> Option<&'a mut dyn Posterior> 
+where
+    D : Distribution + Posterior
+    // D : Conditional<P>,
+    // P : Distribution
+{
+    match factor {
+        UnivariateFactor::CondExpect(m) => {
+            Some(m as &'a mut dyn Posterior)
+        },
+        UnivariateFactor::Conjugate(c) => {
+            Some(c as &'a mut dyn Posterior)
+        },
+        UnivariateFactor::Empty => {
+            // let no_distr = None;
+            // Box::new(no_distr.iter().map(|d| *d))
+            None
+        }
+    }
 }
+
 

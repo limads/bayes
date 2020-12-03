@@ -339,18 +339,28 @@ impl Posterior for Normal {
 
 impl Likelihood<U1> for Normal {
 
+    fn factors_mut<'a>(&'a mut self) -> (Option<&'a mut dyn Posterior>, Option<&'a mut dyn Posterior>) {
+        self.dyn_factors_mut()
+    }
+    
     fn variables(&mut self, vars : &[&str]) -> &mut Self {
         assert!(vars.len() == 1);
         self.name = Some(vars[0].to_string());
         self
     }
     
-    fn observe<'a, R,C>(&'a mut self, sample : &'a impl Sample<'a, Row=R,Column=C>)
-    where
-        R : IntoIterator<Item=&'a f64>,
-        C : IntoIterator<Item=&'a f64>
+    fn observe<'a>(&'a mut self, sample : &'a dyn Sample<'a>)
     {
-        self.obs = Some(super::observe_univariate(self.name.clone(), self.mu.len(), self.obs.take(), sample));
+        //self.obs = Some(super::observe_univariate(self.name.clone(), self.mu.len(), self.obs.take(), sample));
+        let mut obs = self.obs.take().unwrap_or(DVector::zeros(self.mu.nrows()));
+        if let Some(name) = &self.name {
+            if let Variable::Real(col) = sample.variable(&name) {
+                for (tgt, src) in obs.iter_mut().zip(col) {
+                    *tgt = *src;
+                }
+            }
+        }
+        self.obs = Some(obs);
     }
     
     /*fn mean_mle(y : DMatrixSlice<'_, f64>) -> f64 {
@@ -460,13 +470,18 @@ impl Conditional<Gamma> for Normal {
 
 impl Estimator<Normal> for Normal {
 
-    fn fit<'a>(&'a mut self, y : DMatrix<f64>, x : Option<DMatrix<f64>>) -> Result<&'a Normal, &'static str> {
+    fn predict<'a>(&'a self, cond : Option<&'a Sample/*<'a>*/>) -> Box<dyn Sample/*<'a>*/> {
+        unimplemented!()
+    }
+    
+    fn fit<'a>(&'a mut self) -> Result<&'a Normal, &'static str> {
         let prec1 = 1. / self.var()[0];
         match (&mut self.loc_factor, &mut self.scale_factor) {
             (Some(ref mut norm), Some(ref mut gamma)) => {
                 unimplemented!()
             },
             (Some(ref mut norm), None) => {
+                let y = self.obs.clone().unwrap();
                 assert!(norm.mean().len() == 1, "Length of mean vector should be one");
                 let n = y.nrows() as f64;
                 let ys = y.column(0).sum();

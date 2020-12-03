@@ -270,18 +270,28 @@ impl Conditional<Gamma> for Poisson {
 
 impl Likelihood<U1> for Poisson {
 
+    fn factors_mut<'a>(&'a mut self) -> (Option<&'a mut dyn Posterior>, Option<&'a mut dyn Posterior>) {
+        (super::univariate_factor(&mut self.factor), None)
+    }
+    
     fn variables(&mut self, vars : &[&str]) -> &mut Self {
         assert!(vars.len() == 1);
         self.name = Some(vars[0].to_string());
         self
     }
     
-    fn observe<'a, R,C>(&'a mut self, sample : &'a impl Sample<'a, Row=R,Column=C>)
-    where
-        R : IntoIterator<Item=&'a f64>,
-        C : IntoIterator<Item=&'a f64>
+    fn observe<'a>(&'a mut self, sample : &'a dyn Sample<'a>)
     {
-        self.obs = Some(super::observe_univariate(self.name.clone(), self.lambda.len(), self.obs.take(), sample));
+        //self.obs = Some(super::observe_univariate(self.name.clone(), self.lambda.len(), self.obs.take(), sample));
+        let mut obs = self.obs.take().unwrap_or(DVector::zeros(self.lambda.nrows()));
+        if let Some(name) = &self.name {
+            if let Variable::Count(col) = sample.variable(&name) {
+                for (tgt, src) in obs.iter_mut().zip(col) {
+                    *tgt = *src as f64;
+                }
+            }
+        }
+        self.obs = Some(obs);
     }
     
     fn mle(y : DMatrixSlice<'_, f64>) -> Result<Self, anyhow::Error> {
@@ -329,9 +339,14 @@ impl Likelihood<U1> for Poisson {
 
 impl Estimator<Gamma> for Poisson {
 
-    fn fit<'a>(&'a mut self, y : DMatrix<f64>, x : Option<DMatrix<f64>>) -> Result<&'a Gamma, &'static str> {
+    fn predict<'a>(&'a self, cond : Option<&'a Sample/*<'a>*/>) -> Box<dyn Sample /*<'a>*/ > {
+        unimplemented!()
+    }
+    
+    fn fit<'a>(&'a mut self) -> Result<&'a Gamma, &'static str> {
         match self.factor {
             PoissonFactor::Conjugate(ref mut gamma) => {
+                let y = self.obs.clone().unwrap();
                 let n = y.nrows() as f64;
                 let ys = y.column(0).sum();
                 let (a, b) = (gamma.view_parameter(false)[0], gamma.view_parameter(false)[1]);

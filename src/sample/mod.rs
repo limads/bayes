@@ -8,6 +8,36 @@ pub mod csv;
 
 use rand;
 
+/// A variable type from a sample. Essentially, wraps one of all the possible
+/// iterators that can be used to retrieve data. Does not imply how the data
+/// is organized in memory, which is why it wraps a boxed dynamic iterator. Each
+/// distribution is interested in exactly one of the variants, and it will check
+/// that the required variable name is admissible at runtime.
+pub enum Variable<'a> {
+
+    /// Real, unbounded quantities, usually read by Normal, Gamma or MultiNormal nodes
+    Real(Box<dyn Iterator<Item=&'a f64> + 'a>),
+    
+    /// Countable quantities (>=0), usually read by Poisson nodes
+    Count(Box<dyn Iterator<Item=&'a usize> + 'a>),
+    
+    /// Binary quantities, usually read by Bernoulli nodes
+    Binary(Box<dyn Iterator<Item=&'a bool> + 'a>),
+    
+    /// Factor (named) nodes, usually read by Categorical nodes
+    Factor(Box<dyn Iterator<Item=&'a str> + 'a>),
+    
+    /// Variable not found.
+    Missing
+    
+}
+
+impl<'a> From<&'a [f64]> for Variable<'a> {
+    fn from(s : &'a [f64]) -> Self {
+        Variable::Real(Box::new(s.into_iter()))
+    }
+}
+
 /// A sample is a data structure from which three iterators can be retrieved:
 /// One iterator over variable names (&str), another iterator over potentially non-contiguous row values (f64),
 /// and another iterator over contiguous columns values &[f64]. No assumption
@@ -34,48 +64,49 @@ use rand;
 /// column-oriented or row-oriented data) you can add trait bounds over rows and columns such as:
 /// fn my_estimator(s : Sample<Row=R,Column=C> where R : AsRef<f64> or Col : AsRef<f64>.
 pub trait Sample<'a>
-where
+// where
     // Self::Names : IntoIterator<Item=&'a str>,
-    Self::Row : IntoIterator<Item=&'a f64>,
-    Self::Column : IntoIterator<Item=&'a f64>
+    // Self::Row : IntoIterator<Item=&'a f64>,
+    // Self::Column : IntoIterator<Item=&'a f64>
     // Self::Names : IntoIterator<Item=&'a str>
 {
 
     // type Name;
     
-    type Row;
+    // type Row;
     
-    type Column;
+    // type Continuous;
     
-    /// Offers column names in an order consistent with Self::row, so the model can query
-    /// the position of the name and use it to index into Self::row. Might return None
-    /// if column names do not have a fixed order.
-    fn variables(&'a self) -> Option<Vec<&'a str>>;
+    // Offers column names in an order consistent with Self::row, so the model can query
+    // the position of the name and use it to index into Self::row. Might return None
+    // if column names do not have a fixed order.
+    //fn variables(&'a self) -> Option<Vec<&'a str>>;
     
-    /// For implementors which need to do operations row-wise (e.g. CSV parsers), it is best
-    /// to just implement row and leave column as a provided method. For already parsed
-    /// data structures, it is best to implement column and leave row as a provided method.
-    /// Implementing both row and column assume a certain order for Self::Name.
-    fn row(&'a self, ix : usize) -> Option<Self::Row>;
+    // For implementors which need to do operations row-wise (e.g. CSV parsers), it is best
+    // to just implement row and leave column as a provided method. For already parsed
+    // data structures, it is best to implement column and leave row as a provided method.
+    // Implementing both row and column assume a certain order for Self::Name.
+    // fn row(&'a self, ix : usize) -> Option<Self::Row>;
 
-    fn column(&'a self, name : &str) -> Option<Self::Column>;
+    fn variable(&'a self, name : &str) -> Variable<'a>;
 
 }
 
-impl<'a /*, K*/ > Sample<'a> for HashMap<String, Vec<f64>> 
-    where
-        //K : AsRef<str> + Eq + Hash
+impl<'a> Sample<'a> for HashMap<String, Vec<f64>> 
+//where
+//    Self : 'a
 {
 
     //type names = Vec<&'a str>;
     
-    type Row = Vec<&'a f64>;
+    // type Row = Vec<&'a f64>;
     
-    type Column = &'a [f64];
+    // type Continuous = &'a [f64];
+    // type Continuous = impl Iterator<Item=&'a f64>;
     
     // type Names = Vec<&'a str>;
     
-    fn variables(&self) -> Option<Vec<&'a str>> {
+    /*fn variables(&self) -> Option<Vec<&'a str>> {
         None
     }
 
@@ -83,10 +114,14 @@ impl<'a /*, K*/ > Sample<'a> for HashMap<String, Vec<f64>>
     /// the hashmap stores the columns in random order.
     fn row(&'a self, ix : usize) -> Option<Self::Row> {
         None
-    }
+    }*/
 
-    fn column(&'a self, name : &str) -> Option<Self::Column> {
-        self.get(name).map(|col| col.as_ref() )
+    fn variable(&'a self, name : &str) -> Variable<'a> {
+        if let Some(col) = self.get(name) {
+            Variable::from(col.as_ref())
+        } else {
+            Variable::Missing
+        }
     }
     
 }

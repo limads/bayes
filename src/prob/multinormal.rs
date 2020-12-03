@@ -186,7 +186,9 @@ pub struct MultiNormal {
 
     obs : Option<DMatrix<f64>>,
 
-    names : Vec<String>
+    names : Vec<String>,
+    
+    fixed : bool
     
     // Vector of scale parameters; against which the Wishart factor
     // can be updated. Will be none if there is no scale factor.
@@ -274,7 +276,8 @@ impl MultiNormal {
             rw : None,
             scaled_mu : mu.clone(),
             obs : None,
-            names : Vec::new()
+            names : Vec::new(),
+            fixed : false
         };
         norm.set_parameter(mu.rows(0, mu.nrows()), true);
         norm.set_cov(sigma.clone());
@@ -432,7 +435,7 @@ impl MultiNormal {
         }
     }
     
-    /// Watches for the informed variable names at any sample implementors, 
+    /*/// Watches for the informed variable names at any sample implementors, 
     /// interpreting the variable values as fixed. For example, is this distribution is 
     /// a multinormal of dimension p, after fixing for k informed variables, the distribution
     /// will actually be a (p-k)-variate reduced joint distribution, which is a linear function of
@@ -456,7 +459,7 @@ impl MultiNormal {
     /// Fix all values.
     fn fix_all(mut self) -> Normal {
         unimplemented!()
-    }
+    }*/
     
     /*pub fn new(mu : DVector<f64>, w : Wishart) -> Self {
         Self { mu : mu, cov : Covariance::new_random(w), shift : None, scale : None }
@@ -476,6 +479,25 @@ impl MultiNormal {
     fn n_params(&self) -> usize {
         self.mu.shape().0 + self.sigma.shape().0 * self.sigma.shape().1
     }*/
+    
+    /// Creates this distribution as a fixed factor. Sampling from this distribution
+    /// now means sampling the regression coefficient vector (which equals the 
+    /// Sigma_12 Sigma_22^-1 matrix), where the Sigma_11 means the variance (or covariance)
+    /// of the child node, and Sigma_22 means the covariance of self. A multinormal in fixed mode
+    /// carries data which is not assumed to have been sampled from it: Samples of Self just means
+    /// what coefficients to use in the conditional multinormal expression to build the
+    /// expected value for the child factor. If used as a factor in a conditional expectation
+    /// expression and fixed is not called, any sample(.) and log_prob(.) calculations over the
+    /// child node must fail. The fixed switch alters how sample(.) behaves: if it is off, the
+    /// actual sample of dimension p is emitted; if it is on, sample will return the nx1 vector
+    /// resulting form the matrix multiplication x*b where b is the underlying multinormal
+    /// random sample. Moreover, a fixed multinormal does not have an covariance matrix that is
+    /// independent of the conditioned factor: It is a function of this factor, and cannot be
+    /// altered by the outside world independent of it.
+    pub fn fixed(&mut self) -> &mut Self {
+        self.fixed = true;
+        self
+    }
 
 }
 
@@ -744,20 +766,21 @@ impl Posterior for MultiNormal {
 
 impl Likelihood<Dynamic> for MultiNormal {
 
+    fn factors_mut<'a>(&'a mut self) -> (Option<&'a mut dyn Posterior>, Option<&'a mut dyn Posterior>) {
+        self.dyn_factors_mut()
+    }
+    
     fn variables(&mut self, vars : &[&str]) -> &mut Self {
         self.names = vars.iter().map(|v| v.to_string()).collect();
         self
     }
     
-    fn observe<'a, R,C>(&'a mut self, sample : &'a impl Sample<'a, Row=R,Column=C>)
-    where
-        R : IntoIterator<Item=&'a f64>,
-        C : IntoIterator<Item=&'a f64>
+    fn observe<'a>(&'a mut self, sample : &'a dyn Sample<'a>)
     {
         let mut obs = self.obs.take().unwrap_or(DMatrix::zeros(self.n, self.mu.len()));
         for (i, name) in self.names.iter().cloned().enumerate() {
-            if let Some(col) = sample.column(&name) {
-                for (tgt, src) in obs.column_mut(i).iter_mut().zip(col.into_iter()) {
+            if let Variable::Real(col) = sample.variable(&name) {
+                for (tgt, src) in obs.column_mut(i).iter_mut().zip(col) {
                     *tgt = *src;
                 }
             }
@@ -793,7 +816,12 @@ impl Likelihood<Dynamic> for MultiNormal {
 
 impl Estimator<MultiNormal> for MultiNormal {
 
-    fn fit<'a>(&'a mut self, y : DMatrix<f64>, x : Option<DMatrix<f64>>) -> Result<&'a MultiNormal, &'static str> {
+    fn predict<'a>(&'a self, cond : Option<&'a Sample/*<'a>*/>) -> Box<dyn Sample/*<'a>*/> {
+        unimplemented!()
+    }
+    
+    fn fit<'a>(&'a mut self) -> Result<&'a MultiNormal, &'static str> {
+        let y = self.obs.clone().unwrap();
         let n = y.nrows() as f64;
         match (&mut self.loc_factor, &mut self.scale_factor) {
             (Some(ref mut norm_prior), Some(ref mut gamma_prior)) => {
@@ -801,7 +829,7 @@ impl Estimator<MultiNormal> for MultiNormal {
             },
             (Some(ref mut norm_prior), None) => {
                 // Calculate sample centroid
-                let suf = Self::sufficient_stat((&y).into());
+                let suf = Self::sufficient_stat((&self.obs.clone().unwrap()).into());
                 let mut mu_mle : DVector<f64> = suf.column(0).clone_owned();
                 mu_mle.unscale_mut(n);
 
@@ -1173,7 +1201,6 @@ impl Add<MultiNormal> for MultiNormal {
 impl Sub<MultiNormal> for MultiNormal {
 
 }*/
-
 
 /*pub fn flatten_matrix(m : DMatrix<f64>) -> Vec<Vec<f64>> {
     let mut rows = Vec::new();

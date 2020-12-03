@@ -13,6 +13,11 @@ use std::str::FromStr;
 
 pub mod parse;
 
+/// Supports the derivation of optimized decision rules based on comparison
+/// of posterior log-probabilities (work in progress). TODO move under bayes::model,
+/// which will concentrate model comparison routines.
+pub mod decision;
+
 /// Enumeration representing any probabilistic model read from the outside world
 /// (e.g. JSON file), anchored by its top-level node (its likelihood). Model
 /// has methods mle(.) and visit_factors(.) just like the Likelihood implementors; those
@@ -78,6 +83,8 @@ impl Model {
         writer.write_all(content.as_bytes())?;
         Ok(())
     }
+    
+    // pub fn posterior(&)
 
     /*pub fn try_get<L, C>(self) -> Option<L>
     where
@@ -118,6 +125,14 @@ impl Model {
         match self {
             Model::MN(m) => m.visit_factors(f),
             Model::Bern(b) => b.visit_factors(f),
+            _ => unimplemented!()
+        }
+    }
+    
+    pub fn factors_mut<'a>(&'a mut self) -> (Option<&'a mut dyn Posterior>, Option<&'a mut dyn Posterior>) {
+        match self {
+            Model::MN(m) => m.factors_mut(),
+            Model::Bern(b) => b.factors_mut(),
             _ => unimplemented!()
         }
     }

@@ -13,11 +13,12 @@ use serde_json::{self, Value, map::Map};
 use crate::model::Model;
 use std::convert::{TryFrom, TryInto};
 use crate::model;
-pub type BernoulliFactor = UnivariateFactor<Beta>;
 // use argmin::prelude::*;
 use argmin;
 use either::Either;
 use crate::fit::Estimator;
+
+pub type BernoulliFactor = UnivariateFactor<Beta>;
 
 /// The Bernoulli is the exponential-family distribution
 /// used as the likelihood for binary outcomes. Each realization is parametrized
@@ -224,18 +225,32 @@ impl ExponentialFamily<U1> for Bernoulli
 
 impl Likelihood<U1> for Bernoulli {
 
+    fn factors_mut<'a>(&'a mut self) -> (Option<&'a mut dyn Posterior>, Option<&'a mut dyn Posterior>) {
+        (super::univariate_factor(&mut self.factor), None)
+    }
+    
     fn variables(&mut self, vars : &[&str]) -> &mut Self {
         assert!(vars.len() == 1);
         self.name = Some(vars[0].to_string());
         self
     }
     
-    fn observe<'a, R,C>(&'a mut self, sample : &'a impl Sample<'a, Row=R,Column=C>)
-    where
-        R : IntoIterator<Item=&'a f64>,
-        C : IntoIterator<Item=&'a f64>
+    fn observe<'a>(&'a mut self, sample : &'a dyn Sample<'a>)
     {
-        self.obs = Some(super::observe_univariate(self.name.clone(), self.theta.len(), self.obs.take(), sample));
+        //self.obs = Some(super::observe_univariate(self.name.clone(), self.theta.len(), self.obs.take(), sample));
+        let mut obs = self.obs.take().unwrap_or(DVector::zeros(self.theta.len()));
+        if let Some(name) = &self.name {
+            if let Variable::Binary(col) = sample.variable(&name) {
+                for (tgt, src) in obs.iter_mut().zip(col) {
+                    if *src {
+                        *tgt = 1.0;
+                    } else {
+                        *tgt = 0.0;
+                    }
+                }
+            }
+        }
+        self.obs = Some(obs);
     }
     
     fn mle(y : DMatrixSlice<'_, f64>) -> Result<Self, anyhow::Error> {
@@ -318,11 +333,16 @@ impl Likelihood<U1> for Bernoulli {
 
 impl Estimator<Beta> for Bernoulli {
 
-    fn fit<'a>(&'a mut self, y : DMatrix<f64>, x : Option<DMatrix<f64>>) -> Result<&'a Beta, &'static str> {
-        assert!(y.ncols() == 1);
-        assert!(x.is_none());
+    fn predict<'a>(&'a self, cond : Option<&'a Sample/*<'a>*/>) -> Box<dyn Sample /*<'a>*/> {
+        unimplemented!()
+    }
+    
+    fn fit<'a>(&'a mut self) -> Result<&'a Beta, &'static str> {
+        // assert!(y.ncols() == 1);
+        // assert!(x.is_none());
         match self.factor {
             BernoulliFactor::Conjugate(ref mut beta) => {
+                let y = self.obs.clone().unwrap();
                 let n = y.nrows() as f64;
                 let ys = y.column(0).sum();
                 let (a, b) = (beta.view_parameter(false)[0], beta.view_parameter(false)[1]);
