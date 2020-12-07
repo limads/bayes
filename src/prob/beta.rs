@@ -1,14 +1,11 @@
 use super::*;
-// use serde::{Serialize, Deserialize};
 use super::gamma::*;
-// use nalgebra::*;
-// use nalgebra::storage::*;
 use rand_distr;
 use rand;
 use std::default::Default;
 use std::fmt::{self, Display};
 use super::MultiNormal;
-use crate::fit::sim::RandomWalk;
+use crate::fit::walk::Trajectory;
 use std::convert::TryFrom;
 use serde_json::{self, Value, Number};
 
@@ -38,7 +35,7 @@ pub struct Beta {
 
     factor : Option<Box<Beta>>,
 
-    rw : Option<RandomWalk>,
+    traj : Option<Trajectory>,
 
     approx : Option<MultiNormal>
 
@@ -240,12 +237,21 @@ impl Posterior for Beta {
         self.approx.as_ref()
     }
 
-    fn trajectory(&self) -> Option<&RandomWalk> {
-        self.rw.as_ref()
+    fn start_trajectory(&mut self, size : usize) {
+        self.traj = Some(Trajectory::new(size, self.view_parameter(true).nrows()));
+    }
+    
+    /// Finish the trajectory before its predicted end.
+    fn finish_trajectory(&mut self) {
+        self.traj.as_mut().unwrap().closed = true;
+    }
+    
+    fn trajectory(&self) -> Option<&Trajectory> {
+        self.traj.as_ref()
     }
 
-    fn trajectory_mut(&mut self) -> Option<&mut RandomWalk> {
-        self.rw.as_mut()
+    fn trajectory_mut(&mut self) -> Option<&mut Trajectory> {
+        self.traj.as_mut()
     }
 
 }
@@ -259,7 +265,7 @@ impl Default for Beta {
             log_part : DVector::from_element(1, 0.0),
             sampler : rand_distr::Beta::new(1., 1.).unwrap(),
             factor : None,
-            rw : None,
+            traj : None,
             approx : None
         }
     }

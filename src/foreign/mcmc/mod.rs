@@ -1,4 +1,4 @@
-use crate::api::c_api::{DistrPtr, model_log_prob};
+use crate::foreign::export::clang::{DistrPtr, model_log_prob};
 
 // Linking happens at build.rs file
 extern "C" {

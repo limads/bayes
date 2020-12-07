@@ -2,6 +2,7 @@ use crate::prob::*;
 use anyhow::Error;
 use std::cell::RefCell;
 use nalgebra::*;
+use crate::fit::walk::Trajectory;
 
 /// Iterates the factor graph in a depth-first fashion, copying all
 /// natural parameter values into the v vector buffer, if its size allows it.
@@ -77,6 +78,30 @@ pub fn update_parameters(distr : &mut dyn Posterior, values : &[f64]) -> Result<
     } else {
         Ok(())
     }
+}
+
+/// full_traj : Wide matrix of sample trajectories
+/// row_offset : Where to begin taking the trajectory for the current node.
+pub fn set_external_trajectory(distr : &mut impl Likelihood, full_traj : &DMatrix<f64>) {
+    let mut row_offset = 0;
+    for factor in distr.iter_factors_mut() {
+        factor.start_trajectory(full_traj.nrows());
+        let dim = factor.view_parameter(true).nrows();
+        let traj_slice = full_traj.slice((row_offset, row_offset + dim), (0, full_traj.ncols()));
+        if let Some(mut traj) = factor.trajectory_mut() {
+            traj.copy_from(traj_slice);
+        } 
+        row_offset += dim;
+    }
+    assert!(row_offset == full_traj.nrows());
+}
+
+fn collect_samples(distr : &mut impl Likelihood) -> Vec<DMatrix<f64>> {
+    unimplemented!()
+}
+
+fn collect_names(distr : &mut impl Likelihood) -> Vec<String> {
+    unimplemented!()
 }
 
 /// Assuming samples carry the result of natural parameter iterations,

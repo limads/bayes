@@ -2,10 +2,10 @@ use std::os::raw::c_char;
 use std::ffi::CStr;
 use crate::model::{self, *};
 use crate::distr::*;
-use pgdatum::{self, Text, Bytea};
+use pgserver::datum::{self, Text, Bytea};
 use std::convert::TryInto;
 use std::panic::catch_unwind;
-use pgdatum::log;
+use pgserver::log;
 
 /// Parses the distribution from text, assuming its validity.
 fn parse_distr(distr_txt : &Text) -> Model {

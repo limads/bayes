@@ -3,7 +3,7 @@ use crate::prob::gamma::Gamma;
 use rand_distr;
 use rand;
 use std::f64::consts::PI;
-use crate::fit::sim::*;
+use crate::fit::walk::*;
 use std::fmt::{self, Display};
 use crate::gsl::rand_utils::GslRng;
 use anyhow;
@@ -50,7 +50,7 @@ pub struct Normal {
 
     log_part : DVector<f64>,
 
-    eta_traj : Option<RandomWalk>,
+    eta_traj : Option<Trajectory>,
 
     /// Holds [log(1/sigma^2); 1/sigma^2], against which
     /// any scale factors (if present) are evaluated.
@@ -59,7 +59,7 @@ pub struct Normal {
     /// Holds (-0.5)*1/sigma^2
     minus_half_prec : f64,
 
-    rw : Option<RandomWalk>,
+    traj : Option<Trajectory>,
 
     rng : GslRng,
     
@@ -95,7 +95,7 @@ impl Normal {
         let mut norm = Self{ 
             mu : mu.clone(), 
             scaled_mu : mu.clone(), 
-            loc_factor, rw : None, 
+            loc_factor, traj : None, 
             rng,
             eta_traj, 
             prec_suff : prec_suff.clone(), 
@@ -327,17 +327,26 @@ impl Posterior for Normal {
         unimplemented!()
     }
 
-    fn trajectory(&self) -> Option<&RandomWalk> {
-        self.rw.as_ref()
+    fn trajectory(&self) -> Option<&Trajectory> {
+        self.traj.as_ref()
     }
 
-    fn trajectory_mut(&mut self) -> Option<&mut RandomWalk> {
-        self.rw.as_mut()
+    fn trajectory_mut(&mut self) -> Option<&mut Trajectory> {
+        self.traj.as_mut()
+    }
+    
+    fn start_trajectory(&mut self, size : usize) {
+        self.traj = Some(Trajectory::new(size, self.view_parameter(true).nrows()));
+    }
+    
+    /// Finish the trajectory before its predicted end.
+    fn finish_trajectory(&mut self) {
+        self.traj.as_mut().unwrap().closed = true;
     }
 
 }
 
-impl Likelihood<U1> for Normal {
+impl Likelihood for Normal {
 
     fn factors_mut<'a>(&'a mut self) -> (Option<&'a mut dyn Posterior>, Option<&'a mut dyn Posterior>) {
         self.dyn_factors_mut()
@@ -349,7 +358,7 @@ impl Likelihood<U1> for Normal {
         self
     }
     
-    fn observe<'a>(&'a mut self, sample : &'a dyn Sample<'a>)
+    fn observe(&mut self, sample : &dyn Sample) -> &mut Self
     {
         //self.obs = Some(super::observe_univariate(self.name.clone(), self.mu.len(), self.obs.take(), sample));
         let mut obs = self.obs.take().unwrap_or(DVector::zeros(self.mu.nrows()));
@@ -361,6 +370,7 @@ impl Likelihood<U1> for Normal {
             }
         }
         self.obs = Some(obs);
+        self
     }
     
     /*fn mean_mle(y : DMatrixSlice<'_, f64>) -> f64 {
@@ -373,7 +383,7 @@ impl Likelihood<U1> for Normal {
         y.iter().fold(0.0, |ys, y| ys + y.powf(2.) / n)
     }*/
 
-    /// Biased maximum likelihood mean estimate
+    /*/// Biased maximum likelihood mean estimate
     fn mle(y : DMatrixSlice<'_, f64>) -> Result<Self, anyhow::Error> {
         let suff = Self::sufficient_stat(y);
         let mean = suff[0] / y.nrows() as f64;
@@ -382,9 +392,9 @@ impl Likelihood<U1> for Normal {
             return Err(anyhow::Error::msg("Variance of estimate cannot be zero"));
         }
         Ok(Normal::new(1, Some(mean), Some(var)))
-    }
+    }*/
 
-    fn visit_factors<F>(&mut self, f : F) where F : Fn(&mut dyn Posterior) {
+    /*fn visit_factors<F>(&mut self, f : F) where F : Fn(&mut dyn Posterior) {
         if let Some(ref mut loc) = self.loc_factor {
             f(loc.as_mut());
             loc.visit_post_factors(&f as &dyn Fn(&mut dyn Posterior));
@@ -393,7 +403,7 @@ impl Likelihood<U1> for Normal {
             f(scale);
             scale.visit_post_factors(&f as &dyn Fn(&mut dyn Posterior));
         }
-    }
+    }*/
 
     //fn cond_log_prob(&self, _y : DMatrixSlice<'_, f64>) -> f64 {
     //    unimplemented!()
@@ -474,6 +484,10 @@ impl Estimator<Normal> for Normal {
         unimplemented!()
     }
     
+    fn posterior<'a>(&'a self) -> Option<&'a Normal> {
+        unimplemented!()
+    }
+    
     fn fit<'a>(&'a mut self) -> Result<&'a Normal, &'static str> {
         let prec1 = 1. / self.var()[0];
         match (&mut self.loc_factor, &mut self.scale_factor) {
@@ -499,7 +513,7 @@ impl Estimator<Normal> for Normal {
 
 }
 
-/*impl RandomWalk for Normal {
+/*impl Trajectory for Normal {
 
     fn current<'a>(&'a self) -> Option<DVectorSlice<'a, f64>> {
         self.eta_traj.as_ref().and_then(|eta_traj| {

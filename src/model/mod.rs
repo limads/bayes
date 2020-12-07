@@ -1,4 +1,4 @@
-use nalgebra::{DVector, DMatrix, RowDVector, Dim, DMatrixSlice};
+use nalgebra::*;
 use serde_json::{self, Value};
 use std::error::Error;
 use crate::prob::*;
@@ -10,6 +10,7 @@ use std::fmt::{self, Display};
 use std::convert::{AsRef, AsMut};
 use std::path::Path;
 use std::str::FromStr;
+use crate::sample::Sample;
 
 pub mod parse;
 
@@ -111,32 +112,169 @@ impl Model {
         }
     }*/
 
-    /// Dispatches to the MLE of the variant, returning the result
-    /// wrapped in the same variant.
-    pub fn mle(&self, y : DMatrixSlice<'_, f64>) -> Result<Self, anyhow::Error> {
+    /*/// Se documentation for apply(.)
+    pub fn apply_mut<F>(&mut self, f : F) -> Result<(), Box<dyn Error>>
+    where
+        F : Fn(&mut impl Likelihood)->Result<(), Box<dyn Error>>
+    {
+        match &mut self {
+            Model::MN(m) => f(m),
+            Model::Bern(b) => f(b),
+            _ => unimplemented!()
+        }
+    }
+    
+    /// Since Likelihood cannot be made into a trait object (preventing us to implement AsRef<dyn Likelihood>
+    /// or something similar) we resort to matching the Model enum to access the Likelihood implementors
+    /// (all variants are implement it). The apply/apply_mut receive a generic closure that will
+    /// be called on the current likelihood node, so the user does not have to 
+    /// resolve the match by hand to execute a functionality that would apply to different variants.
+    pub fn apply<F,R>(&self, f : F) -> Result<R, Box<dyn Error>>
+    where
+        F : Fn(&impl Likelihood) -> Result<R, Box<dyn Error>>
+    {
+        match &self {
+            Model::MN(m) => f(m),
+            Model::Bern(b) => f(b),
+            _ => unimplemented!()
+        }
+    }*/
+    
+    // Dispatches to the MLE of the variant, returning the result
+    // wrapped in the same variant.
+    /*pub fn mle(&self, y : DMatrixSlice<'_, f64>) -> Result<Self, anyhow::Error> {
         match self {
             Model::MN(m) => Ok(Model::MN(MultiNormal::mle(y)?)),
             _ => unimplemented!()
         }
-    }
+    }*/
 
-    /// Dispatches to the visit_factors of the respective variant.
-    pub fn visit_factors<F>(&mut self, f : F) where F : Fn(&mut dyn Posterior) {
+    // Dispatches to the visit_factors of the respective variant.
+    /*pub fn visit_factors<F>(&mut self, f : F) where F : Fn(&mut dyn Posterior) {
         match self {
             Model::MN(m) => m.visit_factors(f),
             Model::Bern(b) => b.visit_factors(f),
             _ => unimplemented!()
         }
-    }
+    }*/
     
-    pub fn factors_mut<'a>(&'a mut self) -> (Option<&'a mut dyn Posterior>, Option<&'a mut dyn Posterior>) {
+    /*pub fn factors_mut<'a>(&'a mut self) -> (Option<&'a mut dyn Posterior>, Option<&'a mut dyn Posterior>) {
+        match self {
+            Model::MN(m) => m.factors_mut(),
+            Model::Bern(b) => b.factors_mut(),
+            _ => unimplemented!()
+        }
+    }*/
+
+}
+
+/// Model implements Distribution by dispatching the calls to its variant
+impl Distribution for Model
+    where Self : Sized
+{
+
+    fn set_parameter(&mut self, mu : DVectorSlice<'_, f64>, natural : bool) {
+        match self {
+            Model::MN(m) => m.set_parameter(mu, natural),
+            Model::Bern(b) => b.set_parameter(mu, natural),
+            _ => unimplemented!()
+        }
+    }
+
+    fn view_parameter(&self, natural : bool) -> &DVector<f64> {
+        match self {
+            Model::MN(m) => m.view_parameter(natural),
+            Model::Bern(b) => b.view_parameter(natural),
+            _ => unimplemented!()
+        }
+    }
+
+    fn mean<'a>(&'a self) -> &'a DVector<f64> {
+        match self {
+            Model::MN(m) => m.mean(),
+            Model::Bern(b) => b.mean(),
+            _ => unimplemented!()
+        }
+    }
+
+    fn mode(&self) -> DVector<f64> {
+        match self {
+            Model::MN(m) => m.mode(),
+            Model::Bern(b) => b.mode(),
+            _ => unimplemented!()
+        }
+    }
+
+    fn var(&self) -> DVector<f64> {
+        match self {
+            Model::MN(m) => m.var(),
+            Model::Bern(b) => b.var(),
+            _ => unimplemented!()
+        }
+    }
+
+    fn cov(&self) -> Option<DMatrix<f64>> {
+        match self {
+            Model::MN(m) => m.cov(),
+            Model::Bern(b) => b.cov(),
+            _ => unimplemented!()
+        }
+    }
+
+    fn cov_inv(&self) -> Option<DMatrix<f64>> {
+        match self {
+            Model::MN(m) => m.cov_inv(),
+            Model::Bern(b) => b.cov_inv(),
+            _ => unimplemented!()
+        }
+    }
+
+    fn log_prob(&self, y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>) -> f64 {
+        match self {
+            Model::MN(m) => m.log_prob(y, x),
+            Model::Bern(b) => b.log_prob(y, x),
+            _ => unimplemented!()
+        }
+    }
+
+    fn sample_into(&self, mut dst : DMatrixSliceMut<'_, f64>) {
+        match self {
+            Model::MN(m) => m.sample_into(dst),
+            Model::Bern(b) => b.sample_into(dst),
+            _ => unimplemented!()
+        }
+    }
+
+}
+
+/// Model implements Likelihood by dispatching the calls to its variant
+impl Likelihood for Model {
+
+    fn factors_mut<'a>(&'a mut self) -> (Option<&'a mut dyn Posterior>, Option<&'a mut dyn Posterior>) {
         match self {
             Model::MN(m) => m.factors_mut(),
             Model::Bern(b) => b.factors_mut(),
             _ => unimplemented!()
         }
     }
-
+    
+    fn variables(&mut self, vars : &[&str]) -> &mut Self {
+        match self {
+            Model::MN(m) => { m.variables(vars); self }
+            Model::Bern(b) => { b.variables(vars); self }
+            _ => unimplemented!()
+        }
+    }
+    
+    fn observe<'a>(&'a mut self, sample : &dyn Sample) -> &'a mut Self {
+        /*match self {
+            Model::MN(m) => { m.observe(sample) },
+            Model::Bern(b) => { b.observe(sample) },
+            _ => unimplemented!()
+        }*/
+        unimplemented!()
+    }
+    
 }
 
 impl<'a> From<&'a mut Model> for &'a mut dyn Distribution {
@@ -277,6 +415,29 @@ pub fn matrix_to_value(dmat : &DMatrix<f64>) -> Value {
     }
     rows.into()
 }
+
+/*
+// Likelihood cannot be made into a object because it resuts &mut self at variables and has
+// the compare method.
+impl AsRef<dyn Likelihood> for Model {
+    fn as_ref(&self) -> &dyn Likelihood {
+        match &self {
+            Model::MN(m) => m as &dyn Likelihood,
+            Model::Bern(b) => b as &dyn Likelihood,
+            Model::Other => unimplemented!()
+        }
+    }
+}
+
+impl AsMut<dyn Likelihood> for Model {
+    fn as_mut(&mut self) -> &mut dyn Likelihood {
+        match &mut self {
+            Model::MN(m) => m as &mut dyn Likelihood,
+            Model::Bern(b) => b as &mut dyn Likelihood,
+            Model::Other => unimplemented!()
+        }
+    }
+}*/
 
 pub fn parse_vector(val : &Value) -> Result<DVector<f64>, String> {
     match val {

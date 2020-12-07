@@ -4,13 +4,16 @@ use std::fmt::Debug;
 use std::ops::AddAssign;
 use crate::model::decision::BayesFactor;
 use std::fmt::Display;
-use crate::fit::sim::RandomWalk;
+use crate::fit::walk::Trajectory;
 use anyhow;
 use thiserror::Error;
 use crate::sample::*;
-
+use std::slice;
+use either::Either;
+use std::iter;
 /// Structure to represent one-dimensional empirical distributions non-parametrically (Work in progress).
 mod histogram;
+use std::collections::HashMap;
 
 pub use histogram::*;
 
@@ -164,11 +167,21 @@ pub trait Distribution
 ///
 /// This trait is used to build probability distributions that factor in a directed and tree-like structure,
 /// with a root likelihood node and branch/leaf nodes that are priors and hyperpriors (before inference)
-/// and posterior factors after inference. Undirected probabilistic relationships are implemented
-/// within dedicated structures (see MarkovChain and MarkovField).
+/// and posterior factors after inference.
 ///
 /// This trait is also the basis for the bayes JSON model definition: To parse the next step in the graph,
 /// you have to verify that the JSON field D satisfies Conditional<D> for the current JSON node Self.
+///
+/// A parsed probabilistic model is always a binary tree with a root "predictive" or "likelihood" node,
+/// with bound neighboring nodes satisfying this Conditional trait. This binary tree link location parameters to location
+/// prior/posterior distributions, and possibly scale parameters to scale priors/posterior distributions.
+///
+/// The user can, however, specify probabilistic graphs
+/// or arbitrary complexity, by building  joint distribution over continuous or discrete variables. Those graphs,
+/// however, always resolve to one binary tree of conditional distributions (minimally having a Likelihood, but more
+/// commonly having a Likelihood and a prior node), by joining joint nodes into a multivariate distribution. 
+/// This binary tree grows when the user specify conditional expectation dependencies (by substituting a
+/// constant in the mean field for another distribution).
 pub trait Conditional<D>
     where
         Self : Distribution + Sized,
@@ -449,12 +462,87 @@ where
 
 }
 
+type OptPosterior<'a> = Option<&'a mut (dyn Posterior + 'a)>;
+
+/// FactorsMut is a safe iterator over mutable references to Posterior factors in a probabilistic graph.
+/// It guarantees that you have either a reference to a current node or a pair of references to its
+/// parents at any given iteration.
+// pub struct Factors<'a>(Either<OptPosterior<'a>, (OptPosterior<'a>, OptPosterior<'a>)>); 
+pub struct FactorsMut<'a> {
+    curr : (OptPosterior<'a>, OptPosterior<'a>),
+    returned_curr : bool
+}
+
+pub struct Factors<'a> {
+    curr : Box<dyn Iterator<Item=&'a (dyn Posterior + 'a)>>
+}
+
+impl<'a> Iterator for FactorsMut<'a> {
+
+    type Item = &'a mut dyn Posterior;
+    
+    fn next(&mut self) -> Option<&'a mut dyn Posterior> {
+        match next_factor((self.curr.0.take(), self.curr.1.take()), &mut self.returned_curr) {
+            Either::Left(Some(f)) => Some(f),
+            Either::Right(parents) => {
+                self.curr = parents;
+                self.next()
+            },
+            Either::Left(None) => None,
+        }
+    }
+    
+}
+
+fn next_factor<'a>(
+    mut curr : (OptPosterior<'a>, OptPosterior<'a>), 
+    returned_curr : &mut bool
+) -> Either<OptPosterior<'a>, (OptPosterior<'a>, OptPosterior<'a>)> {
+    if ! *returned_curr {
+        *returned_curr = true;
+        if curr.0.is_some() {
+            Either::Left(curr.0)
+        } else {
+            if curr.1.is_some() {
+                Either::Left(curr.1)
+            } else {
+                Either::Left(None)
+            }
+        }
+    } else {
+        if let Some(left) = curr.0.take() {
+            *returned_curr = false;
+            Either::Right(left.dyn_factors_mut())
+        } else {
+            if let Some(right) = curr.1.take() {
+                *returned_curr = false;
+                Either::Right(right.dyn_factors_mut())
+            } else {
+                Either::Right((None, None))
+            }
+        }
+    }
+}
+
+impl<'a> Iterator for Factors<'a> {
+
+    type Item = &'a mut dyn Posterior;
+    
+    fn next(&mut self) -> Option<&'a mut dyn Posterior> {
+        unimplemented!()
+    }
+    
+}
+
 /// Implemented by distributions which can have their
 /// log-probability evaluated with respect to a random sample directly.
 /// Implemented by Normal, Poisson and Bernoulli. Other distributions
 /// require that their log-probability be evaluated by using suf_log_prob(.)
 /// by passing the sufficient statistic calculated from the sample.
-///
+/// Mathematically, a Likelihood node represents the best formulation about what a generative
+/// process output should look like: Given a realization of its immediate prior, what range and
+/// how concentrated the samples are around their expected value.
+/// 
 /// A full probabilistic graph is characterized by its outer factored
 /// element, which is a distribution that implements the Likelihood trait. The
 /// dimensionality of the data received by this element depends on how the graph
@@ -478,10 +566,19 @@ where
 /// which tells how to interpret their natural parameter vector (is it a constant? a natural function?)
 /// and they carry a Observation enumeration, which tell the observation status: Is it bound to a variable
 /// name? If so, is this name related to a observation vector/matrix or only to a sufficient statistic?
-pub trait Likelihood<C>
+///
+/// The Likelihood trait offers functions that are useful before the inference procedure is run. The
+/// counterpart of the likelihood for the posterior distribution is the predictive distribution, which
+/// is also an "interfacing" distribution (is positioned at the top-level node of the graph). 
+/// It offers a sample(.) and mean(.) methods, which allow to  retrieve relevant information from 
+/// the Posterior Distribution. For conjugate inference, the Predicte is the same allocated object as
+/// the prior, since there is no marginalization required for 1D distributions. For multivariate conjugate
+/// and non-conjugate inference, usually a marginalization step is required to retrieve the posterior
+/// distribution.
+pub trait Likelihood
     where
-        Self : ExponentialFamily<C> + Distribution + Sized,
-        C : Dim
+        Self : Distribution + Sized,
+        // C : Dim
 {
 
     /// Bind a sequence of variable names to this distribution. This causes calls to
@@ -492,7 +589,7 @@ pub trait Likelihood<C>
     /// parent factoring terms, binding any named likelihood nodes to the variable
     /// names found at sample. This incurs in copying the data from the sample implementor
     /// into a column-oriented data cache kept by each distribution separately.
-    fn observe<'a>(&'a mut self, sample : &'a dyn Sample<'a>);
+    fn observe(&mut self, sample : &dyn Sample) -> &mut Self;
     // where
     //    R : IntoIterator<Item=&'a f64>,
     //    V : IntoIterator<Item=&'a f64>;
@@ -503,8 +600,9 @@ pub trait Likelihood<C>
     /// for purposes of hyperparameter tuning or model selection; between
     /// a fitted model and a saturated model for decision analysis; or between
     /// a fitted model and a null model for hypothesis testing.
-    fn compare<'a, D>(&'a self, other : &'a D) -> BayesFactor<'a, Self, D>
-        where D : Distribution + Sized
+    fn compare<'a>(&'a self, other : &'a Self) -> BayesFactor<'a, Self, Self>
+        // where D : Distribution + Sized
+        // where Self : Sized
     {
         BayesFactor::new(&self, &other)
     }
@@ -517,9 +615,9 @@ pub trait Likelihood<C>
         BayesFactor::new(&self, &other).log_diff(y, x)
     }*/
 
-    /// Returns the distribution with the parameters set to its
-    /// gaussian approximation (mean and standard error).
-    fn mle(y : DMatrixSlice<'_, f64>) -> Result<Self, anyhow::Error>;
+    // Returns the distribution with the parameters set to its
+    // gaussian approximation (mean and standard error).
+    // fn mle(y : DMatrixSlice<'_, f64>) -> Result<Self, anyhow::Error>;
 
     //{
     //    (Self::mean_mle(y), Self::se_mle(y))
@@ -540,15 +638,26 @@ pub trait Likelihood<C>
         (Self::var_mle(y) / n).sqrt()
     }*/
 
-    /// Calls the closure for each distribution that composes the factored
-    /// joint distribution, in a depth-first fashion. Any Posterior distribution
-    /// can be a part of a nested bayesian inference problem, justifying this
-    /// visitor.
-    fn visit_factors<F>(&mut self, f : F) where F : Fn(&mut dyn Posterior);
+    // Calls the closure for each distribution that composes the factored
+    // joint distribution, in a depth-first fashion. Any Posterior distribution
+    // can be a part of a nested bayesian inference problem, justifying this
+    // visitor.
+    // fn visit_factors<F>(&mut self, f : F) where F : Fn(&mut dyn Posterior);
 
     /// Access this distribution factor at the informed index. An collection of factors
     /// cannot be returned here because it would violate mutable exclusivity.
     fn factors_mut<'a>(&'a mut self) -> (Option<&'a mut dyn Posterior>, Option<&'a mut dyn Posterior>);
+    
+    // fn search_factor<'a>(&'a self, name : &str) -> Option<&Posterior> {
+    // }
+    
+    fn iter_factors_mut<'a>(&'a mut self) -> FactorsMut<'a> 
+    where
+        Self : Sized
+    {
+        let post_parents = self.factors_mut();
+        FactorsMut { curr : post_parents, returned_curr : false }
+    }
     
     /*/// Returns a mutable iterator over this likelihood
     /// distribution factor(s).
@@ -564,7 +673,7 @@ pub trait Likelihood<C>
     /// ```
     fn factors_mut(&mut self) -> Factors;*/
 
-    /// The conditional log-probability evaluation works because
+    /*/// The conditional log-probability evaluation works because
     /// the sufficient statistic of Likelihood implementors is
     /// just the sum of the outcomes. Under this situation, the
     /// log-probability of the sufficient stat should equal the
@@ -588,11 +697,46 @@ pub trait Likelihood<C>
                 self.suf_log_prob(y)
             }
         }
-    }
+    }*/
 
     // Iterate over sister nodes if Factor; or returns a single distribution if
     // not a factor.
     // pub fn iter_sisters() -
+}
+
+/// The predictive distribution is the interfacing distribution of a probabilitic graph.
+/// It is called a "prior predictive" before inference; and "posterior predictive" after fitting.
+/// All distributions can generate samples by returning a matrix of values; but a predictive distribution
+/// can additionally generate named samples. Those samples account for the inherent uncertainty of the
+/// distribution and on the conditioning factors (prior or posteriors). All hand-built models are anchored
+/// at a top-level distribution that implements Both Preditive and Likelihood. To retrieve the Posterior
+/// predictions, the posterior object returned by your algorithm can also implement this trait. 
+pub trait Predictive {
+
+    /// Predicts a new sample, possibly modifying the current fixed variable state.
+    fn predict(&mut self, fixed : Option<&dyn Sample>) -> Box<dyn Sample>;
+    
+}
+
+/// Used internally to sample all likelihood nodes together. The HashMap is then
+/// Boxed into dyn Sample before being sent to the user. 
+fn predict_from_likelihood<L>(
+    lik : &mut L, 
+    fixed : Option<&dyn Sample>,
+    names : &[&str]
+) -> HashMap<String, Vec<f64>> 
+where
+    L : Likelihood
+{
+     if let Some(fix) = fixed {
+        lik.observe(fix);
+    }
+    let mut out : DMatrix<f64> = lik.sample();
+    let mut sample : HashMap<String, Vec<f64>> = HashMap::new();
+    for (i, name) in names.iter().enumerate() {
+        sample.insert(name.to_string(), out.column(i).clone_owned().data.into());
+    }
+    sample
 }
 
 /*/// Return (mean, var) pair over a sample.
@@ -609,6 +753,40 @@ fn var_mle(y : DMatrixSlice<'_, f64>) -> f64 {
     m * (1. - m)
 }*/
 
+/*
+/// Priors represent a final or non-final generative process node. Their distinguishing characteristic
+/// is that their log-likelihood is evaluated not with respect to a sample (as is the case for
+/// Likelihood implementors) but with respect to a parameter of its immediate Likelihood node.
+/// Mathematically, a prior formulation represents an agent's best guess on the different ways a generative process
+/// works: What are the boundaries of the samples it generates, and how concentrated they are, or how different
+/// parameters relate to each other. Prior formulations are especially important in high-dimensional problems, allowing
+/// regularized solutions. Priors can represent a lower bound on the expected variance of the process for this objective,
+/// an approach which require careful sensitivity analysis to be validated.
+/// For example, to evaluate the log-probability of a Likelihood you do:
+///
+/// # (1) Evaluating the log-probability of a sample w.r.t. a likelihood 
+/// let y = Normal::new(0.5, 0.2).variable("var1");
+/// y.observe(&("var1", &[1,2,3]) as &dyn Sample);
+/// let lik_lp = y.log_prob();
+///
+/// While to evaluate the log-probability of a prior node, you do:
+///
+/// # (2) Evaluating the log-probability of a sample w.r.t. a prior
+/// let prior = Normal::new(0.1, 0.2);
+/// let prior_lp = prior.log_prob(&y.view_parameter().as_slice());
+/// let post_lp = lik_lp + post_lp;
+///
+/// The step above is performed lazily via the Conditioning trait: a.condition(b) means that
+/// every time you evaluate the log-probability of the Likelihood node w.r.t. a &dyn Sample
+/// the log-probability of (2) will be added to it.
+/// Some distributions function as both Likelihoods and Priors, which mean they might be both the
+/// first element and non-first element of probabilistic graphs (or in the middle of the graph
+/// for multilevel models).
+pub trait Prior {
+    fn log_prob(&self, lik_param : &[f64]) -> f64;
+}
+
+*/
 /// Posterior is a dynamic trait used by generic inference algorithms
 /// to iterate over the probabilistic graph after the method cond_log_prob(.) is called
 /// on its likelihood node. Inference algorithms should concern
@@ -627,7 +805,7 @@ fn var_mle(y : DMatrixSlice<'_, f64>) -> f64 {
 ///
 /// This trait is the way users can get posterior information from generic algorithms.
 /// Algorithms will give back the received graph, but the approximation(.) and/or trajectory(.)
-/// methods, instead of returning None, will return Some(MultiNormal) and/or Some(RandomWalk)
+/// methods, instead of returning None, will return Some(MultiNormal) and/or Some(Trajectory)
 /// users can query information from.
 pub trait Posterior
     where Self : Debug + Display + Distribution
@@ -663,6 +841,37 @@ pub trait Posterior
 
     fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>);
 
+    fn iter_factors_mut<'a>(&'a mut self) -> FactorsMut<'a> 
+        where Self: std::marker::Sized
+    {
+        FactorsMut { curr : (Some(self), None), returned_curr : false }
+    }
+    
+    /// Builds a predictive distribution from this Posterior by marginalization.
+    /// Predictive distributions generate named samples, similar to the "prior predictive"
+    /// (the likelihood). 
+    fn predictive(&self) -> Box<dyn Predictive> {
+        unimplemented!()
+    }
+    
+    // fn iter_factors<'a>(&'a self) -> 
+    
+    /*fn iter_factors<'a>(&'a mut self) -> Box<dyn Iterator<Item=&'a mut dyn Posterior> + 'a> {
+        let mut factors : Vec<&'a mut (dyn Posterior + 'a)> = Vec::new();
+        let (opt_left, opt_right) = self.dyn_factors_mut();
+        if let Some(left) = opt_left {
+            factors.push(left);
+            let lf = factors.last_mut().unwrap().iter_factors();
+            factors.extend(lf);
+        }
+        if let Some(right) = opt_right {
+            factors.push(right);
+            let lr = factors.last_mut().unwrap().iter_factors();
+            factors.extend(lr);
+        }
+        Box::new(factors.drain(0..))
+    }*/
+    
     /// Calls the closure for each distribution that composes the factored
     /// joint distribution, in a depth-first fashion.
     fn visit_post_factors(&mut self, f : &dyn Fn(&mut dyn Posterior)) {
@@ -681,16 +890,13 @@ pub trait Posterior
 
     fn approximation(&self) -> Option<&MultiNormal>;
 
-    fn trajectory(&self) -> Option<&RandomWalk>;
+    fn start_trajectory(&mut self, size : usize);
+    
+    fn finish_trajectory(&mut self);
+    
+    fn trajectory(&self) -> Option<&Trajectory>;
 
-    fn trajectory_mut(&mut self) -> Option<&mut RandomWalk>;
-
-    /// Returns a non-parametric representation of this distribution
-    /// marginal parameter value at index ix.
-    fn marginal(&self, ix : usize) -> Option<Histogram> {
-        let traj = self.trajectory()?;
-        traj.histogram(ix)
-    }
+    fn trajectory_mut(&mut self) -> Option<&mut Trajectory>;
 
     // Mark this variable fixed (e.g. at its current MLE) to avoid using it further as part of the
     // Inference algorithms by querying it via the fixed() method.
@@ -699,6 +905,14 @@ pub trait Posterior
     // Verify if this variable has been fixed by calling self.fix() at a previous iteration.
     // fn fixed(&self)
 
+}
+
+/// This trait represents an integration over remaining variables of the a probabilistic graph to
+/// calculate the probability distribution of the variables identified by the names. 
+pub trait Marginal<M> {
+
+    fn marginal(&self, names : &[&str]) -> Option<M>;
+    
 }
 
 /// There is a order of preference when retrieving natural parameters during

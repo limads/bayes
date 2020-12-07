@@ -1,7 +1,6 @@
 use nalgebra::*;
+use nalgebra::storage::Storage;
 use crate::prob::*;
-// use super::*;
-// use crate::optim::*;
 use std::ops::AddAssign;
 use serde::{Serialize, Deserialize};
 use std::ops::Index;
@@ -9,7 +8,7 @@ use nalgebra::storage::*;
 use crate::prob::Histogram;
 
 // Metropolis-Hastings posterior sampler (Work in progress).
-pub mod metropolis;
+mod metropolis;
 
 pub use metropolis::*;
 
@@ -21,27 +20,49 @@ pub use metropolis::*;
 /// Samples are accumulated column-wise, so that sampling n times from a distribution of dimension p
 /// will generate a p x n matrix.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RandomWalk {
+pub struct Trajectory {
 
     pub pos : usize,
 
     pub traj : DMatrix<f64>,
 
-    pub weights : DVector<f64>
+    pub closed : bool
 
 }
 
-impl RandomWalk {
+/// Builds a random walk from an external algorithm output, giving equal
+/// weight to any sample. The output is assumed to be organized column-wise,
+/// in the same representation held by RandomWalk.
+impl<S> From<Matrix<f64, Dynamic, Dynamic, S>> for Trajectory 
+where
+    S : Storage<f64, Dynamic, Dynamic>
+{
+    fn from(mat : Matrix<f64, Dynamic, Dynamic, S>) -> Self {
+        Trajectory{ traj : mat.clone_owned(), pos : mat.ncols(), closed : true }
+    }
+}
 
-    pub fn new(start : DVectorSlice<'_, f64>) -> Self {
+impl Trajectory {
+
+    pub fn new(len : usize, dim : usize) -> Self {
+        Self { traj : DMatrix::zeros(len, dim), pos : 0, closed : false }
+    }
+    
+    pub fn copy_from(&mut self, data : DMatrixSlice<'_, f64>) {
+        self.traj.copy_from(&data);
+        self.pos = data.ncols();
+        self.closed = true;
+    }
+    
+    /*pub fn new(start : DVectorSlice<'_, f64>) -> Self {
         let mut traj = DMatrix::zeros(start.nrows(), 1000);
         let weights = DVector::from_element(1000, 1.);
         let pos = 0;
         traj.column_mut(0).copy_from(&start);
         Self{ pos, traj, weights }
-    }
+    }*/
 
-    pub fn step(&mut self, opt_data : Option<DVectorSlice<'_, f64>>) {
+    /*pub fn step(&mut self, opt_data : Option<DVectorSlice<'_, f64>>) {
         if let Some(data) = opt_data {
             self.pos += 1;
             if self.traj.ncols() == self.pos {
@@ -54,23 +75,41 @@ impl RandomWalk {
         } else {
             self.weights[self.pos] += 1.;
         }
-    }
+    }*/
 
-    pub fn step_increment(&mut self, incr : DVectorSlice<'_, f64>) {
+    /*pub fn step_increment(&mut self, incr : DVectorSlice<'_, f64>) {
         let prev : DVector<f64> = self.traj.column(self.pos).into();
         self.traj.column_mut(self.pos+1).copy_from(&prev);
         self.traj.column_mut(self.pos+1).add_assign(&incr);
         self.pos += 1;
-    }
+    }*/
 
-    /// Retrieves the current
+    /// Retrieves the current step value.
     pub fn state<'a>(&'a self) -> DVectorSlice<'a, f64> {
         self.traj.column(self.pos)
     }
+    
+    /// Increments the current position and retrives a mutable reference to the new current state.
+    /// This method can be used in conjunction with distr1.sample_mut(distr2.trajectory_mut().state_mut());
+    pub fn step<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
+        if !self.closed {
+            self.pos += 1;
+            if self.pos == self.traj.ncols() - 1 {
+                self.closed = true;
+            }
+            self.traj.column_mut(self.pos)
+        } else {
+            panic!("Tried to update closed trajectory");
+        }
+    }
 
+    /// Builds a Histogram over a single parameter value in this trajectory.
     pub fn histogram(&self, ix : usize) -> Option<Histogram> {
         if ix < self.traj.nrows() {
-            let samples = self.traj.row(ix).clone_owned().transpose();
+            let samples = self.traj.row(ix)
+                .columns(0, self.pos)
+                .clone_owned()
+                .transpose();
             Some(Histogram::build(&samples))
         } else {
             None
@@ -79,10 +118,7 @@ impl RandomWalk {
 
 }
 
-/// Builds a random walk from an external algorithm output, giving equal
-/// weight to any sample. The output is assumed to be organized column-wise,
-/// in the same representation hold by RandomWalk.
-impl<S> From<Matrix<f64, Dynamic, Dynamic, S>> for RandomWalk
+/*impl<S> From<Matrix<f64, Dynamic, Dynamic, S>> for Trajectory
 where
     S : ContiguousStorage<f64, Dynamic, Dynamic>
 {
@@ -93,7 +129,7 @@ where
         let weights = DVector::from_element(pos, 1. / pos as f64);
         Self { traj, pos, weights }
     }
-}
+}*/
 
 /*/// RandomWalk is implemented by distributions who may
 /// maintain a history of changes in the natural parameter

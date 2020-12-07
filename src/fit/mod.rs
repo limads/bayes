@@ -11,9 +11,9 @@ pub mod utils;
 /// (Expectation Maximization; work in progress).
 pub mod optim;
 
-/// Full posterior estimation via simulation (Metropolis-Hastings algorithm)
+/// Full posterior estimation via random walk simulation (Metropolis-Hastings algorithm)
 /// and related non-parametric distribution representation (work in progress).
-pub mod sim;
+pub mod walk;
 
 /// Linear estimation methods (Least squares and iteratively-reweighted least squares).
 /// Those algorithms can be either treated as estimator in themselves
@@ -32,7 +32,7 @@ pub mod linear;
 pub trait Estimator<D>
     where
         // Self : ?Sized,
-        D : Distribution //+ ?Sized
+        D : Distribution //+ ?Sized + Posterior
 {
 
     /// Runs the inference algorithm for the informed sample matrix,
@@ -40,13 +40,19 @@ pub trait Estimator<D>
     /// the posterior information of interest can be retrieved).
     fn fit<'a>(&'a mut self) -> Result<&'a D, &'static str>;
     
-    /// Predicts a new data point for this algorithm. Requires that self.fit(.) has been called
-    /// successfully at least one time. You can make predictions conditional on a new set of constant
-    /// observations if you had fixed constants on the original model by passing Some(sample) to the
+    /// If fit(.) has been called successfully at least once, returns the current state
+    /// of the posterior distribution, whithout changing the algorithm state.
+    fn posterior<'a>(&'a self) -> Option<&'a D>;
+    
+    /// Predicts a new data point using the posterior calculated from  this algorithm (if any is available). 
+    /// Requires that self.fit(.) has been called successfully at least once. You can make predictions conditional 
+    /// on a new set of constant observations if you had fixed constants on the original model by passing Some(sample) to the
     /// argument, in which case the new sample will have the same dimensionality; or you can make
     /// the predictions based on the old fixed samples (if any) in which case the dimensionality of the
-    /// predictions will follow the same dimensionality of the input data.
-    fn predict<'a>(&'a self, cond : Option<&'a Sample/*<'a>*/>) -> Box<dyn Sample/*<'a>*/>;
+    /// predictions will follow the same dimensionality of the input data. A prediction returns always a mean
+    /// (expected value) for all variables in the graph that were named (and are thus "likelihood" nodes, although
+    /// their role here is as a Predictive distribution) and are not in the cond vector (if informed). 
+    fn predict<'a>(&'a self, cond : Option<&'a Sample>) -> Box<dyn Sample>;
 
 }
 

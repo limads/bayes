@@ -2,13 +2,13 @@ use nalgebra::*;
 use super::*;
 use serde::{Serialize, Deserialize};
 use std::fmt::{self, Display};
-use crate::fit::sim::RandomWalk;
+use crate::fit::walk::Trajectory;
 use super::MultiNormal;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Dirichlet {
 
-    rw : Option<RandomWalk>,
+    traj : Option<Trajectory>,
 
     approx : Option<MultiNormal>
 }
@@ -70,12 +70,21 @@ impl Posterior for Dirichlet {
         self.approx.as_ref()
     }
 
-    fn trajectory(&self) -> Option<&RandomWalk> {
-        self.rw.as_ref()
+    fn trajectory(&self) -> Option<&Trajectory> {
+        self.traj.as_ref()
     }
 
-    fn trajectory_mut(&mut self) -> Option<&mut RandomWalk> {
-        self.rw.as_mut()
+    fn trajectory_mut(&mut self) -> Option<&mut Trajectory> {
+        self.traj.as_mut()
+    }
+    
+    fn start_trajectory(&mut self, size : usize) {
+        self.traj = Some(Trajectory::new(size, self.view_parameter(true).nrows()));
+    }
+    
+    /// Finish the trajectory before its predicted end.
+    fn finish_trajectory(&mut self) {
+        self.traj.as_mut().unwrap().closed = true;
     }
 
 }

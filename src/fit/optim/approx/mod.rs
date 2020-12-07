@@ -178,9 +178,9 @@ fn optimize_mle_scaled(distr : Normal, data : DMatrix<f64>) -> Result<Normal, St
     Ok(distr)
 }
 
-fn mle_compare_univ<D>(distr : D, data : DMatrix<f64>)
+/*fn mle_compare_univ<D>(distr : D, data : DMatrix<f64>)
 where
-    D : Distribution + ExponentialFamily<U1> + Clone + Likelihood<U1>
+    D : Distribution + ExponentialFamily<U1> + Clone + Likelihood
 {
     let distr_out = optimize_mle(distr, data.clone())
         .expect("Optimization failed");
@@ -189,7 +189,7 @@ where
     let stat_mle = D::mle((&data).into()).unwrap().mean()[0];
     println!("suff stat: {}", stat_mle);
     assert!((optim_mle - stat_mle).abs() < 1E-2 );
-}
+}*/
 
 #[test]
 fn approx_poiss() {

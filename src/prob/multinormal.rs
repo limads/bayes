@@ -6,7 +6,7 @@ use std::fmt::{self, Display};
 use std::default::Default;
 use std::ops::{SubAssign, MulAssign};
 use std::convert::{TryFrom, TryInto};
-use crate::fit::sim::RandomWalk;
+use crate::fit::walk::Trajectory;
 use nalgebra::linalg;
 use serde_json::{self, Value, map::Map};
 use anyhow;
@@ -182,7 +182,7 @@ pub struct MultiNormal {
     /// the multinormal holds a single parameter value, with its corresponding scalar log-partition.
     log_part : DVector<f64>,
 
-    rw : Option<RandomWalk>,
+    traj : Option<Trajectory>,
 
     obs : Option<DMatrix<f64>>,
 
@@ -273,7 +273,7 @@ impl MultiNormal {
             scale_factor : None,
             op : None,
             log_part,
-            rw : None,
+            traj : None,
             scaled_mu : mu.clone(),
             obs : None,
             names : Vec::new(),
@@ -754,17 +754,26 @@ impl Posterior for MultiNormal {
         Some(self)
     }
 
-    fn trajectory(&self) -> Option<&RandomWalk> {
-        self.rw.as_ref()
+    fn trajectory(&self) -> Option<&Trajectory> {
+        self.traj.as_ref()
     }
 
-    fn trajectory_mut(&mut self) -> Option<&mut RandomWalk> {
-        self.rw.as_mut()
+    fn trajectory_mut(&mut self) -> Option<&mut Trajectory> {
+        self.traj.as_mut()
+    }
+    
+    fn start_trajectory(&mut self, size : usize) {
+        self.traj = Some(Trajectory::new(size, self.view_parameter(true).nrows()));
+    }
+    
+    /// Finish the trajectory before its predicted end.
+    fn finish_trajectory(&mut self) {
+        self.traj.as_mut().unwrap().closed = true;
     }
 
 }
 
-impl Likelihood<Dynamic> for MultiNormal {
+impl Likelihood for MultiNormal {
 
     fn factors_mut<'a>(&'a mut self) -> (Option<&'a mut dyn Posterior>, Option<&'a mut dyn Posterior>) {
         self.dyn_factors_mut()
@@ -775,7 +784,7 @@ impl Likelihood<Dynamic> for MultiNormal {
         self
     }
     
-    fn observe<'a>(&'a mut self, sample : &'a dyn Sample<'a>)
+    fn observe(&mut self, sample : &dyn Sample) -> &mut Self
     {
         let mut obs = self.obs.take().unwrap_or(DMatrix::zeros(self.n, self.mu.len()));
         for (i, name) in self.names.iter().cloned().enumerate() {
@@ -785,9 +794,10 @@ impl Likelihood<Dynamic> for MultiNormal {
                 }
             }
         }
+        self
     }
     
-    /// Returns the distribution with the parameters set to its
+    /*/// Returns the distribution with the parameters set to its
     /// gaussian approximation (mean and standard error).
     fn mle(y : DMatrixSlice<'_, f64>) -> Result<Self, anyhow::Error> {
         let n = y.nrows() as f64;
@@ -800,9 +810,9 @@ impl Likelihood<Dynamic> for MultiNormal {
         let mut sigma = suf.remove_column(0);
         sigma.unscale_mut(n);
         Self::new(y.nrows(), mu, sigma)
-    }
+    }*/
 
-    fn visit_factors<F>(&mut self, f : F) where F : Fn(&mut dyn Posterior) {
+    /*fn visit_factors<F>(&mut self, f : F) where F : Fn(&mut dyn Posterior) {
         if let Some(ref mut loc) = self.loc_factor {
             f(loc.as_mut());
             loc.visit_post_factors(&f as &dyn Fn(&mut dyn Posterior));
@@ -811,12 +821,16 @@ impl Likelihood<Dynamic> for MultiNormal {
             f(scale);
             scale.visit_post_factors(&f as &dyn Fn(&mut dyn Posterior));
         }
-    }
+    }*/
 }
 
 impl Estimator<MultiNormal> for MultiNormal {
 
     fn predict<'a>(&'a self, cond : Option<&'a Sample/*<'a>*/>) -> Box<dyn Sample/*<'a>*/> {
+        unimplemented!()
+    }
+    
+    fn posterior<'a>(&'a self) -> Option<&'a MultiNormal> {
         unimplemented!()
     }
     

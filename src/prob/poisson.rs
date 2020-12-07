@@ -3,7 +3,7 @@ use super::*;
 use serde::{Serialize, Deserialize};
 use rand_distr;
 // use rand;
-use crate::fit::sim::*;
+use crate::fit::walk::*;
 // use std::ops::AddAssign;
 use std::default::Default;
 use serde::ser::{Serializer};
@@ -48,7 +48,7 @@ pub struct Poisson {
 
     log_part : DVector<f64>,
 
-    eta_traj : Option<RandomWalk>,
+    // eta_traj : Option<RandomWalk>,
 
     sampler : Vec<rand_distr::Poisson<f64>>,
 
@@ -268,7 +268,7 @@ impl Conditional<Gamma> for Poisson {
 
 }
 
-impl Likelihood<U1> for Poisson {
+impl Likelihood for Poisson {
 
     fn factors_mut<'a>(&'a mut self) -> (Option<&'a mut dyn Posterior>, Option<&'a mut dyn Posterior>) {
         (super::univariate_factor(&mut self.factor), None)
@@ -280,7 +280,7 @@ impl Likelihood<U1> for Poisson {
         self
     }
     
-    fn observe<'a>(&'a mut self, sample : &'a dyn Sample<'a>)
+    fn observe(&mut self, sample : &dyn Sample) -> &mut Self
     {
         //self.obs = Some(super::observe_univariate(self.name.clone(), self.lambda.len(), self.obs.take(), sample));
         let mut obs = self.obs.take().unwrap_or(DVector::zeros(self.lambda.nrows()));
@@ -292,12 +292,13 @@ impl Likelihood<U1> for Poisson {
             }
         }
         self.obs = Some(obs);
+        self
     }
     
-    fn mle(y : DMatrixSlice<'_, f64>) -> Result<Self, anyhow::Error> {
+    /*fn mle(y : DMatrixSlice<'_, f64>) -> Result<Self, anyhow::Error> {
         let lambda = y.sum() as f64 / y.nrows() as f64;
         Ok(Self::new(1, Some(lambda)))
-    }
+    }*/
 
     /*fn mean_mle(y : DMatrixSlice<'_, f64>) -> f64 {
         assert!(y.ncols() == 1);
@@ -309,7 +310,7 @@ impl Likelihood<U1> for Poisson {
         Self::mean_mle(y)
     }*/
 
-    fn visit_factors<F>(&mut self, f : F) where F : Fn(&mut dyn Posterior) {
+    /*fn visit_factors<F>(&mut self, f : F) where F : Fn(&mut dyn Posterior) {
         match self.factor {
             PoissonFactor::Conjugate(ref mut b) => {
                 f(b);
@@ -321,7 +322,7 @@ impl Likelihood<U1> for Poisson {
             },
             _ => { }
         }
-    }
+    }*/
 
     /*fn factors_mut(&mut self) -> Factors {
         match self.factor {
@@ -340,6 +341,10 @@ impl Likelihood<U1> for Poisson {
 impl Estimator<Gamma> for Poisson {
 
     fn predict<'a>(&'a self, cond : Option<&'a Sample/*<'a>*/>) -> Box<dyn Sample /*<'a>*/ > {
+        unimplemented!()
+    }
+    
+    fn posterior<'a>(&'a self) -> Option<&'a Gamma> {
         unimplemented!()
     }
     
@@ -401,7 +406,7 @@ impl Default for Poisson {
             lambda : DVector::from_element(1, 0.5),
             eta : DVector::from_element(1, 0.0),
             factor : PoissonFactor::Empty,
-            eta_traj : None,
+            // eta_traj : None,
             sampler : Vec::new(),
             suf_lambda : None,
             log_part : DVector::from_element(1, (2.).ln()),

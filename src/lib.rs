@@ -41,9 +41,6 @@ pub mod model;
 /// Estimation algorithms
 pub mod fit;
 
-// #[cfg(feature="api")]
-pub mod api;
-
 // Foreign source code to interface with MKL, GSL and mcmclib.
 mod foreign;
 

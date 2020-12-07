@@ -4,7 +4,7 @@ use super::*;
 use serde::{Serialize, Deserialize};
 // use super::Gamma;
 use std::fmt::{self, Display};
-use crate::fit::sim::RandomWalk;
+use crate::fit::walk::Trajectory;
 use super::MultiNormal;
 use crate::fit::Estimator;
 
@@ -13,7 +13,7 @@ use crate::fit::Estimator;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VonMises {
     approx : Option<Box<MultiNormal>>,
-    rw : Option<RandomWalk>
+    traj : Option<Trajectory>
 }
 
 impl Distribution for VonMises
@@ -72,12 +72,21 @@ impl Posterior for VonMises {
         self.approx.as_ref().map(|apprx| apprx.as_ref())
     }
 
-    fn trajectory(&self) -> Option<&RandomWalk> {
-        self.rw.as_ref()
+    fn trajectory(&self) -> Option<&Trajectory> {
+        self.traj.as_ref()
     }
 
-    fn trajectory_mut(&mut self) -> Option<&mut RandomWalk> {
-        self.rw.as_mut()
+    fn trajectory_mut(&mut self) -> Option<&mut Trajectory> {
+        self.traj.as_mut()
+    }
+    
+    fn start_trajectory(&mut self, size : usize) {
+        self.traj = Some(Trajectory::new(size, self.view_parameter(true).nrows()));
+    }
+    
+    /// Finish the trajectory before its predicted end.
+    fn finish_trajectory(&mut self) {
+        self.traj.as_mut().unwrap().closed = true;
     }
 
 }

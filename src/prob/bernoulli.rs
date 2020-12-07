@@ -4,7 +4,7 @@ use super::*;
 // use serde::{Serialize, Deserialize};
 use rand_distr;
 use rand;
-use crate::fit::sim::*;
+use crate::fit::walk::*;
 // use std::ops::AddAssign;
 use std::default::Default;
 use std::fmt::{self, Display};
@@ -53,7 +53,7 @@ pub struct Bernoulli {
 
     factor : BernoulliFactor,
 
-    //eta_traj : Option<RandomWalk>,
+    //eta_traj : Option<Trajectory>,
 
     sampler : Vec<rand_distr::Bernoulli>,
 
@@ -223,7 +223,7 @@ impl ExponentialFamily<U1> for Bernoulli
 
 }
 
-impl Likelihood<U1> for Bernoulli {
+impl Likelihood for Bernoulli {
 
     fn factors_mut<'a>(&'a mut self) -> (Option<&'a mut dyn Posterior>, Option<&'a mut dyn Posterior>) {
         (super::univariate_factor(&mut self.factor), None)
@@ -235,7 +235,7 @@ impl Likelihood<U1> for Bernoulli {
         self
     }
     
-    fn observe<'a>(&'a mut self, sample : &'a dyn Sample<'a>)
+    fn observe(&mut self, sample : &dyn Sample) -> &mut Self
     {
         //self.obs = Some(super::observe_univariate(self.name.clone(), self.theta.len(), self.obs.take(), sample));
         let mut obs = self.obs.take().unwrap_or(DVector::zeros(self.theta.len()));
@@ -251,12 +251,13 @@ impl Likelihood<U1> for Bernoulli {
             }
         }
         self.obs = Some(obs);
+        self
     }
     
-    fn mle(y : DMatrixSlice<'_, f64>) -> Result<Self, anyhow::Error> {
+    /*fn mle(y : DMatrixSlice<'_, f64>) -> Result<Self, anyhow::Error> {
         let prop = y.sum() / y.nrows() as f64;
         Ok(Self::new(1, Some(prop)))
-    }
+    }*/
 
     /*fn mean_mle(y : DMatrixSlice<'_, f64>) -> f64 {
         assert!(y.ncols() == 1);
@@ -271,7 +272,7 @@ impl Likelihood<U1> for Bernoulli {
         m * (1. - m)
     }*/
 
-    fn visit_factors<F>(&mut self, f : F) where F : Fn(&mut dyn Posterior) {
+    /*fn visit_factors<F>(&mut self, f : F) where F : Fn(&mut dyn Posterior) {
         match self.factor {
             BernoulliFactor::Conjugate(ref mut b) => {
                 f(b);
@@ -283,7 +284,7 @@ impl Likelihood<U1> for Bernoulli {
             },
             _ => { }
         }
-    }
+    }*/
 
    /*fn factors_mut(&mut self) -> Factors {
         unimplemented!()
@@ -334,6 +335,10 @@ impl Likelihood<U1> for Bernoulli {
 impl Estimator<Beta> for Bernoulli {
 
     fn predict<'a>(&'a self, cond : Option<&'a Sample/*<'a>*/>) -> Box<dyn Sample /*<'a>*/> {
+        unimplemented!()
+    }
+    
+    fn posterior<'a>(&'a self) -> Option<&'a Beta> {
         unimplemented!()
     }
     
@@ -511,7 +516,7 @@ impl Into<serde_json::Value> for Bernoulli {
     }
 }*/
 
-/*impl RandomWalk for Bernoulli {
+/*impl Trajectory for Bernoulli {
 
     fn current<'a>(&'a self) -> Option<DVectorSlice<'a, f64>> {
         self.eta_traj.as_ref().and_then(|eta_traj| {

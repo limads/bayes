@@ -152,12 +152,12 @@ impl Histogram {
 /// to a mixture. Distributions can be through of as living in the continum of flexibility x tractability:
 /// <-- Flexibility         Tractability -->
 /// Histograms      Mixtures       Parametric (Expoential-family)
-pub struct SurfaceHistogram {
+pub struct JointHistogram {
     comm_domain : DVector<f64>,
     joint_prob : DMatrix<f64>,
 }
 
-impl SurfaceHistogram {
+impl JointHistogram {
 
     pub fn build(a : Histogram, b : Marginal) -> Self {
         /*let n = b.len();

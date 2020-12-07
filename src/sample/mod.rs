@@ -63,7 +63,7 @@ impl<'a> From<&'a [f64]> for Variable<'a> {
 /// (prior and hyperprior) nodes. For performance reasons (for example, you want your user to just feed
 /// column-oriented or row-oriented data) you can add trait bounds over rows and columns such as:
 /// fn my_estimator(s : Sample<Row=R,Column=C> where R : AsRef<f64> or Col : AsRef<f64>.
-pub trait Sample<'a>
+pub trait Sample
 // where
     // Self::Names : IntoIterator<Item=&'a str>,
     // Self::Row : IntoIterator<Item=&'a f64>,
@@ -88,11 +88,11 @@ pub trait Sample<'a>
     // Implementing both row and column assume a certain order for Self::Name.
     // fn row(&'a self, ix : usize) -> Option<Self::Row>;
 
-    fn variable(&'a self, name : &str) -> Variable<'a>;
+    fn variable<'a>(&'a self, name : &str) -> Variable<'a>;
 
 }
 
-impl<'a> Sample<'a> for HashMap<String, Vec<f64>> 
+impl Sample for HashMap<String, Vec<f64>> 
 //where
 //    Self : 'a
 {
@@ -116,7 +116,7 @@ impl<'a> Sample<'a> for HashMap<String, Vec<f64>>
         None
     }*/
 
-    fn variable(&'a self, name : &str) -> Variable<'a> {
+    fn variable<'a>(&'a self, name : &str) -> Variable<'a> {
         if let Some(col) = self.get(name) {
             Variable::from(col.as_ref())
         } else {
