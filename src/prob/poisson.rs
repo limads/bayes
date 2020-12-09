@@ -270,18 +270,21 @@ impl Conditional<Gamma> for Poisson {
 
 impl Likelihood for Poisson {
 
+    fn view_variables(&self) -> Option<Vec<String>> {
+        self.name.as_ref().map(|name| vec![name.clone()] )
+    }
+    
     fn factors_mut<'a>(&'a mut self) -> (Option<&'a mut dyn Posterior>, Option<&'a mut dyn Posterior>) {
         (super::univariate_factor(&mut self.factor), None)
     }
     
-    fn variables(&mut self, vars : &[&str]) -> &mut Self {
+    fn with_variables(&mut self, vars : &[&str]) -> &mut Self {
         assert!(vars.len() == 1);
         self.name = Some(vars[0].to_string());
         self
     }
     
-    fn observe(&mut self, sample : &dyn Sample) -> &mut Self
-    {
+    fn observe(&mut self, sample : &dyn Sample) {
         //self.obs = Some(super::observe_univariate(self.name.clone(), self.lambda.len(), self.obs.take(), sample));
         let mut obs = self.obs.take().unwrap_or(DVector::zeros(self.lambda.nrows()));
         if let Some(name) = &self.name {
@@ -292,7 +295,7 @@ impl Likelihood for Poisson {
             }
         }
         self.obs = Some(obs);
-        self
+        // self
     }
     
     /*fn mle(y : DMatrixSlice<'_, f64>) -> Result<Self, anyhow::Error> {
@@ -340,15 +343,16 @@ impl Likelihood for Poisson {
 
 impl Estimator<Gamma> for Poisson {
 
-    fn predict<'a>(&'a self, cond : Option<&'a Sample/*<'a>*/>) -> Box<dyn Sample /*<'a>*/ > {
-        unimplemented!()
-    }
+    //fn predict<'a>(&'a self, cond : Option<&'a Sample/*<'a>*/>) -> Box<dyn Sample /*<'a>*/ > {
+    //    unimplemented!()
+    //}
     
     fn posterior<'a>(&'a self) -> Option<&'a Gamma> {
         unimplemented!()
     }
     
-    fn fit<'a>(&'a mut self) -> Result<&'a Gamma, &'static str> {
+    fn fit<'a>(&'a mut self, sample : &'a dyn Sample) -> Result<&'a Gamma, &'static str> {
+        self.observe(sample);
         match self.factor {
             PoissonFactor::Conjugate(ref mut gamma) => {
                 let y = self.obs.clone().unwrap();

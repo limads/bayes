@@ -348,18 +348,21 @@ impl Posterior for Normal {
 
 impl Likelihood for Normal {
 
+    fn view_variables(&self) -> Option<Vec<String>> {
+        self.name.as_ref().map(|name| vec![name.clone()] )
+    }
+    
     fn factors_mut<'a>(&'a mut self) -> (Option<&'a mut dyn Posterior>, Option<&'a mut dyn Posterior>) {
         self.dyn_factors_mut()
     }
     
-    fn variables(&mut self, vars : &[&str]) -> &mut Self {
+    fn with_variables(&mut self, vars : &[&str]) -> &mut Self {
         assert!(vars.len() == 1);
         self.name = Some(vars[0].to_string());
         self
     }
     
-    fn observe(&mut self, sample : &dyn Sample) -> &mut Self
-    {
+    fn observe(&mut self, sample : &dyn Sample) {
         //self.obs = Some(super::observe_univariate(self.name.clone(), self.mu.len(), self.obs.take(), sample));
         let mut obs = self.obs.take().unwrap_or(DVector::zeros(self.mu.nrows()));
         if let Some(name) = &self.name {
@@ -370,7 +373,7 @@ impl Likelihood for Normal {
             }
         }
         self.obs = Some(obs);
-        self
+        // self
     }
     
     /*fn mean_mle(y : DMatrixSlice<'_, f64>) -> f64 {
@@ -480,15 +483,16 @@ impl Conditional<Gamma> for Normal {
 
 impl Estimator<Normal> for Normal {
 
-    fn predict<'a>(&'a self, cond : Option<&'a Sample/*<'a>*/>) -> Box<dyn Sample/*<'a>*/> {
-        unimplemented!()
-    }
+    //fn predict<'a>(&'a self, cond : Option<&'a Sample/*<'a>*/>) -> Box<dyn Sample/*<'a>*/> {
+    //    unimplemented!()
+    //}
     
     fn posterior<'a>(&'a self) -> Option<&'a Normal> {
         unimplemented!()
     }
     
-    fn fit<'a>(&'a mut self) -> Result<&'a Normal, &'static str> {
+    fn fit<'a>(&'a mut self, sample : &'a dyn Sample) -> Result<&'a Normal, &'static str> {
+        self.observe(sample);
         let prec1 = 1. / self.var()[0];
         match (&mut self.loc_factor, &mut self.scale_factor) {
             (Some(ref mut norm), Some(ref mut gamma)) => {

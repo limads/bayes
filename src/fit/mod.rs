@@ -38,22 +38,12 @@ pub trait Estimator<D>
     /// Runs the inference algorithm for the informed sample matrix,
     /// returning a reference to the modified model (from which
     /// the posterior information of interest can be retrieved).
-    fn fit<'a>(&'a mut self) -> Result<&'a D, &'static str>;
+    fn fit<'a>(&'a mut self, sample : &'a dyn Sample) -> Result<&'a D, &'static str>;
     
     /// If fit(.) has been called successfully at least once, returns the current state
     /// of the posterior distribution, whithout changing the algorithm state.
     fn posterior<'a>(&'a self) -> Option<&'a D>;
     
-    /// Predicts a new data point using the posterior calculated from  this algorithm (if any is available). 
-    /// Requires that self.fit(.) has been called successfully at least once. You can make predictions conditional 
-    /// on a new set of constant observations if you had fixed constants on the original model by passing Some(sample) to the
-    /// argument, in which case the new sample will have the same dimensionality; or you can make
-    /// the predictions based on the old fixed samples (if any) in which case the dimensionality of the
-    /// predictions will follow the same dimensionality of the input data. A prediction returns always a mean
-    /// (expected value) for all variables in the graph that were named (and are thus "likelihood" nodes, although
-    /// their role here is as a Predictive distribution) and are not in the cond vector (if informed). 
-    fn predict<'a>(&'a self, cond : Option<&'a Sample>) -> Box<dyn Sample>;
-
 }
 
 /*// Call the iteratively re-weighted least squares algorithm over random y (data).
@@ -197,7 +187,8 @@ fn logistic() {
 /*
 /// Generic function used for testing that the mean of the posterior resulting from estimator e
 /// converges to the bias vector informed by the user as the number of samples (collected by
-/// resampling the user-informed sample) grows.
+/// resampling the user-informed sample) grows. Biasedness is formally defined by
+/// E[t|theta] = theta asymptotically, where t is a statistic calculated from the data.
 pub fn bias<P, R, C>(e : impl Estimator<P>, sample : &dyn Sample<R,C>, bias : &[f64]) {
 
 }
@@ -209,6 +200,11 @@ pub fn variance<P, R, C>(e : impl Estimator<P>, sample : &dyn Sample<R, C>, vari
 
 }
 
+/// Generic function used to test if the mean of the posterior calculated by an an estimator E consistently approach
+/// a "true" value, defiend by a generative process informed by the user as the last argument.
+pub fn consistency<P, R, C>(e : impl Estimator<P>, sample : &dyn Sample<R, C>, true : impl Distribution) {
+
+} 
 */
 
 

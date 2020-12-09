@@ -8,6 +8,9 @@ pub mod csv;
 
 use rand;
 
+/// Variable iterator.
+pub type VarIter<'a, T> = Box<dyn Iterator<Item=&'a T> + 'a>;
+
 /// A variable type from a sample. Essentially, wraps one of all the possible
 /// iterators that can be used to retrieve data. Does not imply how the data
 /// is organized in memory, which is why it wraps a boxed dynamic iterator. Each
@@ -16,16 +19,16 @@ use rand;
 pub enum Variable<'a> {
 
     /// Real, unbounded quantities, usually read by Normal, Gamma or MultiNormal nodes
-    Real(Box<dyn Iterator<Item=&'a f64> + 'a>),
+    Real(VarIter<'a, f64>),
     
     /// Countable quantities (>=0), usually read by Poisson nodes
-    Count(Box<dyn Iterator<Item=&'a usize> + 'a>),
+    Count(VarIter<'a, usize>),
     
     /// Binary quantities, usually read by Bernoulli nodes
-    Binary(Box<dyn Iterator<Item=&'a bool> + 'a>),
+    Binary(VarIter<'a, bool>),
     
     /// Factor (named) nodes, usually read by Categorical nodes
-    Factor(Box<dyn Iterator<Item=&'a str> + 'a>),
+    Factor(VarIter<'a, &'a str>),
     
     /// Variable not found.
     Missing
@@ -55,7 +58,7 @@ impl<'a> From<&'a [f64]> for Variable<'a> {
 /// if the structure is not column-contiguous.
 ///
 /// The trait sample works both for column-ordered data or row-ordered data, which is why you have
-/// the liberty to define the types Row and Column. If your data is column-oriented, you can define 
+/// the freedom to define the types Row and Column. If your data is column-oriented, you can define 
 /// column as a cheap reference access to &[f64] and row as a copy to Vec<f64>. If your data is row-
 /// oriented, you can do the opposite. If your data is not memory-contiguous, you can define copy for both
 /// methods. Some algorithms will work better with different options on how to organize your data. Data is assumed

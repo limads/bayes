@@ -75,7 +75,7 @@ pub use vonmises::*;
 /// which facilitate their use as conditional expectations and/or to represent multivariate
 /// sampling and calculation of log-probabilities.
 pub trait Distribution
-    where Self : Debug + Display //+ Sized
+    where Self : Debug + Display
 {
 
     /// Returns the expected value of the distribution, which is a function of
@@ -577,24 +577,26 @@ impl<'a> Iterator for Factors<'a> {
 /// distribution.
 pub trait Likelihood
     where
-        Self : Distribution + Sized,
+        Self : Distribution //+ ?Sized,
         // C : Dim
 {
 
+    fn view_variables(&self) -> Option<Vec<String>>;
+    
     /// Bind a sequence of variable names to this distribution. This causes calls to
     /// Likelihood::observe to bind to the respective variable names for any Sample implementor.
-    fn variables(&mut self, vars : &[&str]) -> &mut Self;
+    fn with_variables(&mut self, vars : &[&str]) -> &mut Self where Self : Sized;
     
     /// Updates the full probabilistic graph from this likelihood node to all its
     /// parent factoring terms, binding any named likelihood nodes to the variable
     /// names found at sample. This incurs in copying the data from the sample implementor
     /// into a column-oriented data cache kept by each distribution separately.
-    fn observe(&mut self, sample : &dyn Sample) -> &mut Self;
+    fn observe(&mut self, sample : &dyn Sample);
     // where
     //    R : IntoIterator<Item=&'a f64>,
     //    V : IntoIterator<Item=&'a f64>;
     
-    /// General-purpose comparison of two fitted estimates, used for
+    /*/// General-purpose comparison of two fitted estimates, used for
     /// determining predictive accuracy, running cross-validation, etc.
     /// Comparisons can be made between two fitted models
     /// for purposes of hyperparameter tuning or model selection; between
@@ -605,7 +607,7 @@ pub trait Likelihood
         // where Self : Sized
     {
         BayesFactor::new(&self, &other)
-    }
+    }*/
 
     /*/// Here, we approximate the relative entropy, or KL-divergence
     /// E[log_p(x) - log_q(x)] by the average of a few data point pairs (y, x)
@@ -646,7 +648,11 @@ pub trait Likelihood
 
     /// Access this distribution factor at the informed index. An collection of factors
     /// cannot be returned here because it would violate mutable exclusivity.
+    /// Perhaps rename to prior_factors_mut()?
     fn factors_mut<'a>(&'a mut self) -> (Option<&'a mut dyn Posterior>, Option<&'a mut dyn Posterior>);
+    
+    // This would be nice if we could have Likelihood as trait objects.
+    // fn likelihood_factors_mut<'a>(&'a mut self) -> (Option<&'a mut dyn Posterior>, Option<&'a mut dyn Posterior>);)
     
     // fn search_factor<'a>(&'a self, name : &str) -> Option<&Posterior> {
     // }
@@ -711,24 +717,33 @@ pub trait Likelihood
 /// distribution and on the conditioning factors (prior or posteriors). All hand-built models are anchored
 /// at a top-level distribution that implements Both Preditive and Likelihood. To retrieve the Posterior
 /// predictions, the posterior object returned by your algorithm can also implement this trait. 
+/// The "prior predictive" is also known as marginal likelihood, and gives the probability of observing
+/// a data value by considering all variability of any priors it is conditioned over.
 pub trait Predictive {
 
-    /// Predicts a new sample, possibly modifying the current fixed variable state.
+    /// Predicts a new data point after marginalizing over parameter values. 
+    /// Requires that self.fit(.) has been called successfully at least once. You can make predictions conditional 
+    /// on a new set of constant observations if you had fixed constants on the original model by passing Some(sample) to the
+    /// argument, in which case the new sample will have the same dimensionality; or you can make
+    /// the predictions based on the old fixed samples (if any) in which case the dimensionality of the
+    /// predictions will follow the same dimensionality of the input data. A prediction returns always a mean
+    /// (expected value) for all variables in the graph that were named (and are thus "likelihood" nodes, although
+    /// their role here is as a Predictive distribution) and are not in the cond vector (if informed). 
     fn predict(&mut self, fixed : Option<&dyn Sample>) -> Box<dyn Sample>;
     
 }
 
 /// Used internally to sample all likelihood nodes together. The HashMap is then
 /// Boxed into dyn Sample before being sent to the user. 
-fn predict_from_likelihood<L>(
+pub(crate) fn predict_from_likelihood<L>(
     lik : &mut L, 
-    fixed : Option<&dyn Sample>,
-    names : &[&str]
+    fixed : Option<&dyn Sample>
 ) -> HashMap<String, Vec<f64>> 
 where
-    L : Likelihood
+    L : Likelihood + ?Sized
 {
-     if let Some(fix) = fixed {
+    let names = lik.view_variables().unwrap();
+    if let Some(fix) = fixed {
         lik.observe(fix);
     }
     let mut out : DMatrix<f64> = lik.sample();
@@ -844,7 +859,7 @@ pub trait Posterior
     fn iter_factors_mut<'a>(&'a mut self) -> FactorsMut<'a> 
         where Self: std::marker::Sized
     {
-        FactorsMut { curr : (Some(self), None), returned_curr : false }
+        FactorsMut { curr : (Some(self as &mut dyn Posterior), None), returned_curr : false }
     }
     
     /// Builds a predictive distribution from this Posterior by marginalization.

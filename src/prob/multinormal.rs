@@ -775,17 +775,20 @@ impl Posterior for MultiNormal {
 
 impl Likelihood for MultiNormal {
 
+    fn view_variables(&self) -> Option<Vec<String>> {
+        Some(self.names.clone())
+    }
+    
     fn factors_mut<'a>(&'a mut self) -> (Option<&'a mut dyn Posterior>, Option<&'a mut dyn Posterior>) {
         self.dyn_factors_mut()
     }
     
-    fn variables(&mut self, vars : &[&str]) -> &mut Self {
+    fn with_variables(&mut self, vars : &[&str]) -> &mut Self {
         self.names = vars.iter().map(|v| v.to_string()).collect();
         self
     }
     
-    fn observe(&mut self, sample : &dyn Sample) -> &mut Self
-    {
+    fn observe(&mut self, sample : &dyn Sample) {
         let mut obs = self.obs.take().unwrap_or(DMatrix::zeros(self.n, self.mu.len()));
         for (i, name) in self.names.iter().cloned().enumerate() {
             if let Variable::Real(col) = sample.variable(&name) {
@@ -794,7 +797,7 @@ impl Likelihood for MultiNormal {
                 }
             }
         }
-        self
+        // self
     }
     
     /*/// Returns the distribution with the parameters set to its
@@ -826,15 +829,16 @@ impl Likelihood for MultiNormal {
 
 impl Estimator<MultiNormal> for MultiNormal {
 
-    fn predict<'a>(&'a self, cond : Option<&'a Sample/*<'a>*/>) -> Box<dyn Sample/*<'a>*/> {
-        unimplemented!()
-    }
+    //fn predict<'a>(&'a self, cond : Option<&'a Sample/*<'a>*/>) -> Box<dyn Sample/*<'a>*/> {
+    //    unimplemented!()
+    //}
     
     fn posterior<'a>(&'a self) -> Option<&'a MultiNormal> {
         unimplemented!()
     }
     
-    fn fit<'a>(&'a mut self) -> Result<&'a MultiNormal, &'static str> {
+    fn fit<'a>(&'a mut self, sample : &'a dyn Sample) -> Result<&'a MultiNormal, &'static str> {
+        self.observe(sample);
         let y = self.obs.clone().unwrap();
         let n = y.nrows() as f64;
         match (&mut self.loc_factor, &mut self.scale_factor) {

@@ -23,7 +23,52 @@ pub type BernoulliFactor = UnivariateFactor<Beta>;
 /// The Bernoulli is the exponential-family distribution
 /// used as the likelihood for binary outcomes. Each realization is parametrized
 /// by a proportion parameter θ (0.0 ≥ θ ≥ 1.0), whose natural
-/// parameter transformation is the logit ln(θ / (1.0 - θ))
+/// parameter transformation is the logit ln(θ / (1.0 - θ)):
+///
+///<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+/// <semantics>
+///  <mrow>
+///   <mi>p</mi>
+///   <mrow>
+///    <mrow>
+///     <mo fence="true" stretchy="false">(</mo>
+///     <mrow>
+///      <mrow>
+///       <mi>y</mi>
+///       <mo stretchy="false">∣</mo>
+///       <mi>θ</mi>
+///      </mrow>
+///     </mrow>
+///     <mo fence="true" stretchy="false">)</mo>
+///    </mrow>
+///    <mo stretchy="false">=</mo>
+///    <msup>
+///     <mi>θ</mi>
+///     <mi>y</mi>
+///    </msup>
+///   </mrow>
+///   <msup>
+///    <mrow>
+///     <mo fence="true" stretchy="false">(</mo>
+///     <mrow>
+///      <mrow>
+///       <mn>1</mn>
+///       <mo stretchy="false">−</mo>
+///       <mi>θ</mi>
+///      </mrow>
+///     </mrow>
+///     <mo fence="true" stretchy="false">)</mo>
+///    </mrow>
+///    <mrow>
+///     <mn>1</mn>
+///     <mo stretchy="false">−</mo>
+///     <mi>y</mi>
+///    </mrow>
+///   </msup>
+///  </mrow>
+///  <annotation encoding="StarMath 5.0">p( y divides %theta ) = %theta^y ( 1 - %theta )^{ 1 - y }</annotation>
+/// </semantics>
+/// </math>
 ///
 /// # Example
 ///
@@ -225,18 +270,21 @@ impl ExponentialFamily<U1> for Bernoulli
 
 impl Likelihood for Bernoulli {
 
+    fn view_variables(&self) -> Option<Vec<String>> {
+        self.name.as_ref().map(|name| vec![name.clone()] )
+    }
+    
     fn factors_mut<'a>(&'a mut self) -> (Option<&'a mut dyn Posterior>, Option<&'a mut dyn Posterior>) {
         (super::univariate_factor(&mut self.factor), None)
     }
     
-    fn variables(&mut self, vars : &[&str]) -> &mut Self {
+    fn with_variables(&mut self, vars : &[&str]) -> &mut Self {
         assert!(vars.len() == 1);
         self.name = Some(vars[0].to_string());
         self
     }
     
-    fn observe(&mut self, sample : &dyn Sample) -> &mut Self
-    {
+    fn observe(&mut self, sample : &dyn Sample) {
         //self.obs = Some(super::observe_univariate(self.name.clone(), self.theta.len(), self.obs.take(), sample));
         let mut obs = self.obs.take().unwrap_or(DVector::zeros(self.theta.len()));
         if let Some(name) = &self.name {
@@ -251,7 +299,7 @@ impl Likelihood for Bernoulli {
             }
         }
         self.obs = Some(obs);
-        self
+        //self
     }
     
     /*fn mle(y : DMatrixSlice<'_, f64>) -> Result<Self, anyhow::Error> {
@@ -334,15 +382,16 @@ impl Likelihood for Bernoulli {
 
 impl Estimator<Beta> for Bernoulli {
 
-    fn predict<'a>(&'a self, cond : Option<&'a Sample/*<'a>*/>) -> Box<dyn Sample /*<'a>*/> {
-        unimplemented!()
-    }
+    //fn predict<'a>(&'a self, cond : Option<&'a Sample/*<'a>*/>) -> Box<dyn Sample /*<'a>*/> {
+    //    unimplemented!()
+    //}
     
     fn posterior<'a>(&'a self) -> Option<&'a Beta> {
         unimplemented!()
     }
     
-    fn fit<'a>(&'a mut self) -> Result<&'a Beta, &'static str> {
+    fn fit<'a>(&'a mut self, sample : &'a dyn Sample) -> Result<&'a Beta, &'static str> {
+        self.observe(sample);
         // assert!(y.ncols() == 1);
         // assert!(x.is_none());
         match self.factor {

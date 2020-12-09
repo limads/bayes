@@ -32,7 +32,7 @@ pub mod gsl;
 /// Data structures and generic traits to load and save data into/from dynamically-allocated matrices.
 pub mod sample;
 
-// Feature extraction traits, structures and algorithms.
+/// Feature extraction traits, structures and algorithms.
 pub mod feature;
 
 /// Probability models defined at runtime.

@@ -136,8 +136,8 @@ impl Likelihood for Decision {
 /// ```
 pub struct BayesFactor<'a, D, E>
     where
-        D : Distribution,
-        E : Distribution
+        D : Distribution + ?Sized,
+        E : Distribution + ?Sized
 {
 
     a : &'a D,
@@ -149,8 +149,8 @@ pub struct BayesFactor<'a, D, E>
 
 impl<'a, D,E> BayesFactor<'a, D, E>
     where
-        D : Distribution,
-        E : Distribution
+        D : Distribution + ?Sized,
+        E : Distribution + ?Sized
 {
 
     pub fn log_diff(&self, y : DMatrixSlice<'_, f64>, x : Option<DMatrixSlice<'_, f64>>) -> f64 {

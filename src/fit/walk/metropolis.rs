@@ -10,6 +10,7 @@ use crate::foreign::mcmc::distr_mcmc;
 use crate::fit::utils;
 use crate::sample::Sample;
 use std::fmt::{self, Display};
+use crate::prob;
 
 /// A non-parametric representation of a posterior distribution in terms of the sampling
 /// trajectory created by a random walk based algorithm, such as the Metropolis-Hastings.
@@ -23,7 +24,7 @@ pub struct RandomWalk {
     /// To retrieve the samples, we need to modify the parameter vector of model
     /// to make use of the sample_into API. But this does not impact the public API,
     /// which is why we use interior mutability here.
-    model : RefCell<Model>,
+    model : Model,
     
     weights : Option<Vec<usize>>
 }
@@ -43,7 +44,7 @@ impl Marginal<Histogram> for RandomWalk {
 impl Predictive for RandomWalk {
 
     fn predict(&mut self, fixed : Option<&dyn Sample>) -> Box<dyn Sample> {
-        unimplemented!()
+        Box::new(prob::predict_from_likelihood(self.model.as_mut(), fixed))
     }
 
 }
@@ -144,18 +145,19 @@ impl Metropolis {
 // (panic) at nightly (rustc 1.46.0-nightly (346aec9b0 2020-07-11))
 impl Estimator<RandomWalk> for Metropolis {
 
-    fn predict<'a>(&'a self, cond : Option<&'a Sample /*<'a>*/ >) -> Box<dyn Sample> {
-        unimplemented!()
-    }
+    // fn predict<'a>(&'a self, cond : Option<&'a Sample /*<'a>*/ >) -> Box<dyn Sample> {
+    //    unimplemented!()
+    // }
     
     fn posterior<'a>(&'a self) -> Option<&'a RandomWalk> {
         self.rw.as_ref()
     }
     
-    fn fit<'a>(&'a mut self) -> Result<&'a RandomWalk, &'static str> {
+    fn fit<'a>(&'a mut self, sample : &'a dyn Sample) -> Result<&'a RandomWalk, &'static str> {
+        self.model.as_mut().observe(sample);
         let (n, burn) = (self.n, self.burn);
         let mut param_len = 0;
-        let (post_left, post_right) = self.model.factors_mut();
+        let (post_left, post_right) = self.model.as_mut().factors_mut();
         if let Some(left) = post_left {
             param_len += utils::param_vec_length(left, param_len);
         }
@@ -186,12 +188,16 @@ impl Estimator<RandomWalk> for Metropolis {
 
         if sample_ok {
             let samples = out.transpose();
-            utils::set_external_trajectory(&mut self.model, &samples);
+            match self.model {
+                Model::MN(ref mut m) => utils::set_external_trajectory(m, &samples),
+                Model::Bern(ref mut b) => utils::set_external_trajectory(b, &samples),
+                _ => unimplemented!()
+            }
         } else {
             return Err("Sampling failed");
         }
         
-        self.rw = Some(RandomWalk{ model : RefCell::new(self.model.clone()), weights : None});
+        self.rw = Some(RandomWalk{ model : self.model.clone(), weights : None});
         Ok(self.rw.as_ref().unwrap())
     }
 

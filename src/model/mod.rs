@@ -169,6 +169,7 @@ impl Model {
 }
 
 /// Model implements Distribution by dispatching the calls to its variant
+/// TODO Make this AsRef<dyn Distribution>
 impl Distribution for Model
     where Self : Sized
 {
@@ -247,9 +248,17 @@ impl Distribution for Model
 
 }
 
-/// Model implements Likelihood by dispatching the calls to its variant
+/*/// Model implements Likelihood by dispatching the calls to its variant
 impl Likelihood for Model {
 
+    fn view_variables(&self) -> Option<Vec<String>> {
+        match self {
+            Model::MN(m) => m.view_variables(),
+            Model::Bern(b) => b.view_variables(),
+            _ => unimplemented!()
+        }
+    }
+    
     fn factors_mut<'a>(&'a mut self) -> (Option<&'a mut dyn Posterior>, Option<&'a mut dyn Posterior>) {
         match self {
             Model::MN(m) => m.factors_mut(),
@@ -258,10 +267,10 @@ impl Likelihood for Model {
         }
     }
     
-    fn variables(&mut self, vars : &[&str]) -> &mut Self {
+    fn with_variables(&mut self, vars : &[&str]) -> &mut Self {
         match self {
-            Model::MN(m) => { m.variables(vars); self }
-            Model::Bern(b) => { b.variables(vars); self }
+            Model::MN(m) => { m.with_variables(vars); self }
+            Model::Bern(b) => { b.with_variables(vars); self }
             _ => unimplemented!()
         }
     }
@@ -275,7 +284,7 @@ impl Likelihood for Model {
         unimplemented!()
     }
     
-}
+}*/
 
 impl<'a> From<&'a mut Model> for &'a mut dyn Distribution {
 
@@ -416,11 +425,10 @@ pub fn matrix_to_value(dmat : &DMatrix<f64>) -> Value {
     rows.into()
 }
 
-/*
 // Likelihood cannot be made into a object because it resuts &mut self at variables and has
 // the compare method.
-impl AsRef<dyn Likelihood> for Model {
-    fn as_ref(&self) -> &dyn Likelihood {
+impl<'a> AsRef<dyn Likelihood + 'a> for Model {
+    fn as_ref(&self) -> &(dyn Likelihood + 'a) {
         match &self {
             Model::MN(m) => m as &dyn Likelihood,
             Model::Bern(b) => b as &dyn Likelihood,
@@ -429,15 +437,15 @@ impl AsRef<dyn Likelihood> for Model {
     }
 }
 
-impl AsMut<dyn Likelihood> for Model {
-    fn as_mut(&mut self) -> &mut dyn Likelihood {
-        match &mut self {
+impl<'a> AsMut<dyn Likelihood + 'a> for Model {
+    fn as_mut(&mut self) -> &mut (dyn Likelihood + 'a) {
+        match self {
             Model::MN(m) => m as &mut dyn Likelihood,
             Model::Bern(b) => b as &mut dyn Likelihood,
             Model::Other => unimplemented!()
         }
     }
-}*/
+}
 
 pub fn parse_vector(val : &Value) -> Result<DVector<f64>, String> {
     match val {
