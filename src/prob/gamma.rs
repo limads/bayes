@@ -1,6 +1,5 @@
 use nalgebra::*;
 use super::*;
-use crate::gsl::gamma::*;
 use rand_distr; //::{ /*Distribution,*/ Gamma};
 use rand;
 use serde::{Serialize, Deserialize};
@@ -8,6 +7,9 @@ use serde::ser::{Serializer};
 use serde::de::Deserializer;
 use std::fmt::{self, Display};
 use crate::fit::walk::Trajectory;
+
+#[cfg(feature="gsl")]
+use crate::foreign::gsl::gamma::*;
 
 /// The Gamma is a distribution for inverse-scale or rate parameters. For a location parameter centered
 /// at alpha (shape), Gamma(alpha, beta) represents the random distribution of
@@ -55,16 +57,24 @@ impl Gamma {
     }
 
     pub fn gamma(y : f64) -> f64 {
-        //println!("Gamma({})={}", y, unsafe{ gsl_sf_gamma(y) });
-        unsafe{ gsl_sf_gamma(y) }
+        #[cfg(feature="gsl")]
+        return unsafe{ gsl_sf_gamma(y) };
+        
+        panic!("Use of the gamma/beta prior require gsl feature");
     }
 
     pub fn ln_gamma(y : f64) -> f64 {
-        unsafe{ gsl_sf_lngamma(y) }
+        #[cfg(feature="gsl")]
+        return unsafe{ gsl_sf_lngamma(y) };
+        
+        panic!("Use of the gamma/beta prior require gsl feature");
     }
 
     pub fn gamma_inv(y : f64) -> f64 {
-        unsafe{ gsl_sf_gammainv(y) }
+        #[cfg(feature="gsl")]
+        return unsafe{ gsl_sf_gammainv(y) };
+        
+        panic!("Use of the gamma/beta prior require gsl feature");
     }
 
 }

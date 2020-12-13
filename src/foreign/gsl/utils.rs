@@ -1,6 +1,6 @@
 use nalgebra::*;
 use nalgebra::storage::Storage;
-use crate::gsl::{block_double::gsl_block, vector_double::gsl_vector, matrix_double::gsl_matrix};
+use crate::foreign::gsl::{block_double::gsl_block, vector_double::gsl_vector, matrix_double::gsl_matrix};
 use std::slice;
 use std::ptr;
 use std::mem;

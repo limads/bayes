@@ -1,16 +1,16 @@
-/// Stochastic processes.
-pub mod markov;
+// Stochastic processes.
+// pub mod markov;
 
-/// Utilities for dealing with high-dimensional structured data.
+/// Utilities for dealing with structured high-dimensional data.
 pub mod dimension;
 
-/// Clustering algorithms, useful to classify unlabelled data.
+/// Clustering algorithms, useful to classify structured but unlabelled data.
 pub mod cluster;
 
-/// Structures to represent 1D signals and their frequency/scale transformations.
+/// Structures to represent unstructured 1D data (time series) and their frequency/scale transformations.
 pub mod signal;
 
-/// Structures to represent images and their frequency/scale transformations.
+/// Structures to represent unstructured 2D data (images) and their frequency/scale transformations.
 pub mod image;
 
 

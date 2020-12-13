@@ -11,9 +11,10 @@ use crate::sample::*;
 use std::slice;
 use either::Either;
 use std::iter;
+use std::collections::HashMap;
+
 /// Structure to represent one-dimensional empirical distributions non-parametrically (Work in progress).
 mod histogram;
-use std::collections::HashMap;
 
 pub use histogram::*;
 
@@ -155,6 +156,7 @@ pub trait Distribution
 
 }
 
+// Maybe move to bayes::Model, since this is related to model building?
 /// A probabilistic graph is linked by each element holding an owned Distribution
 /// to its immediate parent(s), which allows for fast and flexible
 /// ways to walk over the graph. But some compile-time constraints on which distributions
@@ -209,6 +211,7 @@ pub trait Conditional<D>
 
 }
 
+// Maybe move to bayes::model, since this is related to model building.
 /// Implemented by distributions which compose together to yield multivariate
 /// joint distributions. Implementors are Normal(Normal)->MultiNormal and
 /// MultiNormal(Normal)->MultiNormal for continuous variables; and Bernoulli->Bernoulli or
@@ -236,6 +239,13 @@ where
     fn joint(self, other : D, corr : Option<&[f64]>) -> Option<Self>;
 }
 
+// TODO maybe rename to 
+/*
+pub enum Condition<D> {
+    Deterministic(DMatrix<f64>),
+    Stochastic(D)
+}
+*/
 /// Univariate factors can either have a conjugate distribution
 /// factor (as all distribution implementors have) or a conditional
 /// expectation factor: The sampling and log-prob of the distribution
@@ -320,6 +330,8 @@ where D : Distribution
     (eta_s.component_mul(&y.slice((0, 0), (y.nrows(), 1))) - log_part).sum() + factor_lp
 }
 
+// TODO
+// maybe differentiate Exponential and ScaledExponential
 /// Generic trait shared by all exponential-family distributions. Encapsulate
 /// all expressions necessary to build a log-probability with respect to a
 /// sufficient statistic.

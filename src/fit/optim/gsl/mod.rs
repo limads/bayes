@@ -1,9 +1,9 @@
-use crate::gsl::multimin::*;
+use crate::foreign::gsl::multimin::*;
 use nalgebra::*;
-use crate::gsl::vector_double::*;
+use crate::foreign::gsl::vector_double::*;
 use std::ffi::c_void;
 use std::mem;
-use crate::gsl::utils::*;
+use crate::foreign::gsl::utils::*;
 
 // This module contains private structures that are useful both for the
 // LBFGS and Nelder-Mean minimizers. Those structures are used internally

@@ -1,10 +1,10 @@
-use crate::gsl::vector_double::*;
-use crate::gsl::matrix_double::*;
+use crate::foreign::gsl::vector_double::*;
+use crate::foreign::gsl::matrix_double::*;
 use std::mem::{self};
 // use std::ptr;
 use std::boxed::Box;
 use nalgebra::*;
-use crate::gsl::multifit_nlinear::*;
+use crate::foreign::gsl::multifit_nlinear::*;
 // use crate::gsl::utils::*;
 
 //use crate::gsl::errno::gsl_error;

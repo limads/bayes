@@ -7,4 +7,8 @@ pub mod gcem;
 /// C++to-Rut API for the mcmclib library
 pub mod mcmc;
 
+/// Auto-generated bindings to GSL (mostly for optimization and sampling).
+#[cfg(feature="gsl")]
+pub(crate) mod gsl;
+
 

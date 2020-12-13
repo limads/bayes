@@ -9,11 +9,11 @@ use std::path::Path;
 // git clone https://github.com/kthohr/gcem.git
 // git clone https://github.com/kthohr/mcmc
 
-fn link_gsl() {
+/*fn link_gsl() {
     println!("cargo:rustc-link-lib=gsl");
     println!("cargo:rustc-link-lib=gslcblas");
     println!("cargo:rustc-link-lib=m");
-}
+}*/
 
 fn compile_mcmclib() {
     cc::Build::new()
@@ -76,16 +76,35 @@ fn compile_gcem() {
     false
 }*/
 
-fn main() {
+fn try_link_mkl() {
+    if let Ok(_) = env::var("CARGO_FEATURE_MKL") {
+        println!("cargo:rustc-link-lib=mkl_intel_lp64");
+        println!("cargo:rustc-link-lib=mkl_intel_thread");
+        println!("cargo:rustc-link-lib=mkl_core");
+        println!("cargo:rustc-link-lib=pthread");
+        println!("cargo:rustc-link-lib=dl");
+        println!("cargo:rustc-link-lib=iomp5");
+    }
 
+}
+
+fn try_link_gsl() {
+    if let Ok(_) = env::var("CARGO_FEATURE_GSL") {
+        println!("cargo:rustc-link-lib=gsl");
+        println!("cargo:rustc-link-lib=gslcblas");
+        println!("cargo:rustc-link-lib=m");
+    }
+}
+
+fn main() {
     println!("cargo:rerun-if-changed=src/foreign/gcem/gcem.cpp");
     println!("cargo:rerun-if-changed=src/foreign/mcmc/mcmc.cpp");
     println!("cargo:rerun-if-changed=src/foreign/stats/stats.cpp");
-    
-    link_gsl();
+    try_link_gsl();
+    try_link_mkl();
     compile_mcmclib();
     compile_gcem();
-        
+    
     /*let dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     let build_folder = Path::new(&dir).join("target").join("debug").join("build");
     if !try_link_lib(build_folder, "mcmc") {
@@ -101,7 +120,6 @@ fn main() {
 
     // println!("cargo:rustc-link-search=native={}", Path::new(&dir).join("lib").join("mcmc").join("mcmclib").display());
     // println!("cargo:rustc-link-lib=mcmc");
-    
 }
 
 

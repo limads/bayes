@@ -5,7 +5,7 @@ use rand;
 use std::f64::consts::PI;
 use crate::fit::walk::*;
 use std::fmt::{self, Display};
-use crate::gsl::rand_utils::GslRng;
+// use crate::foreign::gsl::rand_utils::GslRng;
 use anyhow;
 use crate::fit::Estimator;
 
@@ -61,7 +61,7 @@ pub struct Normal {
 
     traj : Option<Trajectory>,
 
-    rng : GslRng,
+    // rng : GslRng,
     
     name : Option<String>,
     
@@ -91,12 +91,12 @@ impl Normal {
         let eta_traj = None;
         let log_part = mu.map(|e| e.powf(2.) / 2. );
         let rand_seed : f64 = rand::random();
-        let rng = GslRng::new(rand_seed as u64 * 32000);
+        // let rng = GslRng::new(rand_seed as u64 * 32000);
         let mut norm = Self{ 
             mu : mu.clone(), 
             scaled_mu : mu.clone(), 
             loc_factor, traj : None, 
-            rng,
+            // rng,
             eta_traj, 
             prec_suff : prec_suff.clone(), 
             scale_factor, 
@@ -295,15 +295,15 @@ impl Distribution for Normal
     }
 
     fn sample_into(&self, mut dst : DMatrixSliceMut<'_, f64>) {
-        assert!(dst.ncols() == 1);
+        // assert!(dst.ncols() == 1);
+        // for (i, m) in self.mu.iter().enumerate() {
+        //    dst[(i,0)] = self.rng.normal(*m, var.sqrt() );
+        // }
+        use rand::prelude::*;
         let var = self.var()[0];
-        /*use rand::prelude::*;
         for (i, m) in self.mu.iter().enumerate() {
             let n : f64 = rand::thread_rng().sample(rand_distr::StandardNormal);
-            dst[(i,0)] = var.sqrt() * n + m;
-        }*/
-        for (i, m) in self.mu.iter().enumerate() {
-            dst[(i,0)] = self.rng.normal(*m, var.sqrt() );
+            dst[(i,0)] = var.sqrt() * (n + m);
         }
     }
 

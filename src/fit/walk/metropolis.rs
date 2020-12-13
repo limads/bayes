@@ -188,6 +188,9 @@ impl Estimator<RandomWalk> for Metropolis {
 
         if sample_ok {
             let samples = out.transpose();
+            
+            // We can't use AsMut<dyn Likelihood> for model here because set_external_trajectory
+            // is a generic method that uses iter_factors_mut(.), which requires T : Sized
             match self.model {
                 Model::MN(ref mut m) => utils::set_external_trajectory(m, &samples),
                 Model::Bern(ref mut b) => utils::set_external_trajectory(b, &samples),

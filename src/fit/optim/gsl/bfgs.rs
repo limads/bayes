@@ -1,8 +1,8 @@
-use crate::gsl::multimin::*;
+use crate::foreign::gsl::multimin::*;
 use nalgebra::*;
 use std::ffi::c_void;
 use std::mem;
-use crate::gsl::utils::*;
+use crate::foreign::gsl::utils::*;
 use super::*;
 
 unsafe extern "C" fn gradient<T : Sized + Clone>(

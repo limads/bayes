@@ -1,7 +1,6 @@
 use nalgebra::*;
 use crate::prob::*;
 use super::*;
-use crate::fit::optim::*;
 use crate::sample::Sample;
 
 /// Utilities to build inference algorithms.
@@ -9,6 +8,7 @@ pub mod utils;
 
 /// Algorithm for approximating posteriors with multivariate normals
 /// (Expectation Maximization; work in progress).
+#[cfg(feature="gsl")]
 pub mod optim;
 
 /// Full posterior estimation via random walk simulation (Metropolis-Hastings algorithm)
@@ -19,6 +19,9 @@ pub mod walk;
 /// Those algorithms can be either treated as estimator in themselves
 /// or be used as building block for more complex optimization or sampling strategies. 
 pub mod linear;
+
+// Online filtering algorithms
+// pub mod filter
 
 /// Trait shared by all inference algorithms, parametrized by the resulting posterior distribution. 
 /// You might wish to implement special-purpose estimators that return an exact type of distribution

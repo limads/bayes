@@ -1,6 +1,6 @@
-use crate::gsl::multimin::*;
+use crate::foreign::gsl::multimin::*;
 use nalgebra::*;
-use crate::gsl::utils::*;
+use crate::foreign::gsl::utils::*;
 use super::*;
 
 unsafe fn fetch_data_from_minimizer(

@@ -26,9 +26,6 @@ pub mod prob;
 // Auto-generated bindings to Intel MKL (mostly for basis transformation).
 // mod mkl;
 
-/// Auto-generated bindings to GSL (mostly for optimization and sampling).
-pub mod gsl;
-
 /// Data structures and generic traits to load and save data into/from dynamically-allocated matrices.
 pub mod sample;
 

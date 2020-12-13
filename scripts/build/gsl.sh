@@ -15,7 +15,7 @@ bindgen /usr/include/gsl/gsl_vector_double.h -o src/gsl/vector_double_src.rs \
     --no-recursive-whitelist \
     --whitelist-type "gsl_vector.*|_gsl.*" --whitelist-function "gsl.*"
 rustfmt src/gsl/vector_double_src.rs --force
-sed '1s;^;use crate::gsl::block_double::*\;\n\n;' src/gsl/vector_double_src.rs > src/gsl/vector_double.rs
+sed '1s;^;use crate::foreign::gsl::block_double::*\;\n\n;' src/gsl/vector_double_src.rs > src/gsl/vector_double.rs
 rm src/gsl/vector_double_src.rs
 
 bindgen /usr/include/gsl/gsl_matrix_double.h -o src/gsl/matrix_double_src.rs \
@@ -23,14 +23,14 @@ bindgen /usr/include/gsl/gsl_matrix_double.h -o src/gsl/matrix_double_src.rs \
     --no-recursive-whitelist \
     --whitelist-type "gsl_matrix.*|_gsl.*" --whitelist-function "gsl.*"
 rustfmt src/gsl/matrix_double_src.rs --force
-sed '1s;^;use crate::gsl::block_double::*\;\nuse crate::gsl::vector_double::*\;\n\n;' src/gsl/matrix_double_src.rs > src/gsl/matrix_double.rs
+sed '1s;^;use crate::foreign::gsl::block_double::*\;\nuse crate::foreign::gsl::vector_double::*\;\n\n;' src/gsl/matrix_double_src.rs > src/gsl/matrix_double.rs
 rm src/gsl/matrix_double_src.rs
 
 bindgen /usr/include/gsl/gsl_multifit.h -o src/gsl/multifit.rs \
     --no-layout-tests --no-recursive-whitelist --no-rustfmt-bindings \
     --whitelist-type "size_t|gsl_multifit.*" --whitelist-function "gsl_multifit.*"
 rustfmt src/gsl/multifit.rs --force
-sed -i '1s;^;use crate::gsl::vector_double::*\;\nuse crate::gsl::matrix_double::*\;\nuse crate::gsl::block_double::*\;\n\n;' src/gsl/multifit.rs
+sed -i '1s;^;use crate::foreign::gsl::vector_double::*\;\nuse crate::foreign::gsl::matrix_double::*\;\nuse crate::foreign::gsl::block_double::*\;\n\n;' src/gsl/multifit.rs
 
 # The GslMatrix/GslVectors should be erased after bindings are generated, and re-imported on the
 # generated bindgen sources from gsl_multifit.rs so Rust recognizes them as the same type.
@@ -40,7 +40,7 @@ bindgen /usr/include/gsl/gsl_multifit_nlinear.h -o src/gsl/multifit_nlinear.rs \
 	--whitelist-function "gsl_multifit_nlinear.*" \
 	--whitelist-var "gsl_multifit_nlinear.*"
 rustfmt src/gsl/multifit_nlinear.rs --force
-sed -i '1s;^;use crate::gsl::vector_double::*\;\nuse crate::gsl::matrix_double::*\;\nuse crate::gsl::block_double::*\;\n\n;' src/gsl/multifit_nlinear.rs
+sed -i '1s;^;use crate::foreign::gsl::vector_double::*\;\nuse crate::foreign::gsl::matrix_double::*\;\nuse crate::foreign::gsl::block_double::*\;\n\n;' src/gsl/multifit_nlinear.rs
 
 bindgen /usr/include/gsl/gsl_rng.h -o src/gsl/rng.rs \
 	--no-rustfmt-bindings --no-layout-tests \
@@ -55,7 +55,7 @@ bindgen /usr/include/gsl/gsl_randist.h -o src/gsl/randist.rs \
 	--no-recursive-whitelist \
 	--whitelist-type "size_t.*|gsl_ran.*|gsl_rng.*" --whitelist-function "gsl_ran|gsl_cdf.*"
 rustfmt src/gsl/randist.rs --force
-sed -i '1s;^;use crate::gsl::vector_double::*\;\nuse crate::gsl::matrix_double::*\;\nuse crate::gsl::block_double::*\;use crate::gsl::rng;\n\n;' src/gsl/randist.rs
+sed -i '1s;^;use crate::foreign::gsl::vector_double::*\;\nuse crate::foreign::gsl::matrix_double::*\;\nuse crate::foreign::gsl::block_double::*\;use crate::foreign::gsl::rng;\n\n;' src/gsl/randist.rs
 #use crate::gsl::vector_double::*;
 #use crate::gsl::matrix_double::*;
 #use crate::gsl::block_double::*;
@@ -76,7 +76,7 @@ bindgen /usr/include/gsl/gsl_multimin.h -o src/gsl/multimin.rs \
 	--whitelist-function "gsl_multimin.*" \
 	--whitelist-var "gsl_multimin.*"
 rustfmt src/gsl/multimin.rs --force
-sed -i '1s;^;use crate::gsl::vector_double::*\;\nuse crate::gsl::matrix_double::*\;\nuse crate::gsl::block_double::*\;\n\n;' src/gsl/multimin.rs
+sed -i '1s;^;use crate::foreign::gsl::vector_double::*\;\nuse crate::foreign::gsl::matrix_double::*\;\nuse crate::foreign::gsl::block_double::*\;\n\n;' src/gsl/multimin.rs
 
 bindgen /usr/include/gsl/gsl_bspline.h -o src/gsl/bspline_src.rs \
     --no-layout-tests --no-derive-copy --no-derive-debug --no-rustfmt-bindings \
@@ -85,7 +85,7 @@ bindgen /usr/include/gsl/gsl_bspline.h -o src/gsl/bspline_src.rs \
     --whitelist-function "gsl_bspline.*" \
     --whitelist-var "gsl_bspline.*"
 rustfmt src/gsl/bspline_src.rs --force
-sed '1s;^;use crate::gsl::vector_double::*\;\n\n;' src/gsl/bspline_src.rs > src/gsl/bpsline.rs
+sed '1s;^;use crate::foreign::gsl::vector_double::*\;\n\n;' src/gsl/bspline_src.rs > src/gsl/bpsline.rs
 rm src/gsl/bspline_src.rs
 
 bindgen /usr/include/gsl/gsl_sf_gamma.h -o src/gsl/gamma.rs \

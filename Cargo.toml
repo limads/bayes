@@ -54,8 +54,9 @@ cc = "1.0"
 # To build with pgext, use
 # RUSTFLAGS="-C link-arg=-undefineddynamic_lookup" PG_INCLUDE_PATH=/usr/include/postgresql/11/server cargo build --features pgext
 [features]
-# mkl=[]
+mkl=[]
 pgext=[]
+gsl=[]
 # api=[]
 # sql=[]
 

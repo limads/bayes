@@ -1,14 +1,13 @@
 use nalgebra::*;
-use bayes::gsl::randist::*;
-use bayes::gsl::vector_double::*;
-use bayes::gsl::matrix_double::*;
-use bayes::gsl::utils::*;
+use bayes::foreign::gsl::randist::*;
+use bayes::foreign::gsl::vector_double::*;
+use bayes::foreign::gsl::matrix_double::*;
+use bayes::foreign::gsl::utils::*;
 use bayes::distr::*;
 use bayes::inference::sim::Histogram;
 use bayes::distr::multinormal;
-// use bayes::io::{Sequence, Surface};
+
 use rand;
-//use crate::utils;
 
 const EPS : f64 = 10E-8;
 
@@ -60,9 +59,6 @@ fn beta() {
                 let gsl_prob = gsl_ran_beta_pdf(theta[(i,0)], *a, *b);
                 let beta = Beta::new(*a as usize, *b as usize);
                 let bayes_prob = beta.prob(theta.slice((i,0), (1,1)), None);
-                //println!("Gsl prob: {}", gsl_prob);
-                //println!("Bayes prob: {}", bayes_prob);
-                //println!("a: {}; b: {}; theta: {}", a, b, theta[(i,0)]);
                 assert!( (gsl_prob -  bayes_prob).abs() < EPS);
             }
         }
