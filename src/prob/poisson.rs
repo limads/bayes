@@ -56,7 +56,9 @@ pub struct Poisson {
     
     name : Option<String>,
     
-    obs : Option<DVector<f64>>
+    obs : Option<DVector<f64>>,
+    
+    n : usize
 
 }
 
@@ -67,6 +69,7 @@ impl Poisson {
             assert!(l > 0.0);
         }
         let mut p : Poisson = Default::default();
+        p.n = n;
         p.log_part = DVector::zeros(n);
         let l = DVector::from_element(n, lambda.unwrap_or(1.));
         p.set_parameter(l.rows(0, l.nrows()), false);
@@ -286,11 +289,13 @@ impl Likelihood for Poisson {
     
     fn observe(&mut self, sample : &dyn Sample) {
         //self.obs = Some(super::observe_univariate(self.name.clone(), self.lambda.len(), self.obs.take(), sample));
+        self.n = 0;
         let mut obs = self.obs.take().unwrap_or(DVector::zeros(self.lambda.nrows()));
         if let Some(name) = &self.name {
             if let Variable::Count(col) = sample.variable(&name) {
                 for (tgt, src) in obs.iter_mut().zip(col) {
                     *tgt = *src as f64;
+                    self.n += 1;
                 }
             }
         }
@@ -415,7 +420,8 @@ impl Default for Poisson {
             suf_lambda : None,
             log_part : DVector::from_element(1, (2.).ln()),
             obs : None,
-            name : None
+            name : None,
+            n : 0
         }
     }
 

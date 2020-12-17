@@ -15,6 +15,7 @@
 
 // #![feature(vec_into_raw_parts)]
 // #![feature(extern_types)]
+// #![feature(is_sorted)]
 
 #![doc(html_logo_url = "https://raw.githubusercontent.com/limads/bayes/master/assets/bayes-logo.png")]
 

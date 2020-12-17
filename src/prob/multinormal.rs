@@ -719,8 +719,39 @@ impl Distribution for MultiNormal {
         lp + loc_lp + scale_lp
     }
 
-    fn sample_into(&self, _dst : DMatrixSliceMut<'_, f64>) {
-        unimplemented!()
+    fn sample_into(&self, mut dst : DMatrixSliceMut<'_, f64>) {
+        use rand::prelude::*;
+        
+        if dst.nrows() != self.n {
+            let dst_dim = dst.shape();
+            let distr_dim = (self.n, self.mu.nrows());
+            panic!("Error (sample_into): destination has dimension {:?} but distribution requires {:?}", dst_dim, distr_dim);
+        }
+        
+        // Populate destination with independent standard normal draws
+        for i in 0..self.n {
+            for j in 0..self.mu.nrows() {
+                dst[(i, j)] = rand::thread_rng().sample(rand_distr::StandardNormal);
+            }
+        }
+        
+        // TODO add field cached_cov_l : Option<RefCell<DMatrix<f64>>> to avoid this computation.
+        let sigma_lu = LU::new(self.sigma.clone());
+        let sigma_low = sigma_lu.l();
+        
+        let mut row_t = DVector::zeros(self.mu.nrows());
+        let mut scaled_row = DVector::zeros(self.mu.nrows());
+        
+        for mut row in dst.row_iter_mut() {
+            row.transpose_to(&mut row_t);
+            
+            // Offset samples by mu
+            row_t += &self.mu;
+            
+            // Scale samples by lower Cholesky factor of covariance matrix (matrix square root)
+            sigma_low.mul_to(&row_t, &mut scaled_row);
+            row.copy_from_slice(scaled_row.as_slice());
+        }
     }
 
     //fn observations(&self) -> Option<&DMatrix<f64>> {
@@ -790,14 +821,16 @@ impl Likelihood for MultiNormal {
     
     fn observe(&mut self, sample : &dyn Sample) {
         let mut obs = self.obs.take().unwrap_or(DMatrix::zeros(self.n, self.mu.len()));
+        self.n = 0;
         for (i, name) in self.names.iter().cloned().enumerate() {
             if let Variable::Real(col) = sample.variable(&name) {
                 for (tgt, src) in obs.column_mut(i).iter_mut().zip(col) {
                     *tgt = *src;
+                    self.n += 1;
                 }
             }
         }
-        // self
+        self.obs = Some(obs);
     }
     
     /*/// Returns the distribution with the parameters set to its

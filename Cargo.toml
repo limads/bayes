@@ -15,7 +15,7 @@ description = "Composable abstractions to build probabilistic models and inferen
 [lib]
 crate-type = ["staticlib", "rlib", "dylib"]
 # crate-type = ["dylib"]
-	
+
 # [[bin]]
 # path="src/cli/main.rs"
 # name="bayes"
@@ -55,8 +55,8 @@ cc = "1.0"
 # RUSTFLAGS="-C link-arg=-undefineddynamic_lookup" PG_INCLUDE_PATH=/usr/include/postgresql/11/server cargo build --features pgext
 [features]
 mkl=[]
-pgext=[]
 gsl=[]
+# pgext=[]
 # api=[]
 # sql=[]
 

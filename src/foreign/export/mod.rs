@@ -11,6 +11,6 @@ use std::panic::catch_unwind;
 pub mod clang;
 
 // PostgreSQL server-side functions. WIP.
-#[cfg(feature="pgext")]
-pub mod postgres;
+// #[cfg(feature="pgext")]
+// pub mod postgres;
 

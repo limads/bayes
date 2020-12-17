@@ -113,7 +113,9 @@ pub struct Bernoulli {
 
     obs : Option<DVector<f64>>,
     
-    name : Option<String>
+    name : Option<String>,
+    
+    n : usize
 
 }
 
@@ -129,6 +131,7 @@ impl Bernoulli {
             assert!(t > 0.0 && t < 1.0);
         }
         let mut bern : Bernoulli = Default::default();
+        bern.n = n;
         bern.log_part = DVector::zeros(n);
         let theta = DVector::from_element(n, theta.unwrap_or(0.5));
         bern.set_parameter(theta.rows(0,theta.nrows()), false);
@@ -287,6 +290,7 @@ impl Likelihood for Bernoulli {
     fn observe(&mut self, sample : &dyn Sample) {
         //self.obs = Some(super::observe_univariate(self.name.clone(), self.theta.len(), self.obs.take(), sample));
         let mut obs = self.obs.take().unwrap_or(DVector::zeros(self.theta.len()));
+        self.n = 0;
         if let Some(name) = &self.name {
             if let Variable::Binary(col) = sample.variable(&name) {
                 for (tgt, src) in obs.iter_mut().zip(col) {
@@ -295,6 +299,7 @@ impl Likelihood for Bernoulli {
                     } else {
                         *tgt = 0.0;
                     }
+                    self.n += 1;
                 }
             }
         }
@@ -612,7 +617,8 @@ impl Default for Bernoulli {
             log_part : DVector::from_element(1, (2.).ln()),
             suf_theta : None,
             obs : None,
-            name : None
+            name : None,
+            n : 0
         }
     }
 

@@ -3,7 +3,7 @@ use std::iter::FromIterator;
 use std::collections::HashMap;
 use std::cmp::Eq;
 use std::hash::Hash;
-
+use ::csv::{Reader, StringRecord};
 pub mod csv;
 
 use rand;
@@ -128,6 +128,22 @@ impl Sample for HashMap<String, Vec<f64>>
     }
     
 }
+
+/*/// Read variables from a packed string record container, assuming the first record contains
+/// variable names. 
+impl Sample for &[StringRecord] {
+
+    fn variable<'a>(&'a self, name : &str) -> Variable<'a> {    
+        if let Some(ix) = self.iter().position(|rec| rec == Ok(name) ) {
+        
+        }
+        if let Some(col) = self.get(name) {
+            Variable::from(col.as_ref())
+        } else {
+            Variable::Missing
+        }
+    }
+}*/
 
 /*/// If you want to use bayes with your custom type T (for a type-safe alternative to HashMap<S,Ve<f64>>, 
 /// you just have to implement this trait, and Vec<T> : Sample will be satisfied automatically. This implementation

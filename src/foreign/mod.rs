@@ -11,4 +11,6 @@ pub mod mcmc;
 #[cfg(feature="gsl")]
 pub(crate) mod gsl;
 
+#[cfg(feature="mkl")]
+pub(crate) mod mkl;
 

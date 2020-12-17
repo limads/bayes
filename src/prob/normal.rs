@@ -65,7 +65,9 @@ pub struct Normal {
     
     name : Option<String>,
     
-    obs : Option<DVector<f64>>
+    obs : Option<DVector<f64>>,
+    
+    n : usize
 
     // When updating the scale, also update this as
     // the second element to the sufficient statistic vector
@@ -103,7 +105,8 @@ impl Normal {
             log_part, 
             minus_half_prec : -prec_suff[1] / 2.,
             name : None,
-            obs : None
+            obs : None,
+            n
         };
         norm.set_var(var);
         norm.set_parameter(mu.rows(0, mu.nrows()), false);
@@ -301,9 +304,10 @@ impl Distribution for Normal
         // }
         use rand::prelude::*;
         let var = self.var()[0];
+        let sd = var.sqrt();
         for (i, m) in self.mu.iter().enumerate() {
             let n : f64 = rand::thread_rng().sample(rand_distr::StandardNormal);
-            dst[(i,0)] = var.sqrt() * (n + m);
+            dst[(i,0)] = sd * (n + m);
         }
     }
 
@@ -364,11 +368,13 @@ impl Likelihood for Normal {
     
     fn observe(&mut self, sample : &dyn Sample) {
         //self.obs = Some(super::observe_univariate(self.name.clone(), self.mu.len(), self.obs.take(), sample));
+        self.n = 0;
         let mut obs = self.obs.take().unwrap_or(DVector::zeros(self.mu.nrows()));
         if let Some(name) = &self.name {
             if let Variable::Real(col) = sample.variable(&name) {
                 for (tgt, src) in obs.iter_mut().zip(col) {
                     *tgt = *src;
+                    self.n += 1;
                 }
             }
         }
