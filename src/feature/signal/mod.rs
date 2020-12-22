@@ -3,7 +3,7 @@ use nalgebra::storage::*;
 
 pub mod sampling;
 
-pub mod ops;
+// pub mod ops;
 
 use sampling::*;
 

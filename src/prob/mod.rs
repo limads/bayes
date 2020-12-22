@@ -4,7 +4,7 @@ use std::fmt::Debug;
 use std::ops::AddAssign;
 use crate::model::decision::BayesFactor;
 use std::fmt::Display;
-use crate::fit::walk::Trajectory;
+use crate::fit::markov::Trajectory;
 use anyhow;
 use thiserror::Error;
 use crate::sample::*;
@@ -722,6 +722,13 @@ pub trait Likelihood
     // pub fn iter_sisters() -
 }
 
+/*
+TODO: Perhaps change trait to:
+fn predict(&'a mut self) -> &'a dyn Sample;
+fn view_predictions(&'a self) -> Option<&'a dyn Sample>;
+Which will avoid a heap allocation when making new predicitons (can just re-use the 
+data buffer).
+*/ 
 /// The predictive distribution is the interfacing distribution of a probabilitic graph.
 /// It is called a "prior predictive" before inference; and "posterior predictive" after fitting.
 /// All distributions can generate samples by returning a matrix of values; but a predictive distribution
@@ -741,7 +748,9 @@ pub trait Predictive {
     /// predictions will follow the same dimensionality of the input data. A prediction returns always a mean
     /// (expected value) for all variables in the graph that were named (and are thus "likelihood" nodes, although
     /// their role here is as a Predictive distribution) and are not in the cond vector (if informed). 
-    fn predict(&mut self, fixed : Option<&dyn Sample>) -> Box<dyn Sample>;
+    fn predict<'a>(&'a mut self, fixed : Option<&dyn Sample>) -> &'a dyn Sample;
+    
+    fn view_prediction<'a>(&'a self) -> Option<&'a dyn Sample>;
     
 }
 

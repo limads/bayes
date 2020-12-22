@@ -4,7 +4,7 @@ use super::*;
 // use serde::{Serialize, Deserialize};
 use rand_distr;
 use rand;
-use crate::fit::walk::*;
+use crate::fit::markov::*;
 // use std::ops::AddAssign;
 use std::default::Default;
 use std::fmt::{self, Display};
@@ -391,7 +391,11 @@ impl Estimator<Beta> for Bernoulli {
     //    unimplemented!()
     //}
     
-    fn posterior<'a>(&'a self) -> Option<&'a Beta> {
+    fn take_posterior(self) -> Option<Beta> {
+        unimplemented!()
+    }
+    
+    fn view_posterior<'a>(&'a self) -> Option<&'a Beta> {
         unimplemented!()
     }
     

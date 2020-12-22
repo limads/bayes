@@ -4,7 +4,7 @@ use super::*;
 use serde::{Serialize, Deserialize};
 // use super::Gamma;
 use std::fmt::{self, Display};
-use crate::fit::walk::Trajectory;
+use crate::fit::markov::Trajectory;
 use super::MultiNormal;
 use crate::fit::Estimator;
 

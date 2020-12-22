@@ -13,15 +13,18 @@ pub mod optim;
 
 /// Full posterior estimation via random walk simulation (Metropolis-Hastings algorithm)
 /// and related non-parametric distribution representation (work in progress).
-pub mod walk;
+pub mod markov;
 
 /// Linear estimation methods (Least squares and iteratively-reweighted least squares).
 /// Those algorithms can be either treated as estimator in themselves
 /// or be used as building block for more complex optimization or sampling strategies. 
 pub mod linear;
 
-// Online filtering algorithms
-// pub mod filter
+// Online filtering algorithms - Kalman and Particle
+// pub mod filter;
+
+// Approximate inference methods - Laplace
+// pub mod approx;
 
 /// Trait shared by all inference algorithms, parametrized by the resulting posterior distribution. 
 /// You might wish to implement special-purpose estimators that return an exact type of distribution
@@ -45,7 +48,9 @@ pub trait Estimator<D>
     
     /// If fit(.) has been called successfully at least once, returns the current state
     /// of the posterior distribution, whithout changing the algorithm state.
-    fn posterior<'a>(&'a self) -> Option<&'a D>;
+    fn view_posterior<'a>(&'a self) -> Option<&'a D>;
+    
+    fn take_posterior(self) -> Option<D>;
     
 }
 

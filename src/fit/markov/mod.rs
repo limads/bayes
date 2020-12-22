@@ -165,4 +165,20 @@ pub trait RandomWalk
 
 }*/
 
+/* Sample from d and apply the transformation f to the output results, in order to estimate
+the quantity f(d) via the Monte-Carlo method. out is assumed to be of dimension m*n where
+m is the dimensionality of the distribution and n is the number of samples to be taken.
+fn simulate(d : &dyn Distribution, f : Fn(&[f64], &mut [f64]), out : &mut DMatrix<f64>) {
+    let distr_dim = d.view_parameter().nrows();
+    let n_draws = out.len() / distr_dim;
+    assert!(out.nrows() % n_draws == 0);
+    for i in 0..n_draws {
+        let out_slice = out.slice_mut((i*distr_dim, 0), (distr_dim, distr_dim));
+        d.sample_into(out_slice);
+        for row in out_slice {
+            f(row, row);
+        }
+    }
+}*/
+
 

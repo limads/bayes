@@ -3,7 +3,7 @@ use crate::prob::gamma::Gamma;
 use rand_distr;
 use rand;
 use std::f64::consts::PI;
-use crate::fit::walk::*;
+use crate::fit::markov::*;
 use std::fmt::{self, Display};
 // use crate::foreign::gsl::rand_utils::GslRng;
 use anyhow;
@@ -493,7 +493,11 @@ impl Estimator<Normal> for Normal {
     //    unimplemented!()
     //}
     
-    fn posterior<'a>(&'a self) -> Option<&'a Normal> {
+    fn take_posterior(self) -> Option<Normal> {
+        unimplemented!()
+    }
+    
+    fn view_posterior<'a>(&'a self) -> Option<&'a Normal> {
         unimplemented!()
     }
     

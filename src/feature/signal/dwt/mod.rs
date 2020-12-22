@@ -2,7 +2,6 @@ use nalgebra::*;
 use iter::*;
 use nalgebra::storage::*;
 use gsl::*;
-use crate::feature::signal::ops::*;
 use crate::feature::signal::*;
 
 #[derive(Clone)]
@@ -18,11 +17,12 @@ pub enum Basis {
 }
 
 // Utilities for iterating over the levels of a wavelet transform.
-// pub mod iter;
+pub mod iter;
 
 /// Wrappers over GSL wavelet routines.
 pub (crate) mod gsl;
 
+/// Wavelet transform.
 pub struct Wavelet {
     plan : DWTPlan
 }
@@ -32,9 +32,118 @@ impl Wavelet {
     pub fn new(basis : Basis, sz : usize) -> Result<Self, &'static str> {
         Ok(Self { plan : DWTPlan::new(basis, (sz, 1))? })
     }
+    
+    pub fn forward_mut(&self, src : &Signal<f64>, dst : &mut Pyramid<f64>) {
+        self.plan.apply_forward(src.as_ref(), dst.as_mut())
+            .map_err(|e| panic!("{}", e) );
+    }
+    
+    pub fn forward(&self, src : &Signal<f64>) -> Pyramid<f64> {
+        let mut dst = Pyramid::new_constant(self.plan.shape().0, 0.0);
+        self.forward_mut(src, &mut dst);
+        dst
+    }
+    
+    pub fn backward_mut(&self, src : &Pyramid<f64>, dst : &mut Signal<f64>) {
+        self.plan.apply_backward(src.as_ref(), dst.as_mut())
+            .map_err(|e| panic!("{}", e) );
+    }
+    
+    pub fn backward(&self, src : &Pyramid<f64>) -> Signal<f64> {
+        let mut dst = Signal::new_constant(self.plan.shape().0, 0.0);
+        self.backward_mut(src, &mut dst);
+        dst
+    }
 }
 
-impl Forward<Signal<f64>> for Wavelet {
+/*pub struct Scale<'a> {
+    vals : DVectorSliceMut<'a, f64>
+}
+
+impl Iterator<Item=Scale<'a>> for ScaleIter {
+
+    fn next(&mut self) -> Option<Scale<'a>> {
+        if self.curr_lvl == self.max_lvl + 1 {
+            return None;
+        }
+        self.curr_lvl += 1;
+        Some(())
+    }
+}*/
+/*struct ScaleMut<'a, N> {
+    full : &'a mut Pyramid<N>
+    curr : usize
+}*/
+
+/// Output of a wavelet transform.
+pub struct Pyramid<N> 
+where
+    N : Scalar
+{
+    buf : DVector<N>
+}
+
+impl Pyramid<f64> {
+
+    pub fn new_constant(n : usize, value : f64) -> Self {
+        Self{ buf : DVector::from_element(n, value) }
+    }
+    
+    pub fn levels<'a>(&'a self) -> impl Iterator<Item=DVectorSlice<'a, f64>> {
+        DWTIteratorBase::<&'a DVector<f64>>::new_ref(&self.buf)
+    }
+    
+    pub fn levels_mut<'a>(&'a mut self) -> impl Iterator<Item=DVectorSliceMut<'a, f64>> {
+        DWTIteratorBase::<&'a mut DVector<f64>>::new_mut(&mut self.buf)
+    }
+}
+
+impl<N> AsRef<[N]> for Pyramid<N> 
+where
+    N : Scalar
+{
+    fn as_ref(&self) -> &[N] {
+        self.buf.data.as_slice()
+    }
+}
+
+impl<N> AsMut<[N]> for Pyramid<N> 
+where
+    N : Scalar
+{
+    fn as_mut(&mut self) -> &mut [N] {
+        self.buf.data.as_mut_slice()
+    }
+}
+
+impl<N> AsRef<DVector<N>> for Pyramid<N> 
+where
+    N : Scalar
+{
+    fn as_ref(&self) -> &DVector<N> {
+        &self.buf
+    }
+}
+
+impl<N> From<DVector<N>> for Pyramid<N> 
+where
+    N : Scalar
+{
+    fn from(s : DVector<N>) -> Self {
+        Self{ buf : s }
+    }
+}
+
+impl<N> From<Vec<N>> for Pyramid<N> 
+where
+    N : Scalar
+{
+    fn from(s : Vec<N>) -> Self {
+        Self{ buf : DVector::from_vec(s) }
+    }
+}
+
+/*impl Forward<Signal<f64>> for Wavelet {
     
     type Output = Signal<f64>;
     
@@ -65,7 +174,7 @@ impl Backward<Signal<f64>> for Wavelet {
         dst
     }
     
-}
+}*/
 
 /*#[derive(Clone)]
 pub struct DWT {

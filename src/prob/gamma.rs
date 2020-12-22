@@ -6,7 +6,7 @@ use serde::{Serialize, Deserialize};
 use serde::ser::{Serializer};
 use serde::de::Deserializer;
 use std::fmt::{self, Display};
-use crate::fit::walk::Trajectory;
+use crate::fit::markov::Trajectory;
 
 #[cfg(feature="gsl")]
 use crate::foreign::gsl::gamma::*;

@@ -2,7 +2,7 @@ use nalgebra::*;
 use super::*;
 use serde::{Serialize, Deserialize};
 use std::fmt::{self, Display};
-use crate::fit::walk::Trajectory;
+use crate::fit::markov::Trajectory;
 use super::MultiNormal;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

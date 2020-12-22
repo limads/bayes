@@ -3,13 +3,13 @@ use nalgebra::base::storage::Storage;
 use std::convert::TryInto;
 
 #[derive(Clone, Copy)]
-pub enum DWTFilter {
+pub(crate) enum DWTFilter {
     Vertical,   // HL
     Horizontal, // LH
     Both        // HH
 }
 
-pub struct DWTIteratorBase<T> {
+pub(crate) struct DWTIteratorBase<T> {
     max_lvl : usize,
     curr_lvl : usize,
     region : DWTFilter,
@@ -87,7 +87,7 @@ impl<T> DWTIteratorBase<T> {
     }
 }
 
-pub type DWTIterator2D<'a> = DWTIteratorBase<&'a DMatrix<f64>>;
+pub(crate) type DWTIterator2D<'a> = DWTIteratorBase<&'a DMatrix<f64>>;
 
 impl<'a> DWTIterator2D<'a> {
 
@@ -110,7 +110,7 @@ impl<'a> Iterator for DWTIterator2D<'a> {
 
 }
 
-pub type DWTIteratorMut2D<'a> = DWTIteratorBase<&'a mut DMatrix<f64>>;
+pub(crate) type DWTIteratorMut2D<'a> = DWTIteratorBase<&'a mut DMatrix<f64>>;
 
 impl<'a> DWTIteratorMut2D<'a> {
 
@@ -123,7 +123,7 @@ impl<'a> DWTIteratorMut2D<'a> {
 
 }
 
-pub type DWTIterator1D<'a> = DWTIteratorBase<&'a DVector<f64>>;
+pub(crate) type DWTIterator1D<'a> = DWTIteratorBase<&'a DVector<f64>>;
 
 impl<'a> Iterator for DWTIterator1D<'a> {
 
@@ -139,7 +139,7 @@ impl<'a> Iterator for DWTIterator1D<'a> {
 
 }
 
-pub type DWTIteratorMut1D<'a> = DWTIteratorBase<&'a mut DVector<f64>>;
+pub(crate) type DWTIteratorMut1D<'a> = DWTIteratorBase<&'a mut DVector<f64>>;
 
 impl<'a> Iterator for DWTIteratorMut1D<'a> {
 
@@ -217,7 +217,24 @@ fn get_level_slice_2d<'a>(
     Some(m.slice(off, bounds))
 }
 
-fn get_level_slice_1d<'a>(
+/*pub(crate) fn get_level_slice_2d<'a>(
+    m : &'a DVector<f64>,
+    lvl : usize,
+    region : DWTFilter
+) -> Option<Vec<DVectorSlice<'a, f64>>>
+{
+    let (off, bounds) = define_level_bounds(lvl, region);
+    if bounds.0 > m.nrows() / 2 {
+        return None;
+    }
+    let mut slices = Vec::new();
+    for i in 0..lvl {
+        slices.push(m.rows()
+    }
+    slices
+}*/
+
+pub(crate) fn get_level_slice_1d<'a>(
     v : &'a DVector<f64>,
     lvl : usize
 ) -> Option<DVectorSlice<'a, f64>> {

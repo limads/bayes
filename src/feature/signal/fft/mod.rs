@@ -5,7 +5,7 @@ use simba::scalar::RealField;
 use std::fmt::Debug;
 use super::*;
 use super::conv::*;
-use super::ops::*;
+use num_traits::Num;
 
 /// Wrappers over MKL FFT routines.
 pub(crate) mod mkl;
@@ -18,6 +18,7 @@ use mkl::*;
     Quarter
 }*/
 
+/// Fourier transform
 pub struct Fourier<N> 
 where
     N : Scalar,
@@ -41,9 +42,105 @@ impl Fourier<f64> {
     
 }
 
-impl<N> Forward<Signal<N>> for Fourier<N> 
+/// Output of a fourier transform.
+pub struct Spectrum<N> 
 where
-    N : Scalar + From<f32>,
+    N : Scalar + Copy
+{
+    buf : DVector<Complex<N>>
+}
+
+impl<N> Spectrum<N> 
+where
+    N : Scalar + Copy
+{
+    pub fn new_constant(n : usize, value : Complex<N>) -> Self {
+        Self{ buf : DVector::from_element(n, value) }
+    }
+}
+
+impl<N> AsRef<[Complex<N>]> for Spectrum<N> 
+where
+    N : Scalar + Copy
+{
+    fn as_ref(&self) -> &[Complex<N>] {
+        self.buf.data.as_slice()
+    }
+}
+
+impl<N> AsMut<[Complex<N>]> for Spectrum<N> 
+where
+    N : Scalar + Copy
+{
+    fn as_mut(&mut self) -> &mut [Complex<N>] {
+        self.buf.data.as_mut_slice()
+    }
+}
+
+impl<N> AsRef<DVector<Complex<N>>> for Spectrum<N> 
+where
+    N : Scalar + Copy
+{
+    fn as_ref(&self) -> &DVector<Complex<N>> {
+        &self.buf
+    }
+}
+
+impl<N> From<DVector<Complex<N>>> for Spectrum<N> 
+where
+    N : Scalar + Copy
+{
+    fn from(s : DVector<Complex<N>>) -> Self {
+        Self{ buf : s }
+    }
+}
+
+impl<N> From<Vec<Complex<N>>> for Spectrum<N> 
+where
+    N : Scalar + Copy
+{
+    fn from(s : Vec<Complex<N>>) -> Self {
+        Self{ buf : DVector::from_vec(s) }
+    }
+}
+
+/// Slice over a spectrum.
+pub struct Band {
+
+}
+
+impl<N> Fourier<N>
+where
+    N : Scalar + From<f32> + Num + Copy,
+    Complex<N> : Scalar
+{
+    pub fn forward_mut(&self, src : &Signal<N>, dst : &mut Spectrum<N>) {
+        self.plan.apply_forward(src.as_ref(), dst.as_mut())
+            .map_err(|e| panic!("{}", e) );
+    }
+    
+    pub fn forward(&self, src : &Signal<N>) -> Spectrum<N> {
+        let zero = N::from(0.0 as f32);
+        let mut dst = Spectrum::new_constant(self.plan.shape().0, Complex::new(zero.clone(), zero));
+        self.forward_mut(src, &mut dst);
+        dst
+    }
+    
+    pub fn backward_mut(&self, src : &Spectrum<N>, dst : &mut Signal<N>) {
+        self.plan.apply_backward(src.as_ref(), dst.as_mut())
+            .map_err(|e| panic!("{}", e) );
+    }
+    
+    pub fn backward(&self, src : &Spectrum<N>) -> Signal<N> {
+        let mut dst = Signal::new_constant(self.plan.shape().0, N::from(0.0 as f32));
+        self.backward_mut(src, &mut dst);
+        dst
+    }
+}
+
+/*impl<N> Forward<Signal<N>> for Fourier<N> 
+where
+    N : Scalar + From<f32> + Num,
     Complex<N> : Scalar
 {
     
@@ -80,7 +177,7 @@ where
         self.backward_mut(src, &mut dst);
         dst
     }
-}
+}*/
 
 fn half_circular_domain<N : Scalar + From<f32>>(sz : usize) -> DVector<N> {
     let samples : Vec<N> = (0..sz).map(|s| {

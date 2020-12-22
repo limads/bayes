@@ -3,7 +3,7 @@ use super::*;
 use serde::{Serialize, Deserialize};
 use rand_distr;
 // use rand;
-use crate::fit::walk::*;
+use crate::fit::markov::*;
 // use std::ops::AddAssign;
 use std::default::Default;
 use serde::ser::{Serializer};
@@ -352,7 +352,11 @@ impl Estimator<Gamma> for Poisson {
     //    unimplemented!()
     //}
     
-    fn posterior<'a>(&'a self) -> Option<&'a Gamma> {
+    fn take_posterior(self) -> Option<Gamma> {
+        unimplemented!()
+    }
+    
+    fn view_posterior<'a>(&'a self) -> Option<&'a Gamma> {
         unimplemented!()
     }
     

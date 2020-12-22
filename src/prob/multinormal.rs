@@ -6,7 +6,7 @@ use std::fmt::{self, Display};
 use std::default::Default;
 use std::ops::{SubAssign, MulAssign};
 use std::convert::{TryFrom, TryInto};
-use crate::fit::walk::Trajectory;
+use crate::fit::markov::Trajectory;
 use nalgebra::linalg;
 use serde_json::{self, Value, map::Map};
 use anyhow;
@@ -866,7 +866,11 @@ impl Estimator<MultiNormal> for MultiNormal {
     //    unimplemented!()
     //}
     
-    fn posterior<'a>(&'a self) -> Option<&'a MultiNormal> {
+    fn take_posterior(self) -> Option<MultiNormal> {
+        unimplemented!()
+    }
+    
+    fn view_posterior<'a>(&'a self) -> Option<&'a MultiNormal> {
         unimplemented!()
     }
     

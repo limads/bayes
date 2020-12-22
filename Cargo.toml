@@ -21,7 +21,7 @@ crate-type = ["staticlib", "rlib", "dylib"]
 # name="bayes"
 
 [dependencies]
-nalgebra = { version = "0.22.0", features = ["serde-serialize", "sparse"] }
+nalgebra = { version = "0.23.2", features = ["serde-serialize", "sparse"] }
 simba="0.1.2"
 petgraph = "0.5.0"
 serde = { version="1.0.111", features=["derive"] }
@@ -36,6 +36,8 @@ structopt = "0.3.19"
 anyhow = "1.0.32"
 thiserror = "1.0.20"
 argmin = { git="https://github.com/argmin-rs/argmin", features = ["nalgebral"] }
+# argmin = { version = "0.3.1", features = ["nalgebral"] }
+num-traits = "0.2.14"
 # pgdatum = { git = "https://github.com/limads/pgdatum.git" }
 # pgdatum = { path = "../pgdatum", optional = true }
 either = "1.6.1"
@@ -43,7 +45,7 @@ either = "1.6.1"
 # rand_isaac = "0.2.0"
 
 [build-dependencies]
-cc = "1.0"
+cc = "1.0.66"
 
 # pg-extend = { version = "0.2.1", optional=true }
 # levenberg-marquardt = "0.6.0"

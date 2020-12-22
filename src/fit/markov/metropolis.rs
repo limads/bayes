@@ -11,6 +11,7 @@ use crate::fit::utils;
 use crate::sample::Sample;
 use std::fmt::{self, Display};
 use crate::prob;
+use std::collections::HashMap;
 
 /// A non-parametric representation of a posterior distribution in terms of the sampling
 /// trajectory created by a random walk based algorithm, such as the Metropolis-Hastings.
@@ -26,7 +27,9 @@ pub struct RandomWalk {
     /// which is why we use interior mutability here.
     model : Model,
     
-    weights : Option<Vec<usize>>
+    weights : Option<Vec<usize>>,
+    
+    preds : HashMap<String, Vec<f64>> 
 }
 
 impl Marginal<Histogram> for RandomWalk {
@@ -35,18 +38,31 @@ impl Marginal<Histogram> for RandomWalk {
     /// marginal parameter value at index ix.
     fn marginal(&self, names : &[&str]) -> Option<Histogram> {
         assert!(names.len() == 1);
-        //let traj = self.trajectory()?;
-        //traj.histogram(ix)
+        // let traj = self.trajectory()?;
+        // traj.histogram(ix)
         unimplemented!()
     }
 }
 
 impl Predictive for RandomWalk {
 
-    fn predict(&mut self, fixed : Option<&dyn Sample>) -> Box<dyn Sample> {
-        Box::new(prob::predict_from_likelihood(self.model.as_mut(), fixed))
+    fn predict<'a>(&'a mut self, fixed : Option<&dyn Sample>) -> &'a dyn Sample {
+        if let Some(fix) = fixed {
+            let lik : &mut dyn Likelihood = self.model.as_mut();
+            lik.observe(fix);
+        }
+        self.preds = prob::predict_from_likelihood(self.model.as_mut(), fixed);
+        &self.preds
     }
-
+    
+    fn view_prediction<'a>(&'a self) -> Option<&'a dyn Sample> {
+        if !self.preds.is_empty() {
+            Some(&self.preds as &'a dyn Sample)    
+        } else {
+            None
+        }
+    }
+    
 }
 
 impl Display for RandomWalk {
@@ -149,7 +165,11 @@ impl Estimator<RandomWalk> for Metropolis {
     //    unimplemented!()
     // }
     
-    fn posterior<'a>(&'a self) -> Option<&'a RandomWalk> {
+    fn take_posterior(mut self) -> Option<RandomWalk> {
+        self.rw.take()
+    }
+    
+    fn view_posterior<'a>(&'a self) -> Option<&'a RandomWalk> {
         self.rw.as_ref()
     }
     
@@ -200,7 +220,7 @@ impl Estimator<RandomWalk> for Metropolis {
             return Err("Sampling failed");
         }
         
-        self.rw = Some(RandomWalk{ model : self.model.clone(), weights : None});
+        self.rw = Some(RandomWalk{ model : self.model.clone(), weights : None, preds : HashMap::new() });
         Ok(self.rw.as_ref().unwrap())
     }
 

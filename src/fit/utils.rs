@@ -2,7 +2,7 @@ use crate::prob::*;
 use anyhow::Error;
 use std::cell::RefCell;
 use nalgebra::*;
-use crate::fit::walk::Trajectory;
+use crate::fit::markov::Trajectory;
 
 /// Iterates the factor graph in a depth-first fashion, copying all
 /// natural parameter values into the v vector buffer, if its size allows it.

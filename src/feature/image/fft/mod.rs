@@ -4,12 +4,14 @@ use nalgebra::storage::*;
 use simba::scalar::RealField;
 use std::fmt::Debug;
 use super::*;
-use crate::feature::signal::ops::*;
+// use crate::feature::signal::ops::*;
 use crate::feature::signal::fft::mkl::*;
+use num_traits::Num;
 
+/// Two-dimensional Fourier transform
 pub struct Fourier2D<N> 
 where
-    N : Scalar,
+    N : Scalar + Num,
     Complex<N> : Scalar
 {
     plan : FFTPlan<N>
@@ -30,9 +32,41 @@ impl Fourier2D<f64> {
     
 }
 
-impl<N> Forward<Image<N>> for Fourier2D<N> 
+impl<N> Fourier2D<N>
 where
-    N : Scalar + From<f32>,
+    N : Scalar + From<f32> + Num + Copy,
+    Complex<N> : Scalar
+{
+
+    fn forward_mut(&self, src : &Image<N>, dst : &mut ImageSpectrum<N>) {
+        self.plan.apply_forward(src.as_ref(), dst.as_mut())
+            .map_err(|e| panic!("{}", e) );
+    }
+    
+    fn forward(&self, src : &Image<N>) -> ImageSpectrum<N> {
+        let zero = N::from(0.0 as f32);
+        let (nrows, ncols) = self.plan.shape();
+        let mut dst = ImageSpectrum::new_constant(nrows, ncols, Complex::new(zero.clone(), zero));
+        self.forward_mut(src, &mut dst);
+        dst
+    }
+    
+    fn backward_mut(&self, src : &ImageSpectrum<N>, dst : &mut Image<N>) {
+        self.plan.apply_backward(src.as_ref(), dst.as_mut())
+            .map_err(|e| panic!("{}", e) );
+    }
+    
+    fn backward(&self, src : &ImageSpectrum<N>) -> Image<N> {
+        let (nrows, ncols) = self.plan.shape();
+        let mut dst = Image::new_constant(nrows, ncols, N::from(0.0 as f32));
+        self.backward_mut(src, &mut dst);
+        dst
+    }
+}
+
+/*impl<N> Forward<Image<N>> for Fourier2D<N> 
+where
+    N : Scalar + From<f32> + Num,
     Complex<N> : Scalar
 {
     
@@ -54,7 +88,7 @@ where
 
 impl<N> Backward<Image<Complex<N>>> for Fourier2D<N> 
 where
-    N : Scalar + From<f32>,
+    N : Scalar + From<f32> + Num,
     Complex<N> : Scalar
 {
     
@@ -71,7 +105,82 @@ where
         self.backward_mut(src, &mut dst);
         dst
     }
+}*/
+
+/// Output of a two-dimensional Fourier transform.
+pub struct ImageSpectrum<N> 
+where
+    N : Scalar + Copy
+{
+    buf : DMatrix<Complex<N>>
 }
+
+/// Slice over an image spectrum.
+pub struct ImageBand<'a, N> 
+where
+    N : Scalar + Copy
+{
+    s : DMatrixSlice<'a, N>
+}
+
+impl<N> ImageSpectrum<N> 
+where
+    N : Scalar + Copy
+{
+
+    pub fn new_constant(nrows : usize, ncols : usize, value : Complex<N>) -> Self {
+        Self{ buf : DMatrix::from_element(nrows, ncols, value) }
+    }
+
+    //pub fn bands(&self) -> impl Iterator<Item=ImageBand> {
+    //} 
+    
+}
+
+impl<N> AsRef<[Complex<N>]> for ImageSpectrum<N> 
+where
+    N : Scalar + Copy
+{
+    fn as_ref(&self) -> &[Complex<N>] {
+        self.buf.data.as_slice()
+    }
+}
+
+impl<N> AsMut<[Complex<N>]> for ImageSpectrum<N> 
+where
+    N : Scalar + Copy
+{
+    fn as_mut(&mut self) -> &mut [Complex<N>] {
+        self.buf.data.as_mut_slice()
+    }
+}
+
+impl<N> AsRef<DMatrix<Complex<N>>> for ImageSpectrum<N> 
+where
+    N : Scalar + Copy
+{
+    fn as_ref(&self) -> &DMatrix<Complex<N>> {
+        &self.buf
+    }
+}
+
+impl<N> From<DMatrix<Complex<N>>> for ImageSpectrum<N> 
+where
+    N : Scalar + Copy
+{
+    fn from(s : DMatrix<Complex<N>>) -> Self {
+        Self{ buf : s }
+    }
+}
+
+/*impl<N> From<Vec<N>> for ImagePyramid<N> 
+where
+    N : Scalar
+{
+    fn from(s : Vec<N>) -> Self {
+        Self{ buf : DVector::from_vec(s) }
+    }
+}*/
 
 /*/// If the FFT is built with a window, perform the short-time fourier transform.
 /// The transform yields an interator over separate windows. If the FFT is built

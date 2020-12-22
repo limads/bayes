@@ -5,7 +5,7 @@ use rand;
 use std::default::Default;
 use std::fmt::{self, Display};
 use super::MultiNormal;
-use crate::fit::walk::Trajectory;
+use crate::fit::markov::Trajectory;
 use std::convert::TryFrom;
 use serde_json::{self, Value, Number};
 
