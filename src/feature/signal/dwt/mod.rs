@@ -76,6 +76,7 @@ impl Iterator<Item=Scale<'a>> for ScaleIter {
 }*/
 
 /// Output of a wavelet transform.
+#[derive(Clone, Debug)]
 pub struct Pyramid<N> 
 where
     N : Scalar

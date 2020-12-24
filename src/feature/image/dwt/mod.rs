@@ -14,6 +14,7 @@ pub struct Wavelet2D {
 }
 
 /// Output of a wavelet decomposition.
+#[derive(Clone, Debug)]
 pub struct ImagePyramid<N> 
 where
     N : Scalar
@@ -87,24 +88,24 @@ impl Wavelet2D {
         Ok(Self { plan : DWTPlan::new(basis, (sz, sz) )? })
     }
     
-    fn forward_mut(&self, src : &Image<f64>, dst : &mut ImagePyramid<f64>) {
+    pub fn forward_mut(&self, src : &Image<f64>, dst : &mut ImagePyramid<f64>) {
         self.plan.apply_forward(src.as_ref(), dst.as_mut())
             .map_err(|e| panic!("{}", e) );
     }
     
-    fn forward(&self, src : &Image<f64>) -> ImagePyramid<f64> {
+    pub fn forward(&self, src : &Image<f64>) -> ImagePyramid<f64> {
         let (nrows, ncols) = self.plan.shape();
         let mut dst = ImagePyramid::new_constant(nrows, 0.0);
         self.forward_mut(src, &mut dst);
         dst
     }
     
-    fn backward_mut(&self, src : &ImagePyramid<f64>, dst : &mut Image<f64>) {
+    pub fn backward_mut(&self, src : &ImagePyramid<f64>, dst : &mut Image<f64>) {
         self.plan.apply_backward(src.as_ref(), dst.as_mut())
             .map_err(|e| panic!("{}", e) );
     }
     
-    fn backward(&self, src : &ImagePyramid<f64>) -> Image<f64> {
+    pub fn backward(&self, src : &ImagePyramid<f64>) -> Image<f64> {
         let (nrows, ncols) = self.plan.shape();
         let mut dst = Image::new_constant(nrows, ncols, 0.0);
         self.backward_mut(src, &mut dst);

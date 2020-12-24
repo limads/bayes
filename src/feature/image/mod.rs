@@ -1,6 +1,8 @@
 use nalgebra::*;
 use nalgebra::storage::*;
 use crate::feature::signal::sampling::{self, *};
+use std::ops::{Index, Mul, Add, AddAssign, MulAssign, SubAssign};
+use simba::scalar::SubsetOf;
 
 #[cfg(feature="mkl")]
 mod fft;
@@ -14,7 +16,14 @@ pub(crate) mod dwt;
 #[cfg(feature="gsl")]
 pub use dwt::*;
 
+#[cfg(feature="gsl")]
+mod interp;
+
+#[cfg(feature="gsl")]
+pub use interp::Interpolation2D;
+
 /// Digital image, represented row-wise.
+#[derive(Debug, Clone)]
 pub struct Image<N> 
 where
     N : Scalar
@@ -26,7 +35,7 @@ where
 
 impl<N> Image<N>
 where
-    N : Scalar + Copy
+    N : Scalar + Copy + RealField
 {
 
     pub fn new_constant(nrows : usize, ncols : usize, value : N) -> Self {
@@ -45,7 +54,15 @@ where
         Window { win : self.buf.slice(offset, sz), offset }
     }
     
-    pub fn downsample_aliased(&mut self, src : &Window<N>) {
+    pub fn window_mut<'a>(&'a mut self, offset : (usize, usize), sz : (usize, usize)) -> WindowMut<'a, N> {
+        WindowMut { win : self.buf.slice_mut(offset, sz), offset }
+    }
+    
+    pub fn downsample_aliased<M>(&mut self, src : &Window<M>) 
+    where
+        M : Scalar + Copy,
+        N : Scalar + From<M>
+    {
         let (nrows, ncols) = self.buf.shape();
         let step_rows = src.win.nrows() / nrows;
         let step_cols = src.win.ncols() / ncols;
@@ -58,6 +75,22 @@ where
             step_rows,
             self.buf.as_mut_slice().chunks_mut(nrows)
         );
+    }
+    
+    pub fn scale_by(&mut self, scalar : N)  {
+        self.buf.scale_mut(scalar);
+    }
+    
+    pub fn unscale_by(&mut self, scalar : N)  {
+        self.buf.unscale_mut(scalar);
+    }
+    
+    pub fn width(&self) -> usize {
+        self.buf.ncols()
+    }
+    
+    pub fn height(&self) -> usize {
+        self.buf.nrows()
     }
     
     // pub fn windows(&self) -> impl Iterator<Item=Window<'_, N>> {
@@ -85,6 +118,7 @@ where
 }
 
 /// Borrowed subset of an image.
+#[derive(Debug, Clone)]
 pub struct Window<'a, N> 
 where
     N : Scalar
@@ -95,7 +129,7 @@ where
 
 impl<'a, N> Window<'a, N> 
 where
-    N : Scalar
+    N : Scalar + Mul<Output=N> + MulAssign
 {
 
     /// Creates a window that cover the whole slice src, assuming it represents a square image.
@@ -117,7 +151,15 @@ where
     }
     
     pub fn shape(&self) -> (usize, usize) {
-        self.shape()
+        self.win.shape()
+    }
+    
+    pub fn width(&self) -> usize {
+        self.win.ncols()
+    }
+    
+    pub fn height(&self) -> usize {
+        self.win.nrows()
     }
     
     /*pub fn row_slices(&'a self) -> Vec<&'a [N]> {
@@ -129,6 +171,27 @@ where
         rows
     }*/
     
+}
+
+#[derive(Debug)]
+pub struct WindowMut<'a, N> 
+where
+    N : Scalar + Copy
+{
+    offset : (usize, usize),
+    win : DMatrixSliceMut<'a, N>
+}
+
+impl<'a, N> WindowMut<'a, N> 
+where
+    N : Scalar + Copy + MulAssign + AddAssign + Add<Output=N> + Mul<Output=N> + SubAssign + Field + SimdPartialOrd,
+    f64 : SubsetOf<N>
+{
+
+    pub fn component_scale(&mut self, other : &Window<N>) {
+        self.win.component_mul_mut(&other.win);
+    }
+
 }
 
 impl<'a, N> AsRef<DMatrixSlice<'a, N>> for Window<'a, N> 

@@ -6,6 +6,7 @@ use std::fmt::Debug;
 use super::*;
 use super::conv::*;
 use num_traits::Num;
+use num_traits::Zero;
 
 /// Wrappers over MKL FFT routines.
 pub(crate) mod mkl;
@@ -43,6 +44,7 @@ impl Fourier<f64> {
 }
 
 /// Output of a fourier transform.
+#[derive(Clone, Debug)]
 pub struct Spectrum<N> 
 where
     N : Scalar + Copy
@@ -111,9 +113,11 @@ pub struct Band {
 
 impl<N> Fourier<N>
 where
-    N : Scalar + From<f32> + Num + Copy,
-    Complex<N> : Scalar
+    N : Scalar + Copy + MulAssign + AddAssign + Add<Output=N> + Mul<Output=N> + SubAssign + Field + Num + From<f32> + SimdPartialOrd,
+    Complex<N> : Scalar,
+    f64 : SubsetOf<N>
 {
+
     pub fn forward_mut(&self, src : &Signal<N>, dst : &mut Spectrum<N>) {
         self.plan.apply_forward(src.as_ref(), dst.as_mut())
             .map_err(|e| panic!("{}", e) );
@@ -121,7 +125,7 @@ where
     
     pub fn forward(&self, src : &Signal<N>) -> Spectrum<N> {
         let zero = N::from(0.0 as f32);
-        let mut dst = Spectrum::new_constant(self.plan.shape().0, Complex::new(zero.clone(), zero));
+        let mut dst = Spectrum::<N>::new_constant(self.plan.shape().0, Complex::<N>::zero());
         self.forward_mut(src, &mut dst);
         dst
     }
@@ -132,7 +136,7 @@ where
     }
     
     pub fn backward(&self, src : &Spectrum<N>) -> Signal<N> {
-        let mut dst = Signal::new_constant(self.plan.shape().0, N::from(0.0 as f32));
+        let mut dst = Signal::new_constant(self.plan.shape().0, N::zero());
         self.backward_mut(src, &mut dst);
         dst
     }

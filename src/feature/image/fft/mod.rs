@@ -4,14 +4,15 @@ use nalgebra::storage::*;
 use simba::scalar::RealField;
 use std::fmt::Debug;
 use super::*;
-// use crate::feature::signal::ops::*;
 use crate::feature::signal::fft::mkl::*;
 use num_traits::Num;
+use simba::scalar::SubsetOf;
 
 /// Two-dimensional Fourier transform
 pub struct Fourier2D<N> 
 where
-    N : Scalar + Num,
+    N : Scalar + Copy + MulAssign + AddAssign + Add<Output=N> + Mul<Output=N> + SubAssign + Field + Num + From<f32> + SimdPartialOrd,
+    f64 : SubsetOf<N>,
     Complex<N> : Scalar
 {
     plan : FFTPlan<N>
@@ -19,31 +20,35 @@ where
 
 impl Fourier2D<f32> {
 
-    pub fn new(sz : (usize, usize)) -> Result<Self, String> {
-        Ok(Self { plan : FFTPlan::<f32>::new(sz)? })
+    pub fn new(nrow : usize, ncol : usize) -> Result<Self, String> {
+        Ok(Self { plan : FFTPlan::<f32>::new((nrow, ncol))? })
     }
 }
 
 impl Fourier2D<f64> {
 
-    pub fn new(sz : (usize, usize)) -> Result<Self, String> {
-        Ok(Self { plan : FFTPlan::<f64>::new(sz)? })
+    pub fn new(nrow : usize, ncol : usize) -> Result<Self, String> {
+        Ok(Self { plan : FFTPlan::<f64>::new((nrow, ncol))? })
     }
     
 }
 
 impl<N> Fourier2D<N>
 where
-    N : Scalar + From<f32> + Num + Copy,
-    Complex<N> : Scalar
+    N : Scalar + Copy + MulAssign + AddAssign + Add<Output=N> + Mul<Output=N> + SubAssign + Field + Num + From<f32> /*+ SimdPartialOrd*/,
+    // Complex<N> : Scalar,
+    //Complex<N> : SimdComplexField<SimdRealField=N>,
+    // Complex<N> : SimdComplexField,
+    N : RealField,
+    f64 : SubsetOf<N>
 {
 
-    fn forward_mut(&self, src : &Image<N>, dst : &mut ImageSpectrum<N>) {
+    pub fn forward_mut(&self, src : &Image<N>, dst : &mut ImageSpectrum<N>) {
         self.plan.apply_forward(src.as_ref(), dst.as_mut())
             .map_err(|e| panic!("{}", e) );
     }
     
-    fn forward(&self, src : &Image<N>) -> ImageSpectrum<N> {
+    pub fn forward(&self, src : &Image<N>) -> ImageSpectrum<N> {
         let zero = N::from(0.0 as f32);
         let (nrows, ncols) = self.plan.shape();
         let mut dst = ImageSpectrum::new_constant(nrows, ncols, Complex::new(zero.clone(), zero));
@@ -51,12 +56,12 @@ where
         dst
     }
     
-    fn backward_mut(&self, src : &ImageSpectrum<N>, dst : &mut Image<N>) {
+    pub fn backward_mut(&self, src : &ImageSpectrum<N>, dst : &mut Image<N>) {
         self.plan.apply_backward(src.as_ref(), dst.as_mut())
             .map_err(|e| panic!("{}", e) );
     }
     
-    fn backward(&self, src : &ImageSpectrum<N>) -> Image<N> {
+    pub fn backward(&self, src : &ImageSpectrum<N>) -> Image<N> {
         let (nrows, ncols) = self.plan.shape();
         let mut dst = Image::new_constant(nrows, ncols, N::from(0.0 as f32));
         self.backward_mut(src, &mut dst);
@@ -108,6 +113,7 @@ where
 }*/
 
 /// Output of a two-dimensional Fourier transform.
+#[derive(Clone, Debug)]
 pub struct ImageSpectrum<N> 
 where
     N : Scalar + Copy
@@ -123,15 +129,43 @@ where
     s : DMatrixSlice<'a, N>
 }
 
-impl<N> ImageSpectrum<N> 
+impl<'a, N> ImageSpectrum<N> 
 where
-    N : Scalar + Copy
+    N : Scalar + Copy + MulAssign + AddAssign + Add<Output=N> + Mul<Output=N> + SubAssign + RealField,
+    Complex<N> : ComplexField<RealField=N>
+    // Complex<N> : SimdComplexField<SimdRealField=N>,
+    // bool : SimdBool
+    // N : RealField
 {
 
     pub fn new_constant(nrows : usize, ncols : usize, value : Complex<N>) -> Self {
         Self{ buf : DMatrix::from_element(nrows, ncols, value) }
     }
+    
+    pub fn iter(&self) -> impl Iterator<Item=&Complex<N>> {
+        self.buf.iter()
+    }
+    
+    pub fn iter_mut(&'a mut self) -> impl Iterator<Item=&'a mut Complex<N>> {
+        self.buf.iter_mut()
+    }
 
+    pub fn conjugate_mut(&mut self) {
+        self.buf.conjugate_mut()
+    }
+    
+    pub fn scale_by(&mut self, scalar : N)  {
+        self.buf.scale_mut(scalar);
+    }
+    
+    pub fn unscale_by(&mut self, scalar : N)  {
+        self.buf.unscale_mut(scalar);
+    }
+    
+    pub fn component_scale(&mut self, other : &ImageSpectrum<N>) {
+        self.buf.component_mul_mut(&other.buf);
+    }
+    
     //pub fn bands(&self) -> impl Iterator<Item=ImageBand> {
     //} 
     
