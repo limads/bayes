@@ -113,6 +113,8 @@ pub struct Bernoulli {
 
     obs : Option<DVector<f64>>,
     
+    fixed_obs : Option<DMatrix<f64>>,
+    
     name : Option<String>,
     
     n : usize
@@ -448,6 +450,10 @@ where Self : Sized
         }
     }
 
+    fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
+        self.eta.column_mut(0)
+    }
+    
     // fn observations(&self) -> Option<&DMatrix<f64>> {
     //    self.obs.as_ref()
     // }
@@ -472,11 +478,10 @@ where Self : Sized
         None
     }
 
-    fn log_prob(&self, y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>) -> f64 {
-        println!("lp = {}; y = {}", self.log_part, y);
+    fn log_prob(&self /*, y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>*/ ) -> Option<f64> {
         super::univariate_log_prob(
-            y,
-            x,
+            self.obs.as_ref(),
+            self.fixed_obs.as_ref(),
             &self.factor,
             &self.view_parameter(true),
             &self.log_part,
@@ -490,6 +495,9 @@ where Self : Sized
             dst[(i,0)] = (self.sampler[i].sample(&mut rand::thread_rng()) as i32) as f64;
         }
     }
+    
+    //fn sample_into_transposed(&self, dst : DVectorSliceMut<'_, f64>) {
+    //}
 
 }
 
@@ -621,6 +629,7 @@ impl Default for Bernoulli {
             log_part : DVector::from_element(1, (2.).ln()),
             suf_theta : None,
             obs : None,
+            fixed_obs : None,
             name : None,
             n : 0
         }
@@ -672,7 +681,7 @@ impl argmin::core::ArgminOp for Bernoulli {
     type Float = f64;
 
     fn apply(&self, p: &Self::Param) -> Result<Self::Output, argmin::core::Error> {
-        Ok(self.log_prob(self.obs.as_ref().unwrap().into(), None))
+        Ok(self.log_prob().unwrap())
     }
 
     fn jacobian(&self, p: &Self::Param) -> Result<Self::Jacobian, argmin::core::Error> {

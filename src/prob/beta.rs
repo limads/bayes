@@ -152,6 +152,10 @@ impl Distribution for Beta
         &self.ab
     }
 
+    fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
+        self.ab.column_mut(0)
+    }
+    
     fn cov(&self) -> Option<DMatrix<f64>> {
         None
     }
@@ -174,10 +178,11 @@ impl Distribution for Beta
         DVector::from_element(1, a*b / (a + b).powf(2.) * (a + b + 1.))
     }
 
-    fn log_prob(&self, y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>) -> f64 {
-        assert!(y.ncols() == 1);
+    fn log_prob(&self /*, y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>*/ ) -> Option<f64> {
+        /*assert!(y.ncols() == 1);
         let t = Beta::sufficient_stat(y);
-        self.suf_log_prob((&t).into())
+        self.suf_log_prob((&t).into())*/
+        unimplemented!()
     }
 
     /*fn shared_factors(&self) -> Factors {

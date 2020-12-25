@@ -9,9 +9,10 @@ use serde_json::{self, Value, map::Map};
 use crate::model::Model;
 use std::convert::{TryFrom, TryInto};
 use crate::model;
-pub type BernoulliFactor = UnivariateFactor<Beta>;
 use argmin;
 use either::Either;
+
+pub type BernoulliFactor = UnivariateFactor<Beta>;
 
 type Parameter = Either<f64, DVector<f64>>;
 

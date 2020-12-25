@@ -1,10 +1,3 @@
-// Stochastic processes characterized by the Markov property : The future is independent of
-// the past conditional on the current state.
-// pub mod state;
-
-// Random processes (Process<MultiNormal> and Process<Dirichlet>)
-// pub mod process;
-
 /// Utilities for dimensionality reduction of structured high-dimensional data.
 pub mod dim;
 
@@ -19,4 +12,3 @@ pub mod image;
 
 // Text-related features (dictionaries, syntax trees, etc).
 // pub mod text;
-

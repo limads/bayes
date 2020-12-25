@@ -4,16 +4,18 @@ use super::*;
 use crate::sample::Sample;
 
 /// Utilities to build inference algorithms.
-pub mod utils;
+pub(crate) mod utils;
 
 /// Algorithm for approximating posteriors with multivariate normals
 /// (Expectation Maximization; work in progress).
 #[cfg(feature="gsl")]
 pub mod optim;
 
-/// Full posterior estimation via random walk simulation (Metropolis-Hastings algorithm)
-/// and related non-parametric distribution representation (work in progress).
+/// Full posterior estimation via random walk simulation (Metropolis-Hastings algorithm).
 pub mod markov;
+
+/// Dynamic state estimation (Kalman and Particle filters).
+pub mod state;
 
 /// Linear estimation methods (Least squares and iteratively-reweighted least squares).
 /// Those algorithms can be either treated as estimator in themselves

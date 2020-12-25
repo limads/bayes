@@ -182,6 +182,10 @@ impl Distribution for Model
         }
     }
 
+    fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
+        unimplemented!()
+    }
+    
     fn view_parameter(&self, natural : bool) -> &DVector<f64> {
         match self {
             Model::MN(m) => m.view_parameter(natural),
@@ -230,10 +234,10 @@ impl Distribution for Model
         }
     }
 
-    fn log_prob(&self, y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>) -> f64 {
+    fn log_prob(&self, /*y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>*/ ) -> Option<f64> {
         match self {
-            Model::MN(m) => m.log_prob(y, x),
-            Model::Bern(b) => b.log_prob(y, x),
+            Model::MN(m) => m.log_prob(),
+            Model::Bern(b) => b.log_prob(),
             _ => unimplemented!()
         }
     }

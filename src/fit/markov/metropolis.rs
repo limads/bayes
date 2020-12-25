@@ -12,6 +12,8 @@ use crate::sample::Sample;
 use std::fmt::{self, Display};
 use crate::prob;
 use std::collections::HashMap;
+use crate::fit::markov::Trajectory;
+use rand;
 
 /// A non-parametric representation of a posterior distribution in terms of the sampling
 /// trajectory created by a random walk based algorithm, such as the Metropolis-Hastings.
@@ -81,6 +83,10 @@ impl Distribution for RandomWalk
         unimplemented!()
     }
 
+    fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
+        unimplemented!()
+    }
+    
     fn view_parameter(&self, _natural : bool) -> &DVector<f64> {
         unimplemented!()
     }
@@ -97,7 +103,7 @@ impl Distribution for RandomWalk
         unimplemented!()
     }
 
-    fn log_prob(&self, _y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>) -> f64 {
+    fn log_prob(&self, /*_y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>*/ ) -> Option<f64> {
         unimplemented!()
     }
 
@@ -224,6 +230,62 @@ impl Estimator<RandomWalk> for Metropolis {
         Ok(self.rw.as_ref().unwrap())
     }
 
+}
+
+/// Returns a vector of trajectories and a vector of how many times each position
+/// in the trajectory was resampled.
+fn metropolis_hastings(mut lik : impl Likelihood, n : usize) -> Result<(Vec<Trajectory>, Vec<usize>), String> {
+    let param_dims : Vec<usize> = lik
+        .iter_factors_mut()
+        .map(|factor| factor.view_parameter(true).nrows() )
+        .collect();
+    let mut trajs : Vec<Trajectory> = param_dims
+        .iter()
+        .map(|p| Trajectory::new(n, *p) )
+        .collect();
+    let mut proposals : Vec<MultiNormal> = lik
+        .iter_factors_mut()
+        .map(|factor| {
+            let n = factor.view_parameter(true).nrows();
+            let mean = factor.mean().clone();
+            let cov = factor.cov().unwrap();
+            MultiNormal::new(n, mean, cov).unwrap() 
+        } ).collect();
+    
+    let mut prev_lp = lik.log_prob().ok_or(format!("Error evaluating log-probability"))?;
+    let mut curr_lp = 0.0;
+    let mut draw : f64 = 0.0;
+    let mut draw_count : Vec<usize> = Vec::with_capacity(n);
+    draw_count.push(1);
+    
+    for i in 0..n {
+    
+        for (prop, mut traj) in proposals.iter().zip(trajs.iter_mut()) {
+            prop.sample_into(traj.step());
+        }
+        
+        for (traj, factor) in trajs.iter().zip(lik.iter_factors_mut()) {
+            factor.natural_mut().tr_copy_from(&traj.state());
+        }
+        
+        curr_lp = lik.log_prob().ok_or(format!("Error evaluating log-probability"))?;
+        let accept_ratio = curr_lp / prev_lp;
+        draw = rand::random();
+        
+        if draw <= accept_ratio {
+            for (mut prop, traj) in proposals.iter_mut().zip(trajs.iter()) {
+                prop.natural_mut().tr_copy_from(&traj.state());
+            }
+            draw_count.push(1);
+            prev_lp = curr_lp;
+        } else {
+            if let Some(mut last) = draw_count.last_mut() {
+                *last += 1;
+            }
+        }
+        
+    }
+    Ok((trajs, draw_count))
 }
 
 #[test]

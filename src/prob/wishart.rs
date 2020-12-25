@@ -195,6 +195,10 @@ impl Distribution for Wishart {
         unimplemented!()
     }
 
+    fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
+        unimplemented!()
+    }
+    
     fn mode(&self) -> DVector<f64> {
         unimplemented!()
     }
@@ -206,8 +210,8 @@ impl Distribution for Wishart {
     /// Does not really use y because the value against which
     /// log_prob(.) is evaluated is a constant set at the same
     /// time the multivariate normal is updated (this is gamma_suf).
-    fn log_prob(&self, _y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>) -> f64 {
-        let rot_lp = if let Some(ref r) = self.rot_fact {
+    fn log_prob(&self, /*_y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>*/ ) -> Option<f64> {
+        /*let rot_lp = if let Some(ref r) = self.rot_fact {
             match self.corr {
                 Correlation::Homogeneous(ref rho) | Correlation::Autoregressive(ref rho, _) |
                 Correlation::Banded(ref rho, _, _) => {
@@ -223,7 +227,8 @@ impl Distribution for Wishart {
         for (i, g) in self.diag_factor.iter().enumerate() {
             lp += g.suf_log_prob(self.gamma_suf.slice((i,0), (1, self.gamma_suf.ncols())));
         }
-        lp + rot_lp
+        lp + rot_lp*/
+        unimplemented!()
     }
 
     fn sample_into(&self, _dst : DMatrixSliceMut<'_,f64>) {

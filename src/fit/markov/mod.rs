@@ -85,19 +85,40 @@ impl Trajectory {
     }*/
 
     /// Retrieves the current step value.
-    pub fn state<'a>(&'a self) -> DVectorSlice<'a, f64> {
-        self.traj.column(self.pos)
+    pub fn state<'a>(&'a self) -> DMatrixSlice<'a, f64> {
+        let dim = self.traj.ncols();
+        self.traj.slice((self.pos, 0), (1, dim))
+    }
+    
+    pub fn prev_state<'a>(&'a self) -> DMatrixSlice<'a, f64> {
+        assert!(self.pos >= 1);
+        let dim = self.traj.ncols();
+        self.traj.slice((self.pos - 1, 0), (1, dim))
+    }
+    
+    pub fn state_mut<'a>(&'a mut self) -> DMatrixSliceMut<'a, f64> {
+        let dim = self.traj.ncols();
+        let pos = self.pos;
+        self.traj.slice_mut((pos, 0), (1, dim))
     }
     
     /// Increments the current position and retrives a mutable reference to the new current state.
     /// This method can be used in conjunction with distr1.sample_mut(distr2.trajectory_mut().state_mut());
-    pub fn step<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
+    /// Sampling column-wise (into a wide matrix) makes it easier to calculate log-probabilities later,
+    /// because we can pass the column slice as a natural parameter. But sampling row-wise makes it easier
+    /// to use the sample_into(.) API, which assumes samples always comes as sequential rows. Perhaps
+    /// we can adopt the convention that whenever n=1, we accept sampling to conform to whichever
+    /// structure we receive, be it a matrix row or matrix column. Also, if this is a wide matrix,
+    /// we can easily do slice::copy_within to move the trajectory around.
+    pub fn step<'a>(&'a mut self) -> DMatrixSliceMut<'a, f64> {
         if !self.closed {
             self.pos += 1;
-            if self.pos == self.traj.ncols() - 1 {
+            if self.pos == self.traj.nrows() - 1 {
                 self.closed = true;
             }
-            self.traj.column_mut(self.pos)
+            let pos = self.pos;
+            let ncols = self.traj.ncols();
+            self.traj.slice_mut((pos, 0), (1, ncols))
         } else {
             panic!("Tried to update closed trajectory");
         }

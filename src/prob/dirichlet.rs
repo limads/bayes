@@ -19,7 +19,7 @@ impl Distribution for Dirichlet {
         unimplemented!()
     }
 
-    fn view_parameter(&self, _natural : bool) -> &DVector<f64> {
+    fn view_parameter(&self, D_natural : bool) -> &DVector<f64> {
         unimplemented!()
     }
 
@@ -27,6 +27,10 @@ impl Distribution for Dirichlet {
         unimplemented!()
     }
 
+    fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
+        unimplemented!()
+    }
+    
     fn mode(&self) -> DVector<f64> {
         unimplemented!()
     }
@@ -35,7 +39,7 @@ impl Distribution for Dirichlet {
         unimplemented!()
     }
 
-    fn log_prob(&self, _y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>) -> f64 {
+    fn log_prob(&self, /*_y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>*/ ) -> Option<f64> {
         unimplemented!()
     }
 

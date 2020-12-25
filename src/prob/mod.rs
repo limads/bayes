@@ -94,6 +94,8 @@ pub trait Distribution
     /// natural form (eta) or canonical form (theta).
     fn view_parameter(&self, natural : bool) -> &DVector<f64>;
 
+    fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64>;
+     
     /// Set internal parameter vector at the informed value; either passing
     /// the natural form (eta) or the canonical form (theta).
     fn set_parameter(&mut self, p : DVectorSlice<'_, f64>, natural : bool);
@@ -139,7 +141,7 @@ pub trait Distribution
     /// conditionally-independent given the current factor graph). Univariate factors require that
     /// y has a single column; Multivariate factors require y has a number of columns equal to the
     /// distribution parameter vector.
-    fn log_prob(&self, y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>) -> f64;
+    fn log_prob(&self /*, y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>*/ ) -> Option<f64>;
 
     /// Sample from the current distribution; If the sampling unit has multiple dimensions,
     /// they are represented over columns; If multiple units are sampled (if there are multiple
@@ -153,6 +155,8 @@ pub trait Distribution
     }
 
     fn sample_into(&self, dst : DMatrixSliceMut<'_,f64>);
+    
+    // fn sample_into_transposed(&self, dst : DVectorSliceMut<'_, f64>);
 
 }
 
@@ -260,7 +264,8 @@ pub enum Condition<D> {
 /// of the linear combination of the factors).
 #[derive(Debug, Clone)]
 pub enum UnivariateFactor<D>
-where D : Distribution
+where 
+    D : Distribution + ExponentialFamily<Dynamic>
 {
 
     /// Represents a stand-alone parametric distribution. The joint distribution
@@ -294,24 +299,34 @@ where D : Distribution
 }
 
 fn univariate_log_prob<D>(
-    y : DMatrixSlice<f64>,
-    x : Option<DMatrixSlice<f64>>,
+    y : Option<&DVector<f64>>,
+    x : Option<&DMatrix<f64>>,
     factor : &UnivariateFactor<D>,
     eta : &DVector<f64>,
-    log_part : &DVector<f64>, /*f64*/
+    log_part : &DVector<f64>,
     suf_factor : Option<DMatrix<f64>>
-) -> f64
-where D : Distribution
+) -> Option<f64>
+where 
+    D : Distribution + ExponentialFamily<Dynamic>
 {
-    // let eta = self.view_parameter(true);
+    if let (Some(y), Some(x)) = (y, x) {
+        assert!(x.nrows() == y.nrows());
+    }
+    if let Some(y) = y {
+        assert!(y.nrows() == log_part.nrows());
+        assert!(y.nrows() == eta.nrows());
+    }
     let eta_s = eta.rows(0, eta.nrows());
     // println!("eta = {}", eta_s);
     let factor_lp = match &factor {
         UnivariateFactor::Conjugate(d) => {
-            assert!(y.ncols() == 1);
             assert!(x.is_none());
-            let sf = suf_factor.unwrap();
-            d.log_prob(sf.slice((0,0), sf.shape()), None)
+            let sf = suf_factor?;
+            
+            // The posteior here is assumed to have n=1, so we evaluate its
+            // log-probability with respect to the realization of the parameter
+            // of the current likelihood node.
+            d.suf_log_prob(sf.slice((0,0), sf.shape()))
         },
         UnivariateFactor::CondExpect(m) => {
             // If we are considering a conditional expectation factor, we consider not the
@@ -326,8 +341,10 @@ where D : Distribution
         },
         UnivariateFactor::Empty => 0.
     };
-    // eta_s.dot(&y.slice((0, 0), (y.nrows(), 1))) - lp + factor_lp
-    (eta_s.component_mul(&y.slice((0, 0), (y.nrows(), 1))) - log_part).sum() + factor_lp
+    let this_lp : f64 = eta.iter().zip(y?.iter()).zip(log_part.iter())
+        .map(|((e, y), l)| (e * y) - l )
+        .sum();
+    Some(this_lp + factor_lp)
 }
 
 // TODO
@@ -372,7 +389,9 @@ where
     fn sufficient_stat(y : DMatrixSlice<'_, f64>) -> DMatrix<f64>;
 
     /// Calculates the log-probability with respect to the informed sufficient
-    /// statistic matrix.
+    /// statistic matrix. Perhaps move this to Prior trait? So the evaluation
+    /// wrt. a single parameter value vector is typical of Gamma, Normal (for n=1), 
+    /// MultiNormal (for n=1 as well) and Beta.
     fn suf_log_prob(&self, t : DMatrixSlice<'_, f64>) -> f64;
 
     /// Normalization factor. Usually is a function of the
@@ -439,14 +458,14 @@ where
     /// can be evaluated. What we can do is calculate the KL divergence between a factor-free
     /// distribution A wrt. a factored distribution B by calling prob(.) over A and log_prob(.)
     /// over B, which is useful for variational inference.
-    fn prob(&self, y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>) -> f64 {
+    fn prob(&self) -> Option<f64> {
         // TODO assert self does not have factors.
         // (Assume self does not have any factor,
         // since log_prob will evaluate whole graph)
 
-        let mut unn_p = DVector::zeros(y.nrows());
+        /*let mut unn_p = DVector::zeros(y.nrows());
         for (i, _) in y.row_iter().enumerate() {
-            unn_p[i] = self.log_prob(y.rows(i,1), x).exp();
+            unn_p[i] = self.log_prob().unwrap().exp();
             //println!("lp = {}", unn_p[i]);
         }
 
@@ -456,7 +475,8 @@ where
         //let p = unn_p;
 
         let joint_p = p.iter().fold(1., |jp, p| jp * p);
-        joint_p
+        joint_p*/
+        unimplemented!()
     }
 
     // TODO this method updates the sufficient statistic when self has a
@@ -951,14 +971,14 @@ pub trait Marginal<M> {
     
 }
 
-/// There is a order of preference when retrieving natural parameters during
+/*/// There is a order of preference when retrieving natural parameters during
 /// posterior estimation:
 /// 1. If the distribution a started random walk started, get the parameter from its last step ; or else:
 /// 2. If the distribution has an approximation set up, get the parameter from the approximation mean; or else:
 /// 3. Get the parameter from the corresponding field of the implementor.
 /// This order satisfies the typical strategy during MCMC of first finding a posterior mode approximation
 /// and use that as a proposal.
-fn get_posterior_eta<P>(post : &P) -> DVectorSlice<f64>
+fn get_posterior_eta<P>(post : &P) -> DMatrixSlice<f64>
 where P : Posterior
 {
     match post.trajectory() {
@@ -980,8 +1000,8 @@ fn update_posterior_eta<P>(post : &mut P)
     where P : Posterior
 {
     let param = get_posterior_eta(&*post).clone_owned();
-    post.set_parameter(param.rows(0, param.nrows()), true);
-}
+    post.natural_mut().copy_from(param.rows(0, param.nrows()));
+}*/
 
 /*#[derive(Debug, Clone, Error)]
 pub enum UnivariateError {
@@ -1107,7 +1127,7 @@ enum Condition {
 
 fn univariate_factor<'a, D>(factor : &'a mut UnivariateFactor<D>) -> Option<&'a mut dyn Posterior> 
 where
-    D : Distribution + Posterior
+    D : Distribution + Posterior + ExponentialFamily<Dynamic>
     // D : Conditional<P>,
     // P : Distribution
 {

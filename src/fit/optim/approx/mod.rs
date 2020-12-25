@@ -83,7 +83,7 @@ fn approx_gamma() {
         .expect("Minimization failed");
 }
 
-/// Finds the MLE via optimization for an unscaled distribution such as the Poisson or Bernoulli
+/*/// Finds the MLE via optimization for an unscaled distribution such as the Poisson or Bernoulli
 fn optimize_mle<D, C>(distr : D, data : DMatrix<f64>) -> Result<D, String>
 where
     C : Dim,
@@ -130,9 +130,9 @@ where
     let mut distr = optim.take_data().0;
     distr.set_parameter((&min.value).into(), true);
     Ok(distr)
-}
+}*/
 
-/// Finds the MLE via optimization of a scaled distribution (the normal),
+/*/// Finds the MLE via optimization of a scaled distribution (the normal),
 /// conditional on the MLE of its scalar factor for each natural parameter iteration.
 fn optimize_mle_scaled(distr : Normal, data : DMatrix<f64>) -> Result<Normal, String>
 {
@@ -163,7 +163,7 @@ fn optimize_mle_scaled(distr : Normal, data : DMatrix<f64>) -> Result<Normal, St
         };
         g.0.set_parameter((&x).into(), true);
         // g.0.set_var(g.1.map(|y| (y-x[0]).powf(2.) / (g.1.nrows() - 1) as f64 ).sum());
-        let min = (-1.) * g.0.log_prob((&g.1).into(), None);
+        let min = (-1.) * g.0.log_prob();
         println!("min = {}", min);
         min
     };
@@ -176,7 +176,7 @@ fn optimize_mle_scaled(distr : Normal, data : DMatrix<f64>) -> Result<Normal, St
     let mut distr = optim.take_data().0;
     distr.set_parameter((&min.value).into(), true);
     Ok(distr)
-}
+}*/
 
 /*fn mle_compare_univ<D>(distr : D, data : DMatrix<f64>)
 where

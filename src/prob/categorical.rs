@@ -68,6 +68,10 @@ impl Distribution for Categorical {
         self.log_theta = self.theta.map(|t| t.ln());
     }
 
+    fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
+        self.eta.column_mut(0)
+    }
+    
     fn mean<'a>(&'a self) -> &'a DVector<f64> {
         &self.theta
     }
@@ -80,15 +84,16 @@ impl Distribution for Categorical {
         self.theta.map(|theta| theta * (1. - theta))
     }
 
-    fn log_prob(&self, y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>) -> f64 {
-        let t  = Self::sufficient_stat(y.rows(0, y.nrows()));
+    fn log_prob(&self, /*y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>*/ ) -> Option<f64> {
+        /*let t  = Self::sufficient_stat(y.rows(0, y.nrows()));
         let factor_lp = match &self.factor {
             Some(dir) => {
                 dir.suf_log_prob(self.log_theta.slice((0, 0), (self.log_theta.nrows(), 1)))
             },
             None => 0.0
         };
-        self.suf_log_prob(t.rows(0, t.nrows())) + factor_lp
+        self.suf_log_prob(t.rows(0, t.nrows())) + factor_lp*/
+        unimplemented!()
     }
 
     fn sample_into(&self, _dst : DMatrixSliceMut<'_, f64>) {

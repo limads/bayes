@@ -164,6 +164,10 @@ impl Distribution for Gamma
         }
     }
 
+    fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
+        self.eta.column_mut(0)
+    }
+    
     fn cov(&self) -> Option<DMatrix<f64>> {
         None
     }
@@ -186,10 +190,11 @@ impl Distribution for Gamma
         DVector::from_element(1, self.ab[0] / self.ab[1].powf(2.))
     }
 
-    fn log_prob(&self, y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>) -> f64 {
-        assert!(y.ncols() == 1, "Gamma sample should have single column");
+    fn log_prob(&self /*, y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>*/ ) -> Option<f64> {
+        /*assert!(y.ncols() == 1, "Gamma sample should have single column");
         let suf = Self::sufficient_stat(y);
-        self.suf_log_prob(suf.rows(0,suf.nrows()))
+        self.suf_log_prob(suf.rows(0,suf.nrows()))*/
+        unimplemented!()
     }
 
     fn sample_into(&self, mut dst : DMatrixSliceMut<'_,f64>) {

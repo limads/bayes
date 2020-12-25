@@ -1,8 +1,6 @@
 use nalgebra::*;
 use super::*;
-// use std::fmt::{self, Display};
 use serde::{Serialize, Deserialize};
-// use super::Gamma;
 use std::fmt::{self, Display};
 use crate::fit::markov::Trajectory;
 use super::MultiNormal;
@@ -32,6 +30,10 @@ impl Distribution for VonMises
         unimplemented!()
     }
 
+    fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
+        unimplemented!()
+    }
+    
     fn mode(&self) -> DVector<f64> {
         unimplemented!()
     }
@@ -40,7 +42,7 @@ impl Distribution for VonMises
         unimplemented!()
     }
 
-    fn log_prob(&self, _y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>) -> f64 {
+    fn log_prob(&self /*, _y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>*/ ) -> Option<f64> {
         unimplemented!()
     }
 

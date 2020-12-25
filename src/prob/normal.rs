@@ -5,7 +5,6 @@ use rand;
 use std::f64::consts::PI;
 use crate::fit::markov::*;
 use std::fmt::{self, Display};
-// use crate::foreign::gsl::rand_utils::GslRng;
 use anyhow;
 use crate::fit::Estimator;
 
@@ -67,6 +66,8 @@ pub struct Normal {
     
     obs : Option<DVector<f64>>,
     
+    fixed_obs : Option<DMatrix<f64>>,
+    
     n : usize
 
     // When updating the scale, also update this as
@@ -106,6 +107,7 @@ impl Normal {
             minus_half_prec : -prec_suff[1] / 2.,
             name : None,
             obs : None,
+            fixed_obs : None,
             n
         };
         norm.set_var(var);
@@ -258,6 +260,10 @@ impl Distribution for Normal
         &self.mu
     }
 
+    fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
+        self.mu.column_mut(0)
+    }
+    
     fn mean<'a>(&'a self) -> &'a DVector<f64> {
         &self.mu
     }
@@ -279,22 +285,24 @@ impl Distribution for Normal
         None
     }
 
-    fn log_prob(&self, y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>) -> f64 {
+    fn log_prob(&self /*, y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>*/ ) -> Option<f64> {
         /*let eta = match self.current() {
             Some(eta) => eta,
             None => self.mu.rows(0, self.mu.nrows())
         };*/
         let loc_lp = match self.loc_factor {
-            Some(ref loc) => loc.log_prob(self.mu.slice((0, 0), (self.mu.nrows(), 1)), None),
+            Some(ref loc) => loc.suf_log_prob(self.mu.slice((0, 0), (self.mu.nrows(), 1))),
             None => 0.
         };
         let scale_lp = match self.scale_factor {
-            Some(ref scale) => scale.log_prob(self.prec_suff.slice((0,0), (2, 1)), None),
+            Some(ref scale) => scale.suf_log_prob(self.prec_suff.slice((0,0), (2, 1))),
             None => 0.
         };
-        let t = Self::sufficient_stat(y);
+        let y = self.obs.as_ref()?;
+        let t = Self::sufficient_stat(y.slice((0, 0), (y.nrows(), 1)));
         let y_sq = y.column(0).map(|y| y.powf(2.0));
-        (self.scaled_mu.component_mul(&y) + (self.minus_half_prec*y_sq) - &self.log_part).sum() + loc_lp + scale_lp
+        let lp = (self.scaled_mu.component_mul(&y) + (self.minus_half_prec*y_sq) - &self.log_part).sum() + loc_lp + scale_lp;
+        Some(lp)
     }
 
     fn sample_into(&self, mut dst : DMatrixSliceMut<'_, f64>) {
@@ -428,6 +436,7 @@ impl Likelihood for Normal {
 impl Conditional<Normal> for Normal {
 
     fn condition(mut self, n : Normal) -> Normal {
+        assert!(n.n == 1);
         self.loc_factor = Some(Box::new(n));
         // TODO update sampler vector
         self

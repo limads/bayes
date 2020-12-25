@@ -186,6 +186,8 @@ pub struct MultiNormal {
 
     obs : Option<DMatrix<f64>>,
 
+    fixed_obs : Option<DMatrix<f64>>,
+    
     names : Vec<String>,
     
     fixed : bool
@@ -277,7 +279,8 @@ impl MultiNormal {
             scaled_mu : mu.clone(),
             obs : None,
             names : Vec::new(),
-            fixed : false
+            fixed : false,
+            fixed_obs : None
         };
         norm.set_parameter(mu.rows(0, mu.nrows()), true);
         norm.set_cov(sigma.clone());
@@ -667,6 +670,10 @@ impl Distribution for MultiNormal {
         }
     }
 
+    fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
+        self.mu.column_mut(0)
+    }
+    
     fn mode(&self) -> DVector<f64> {
         self.mean().clone()
     }
@@ -692,11 +699,12 @@ impl Distribution for MultiNormal {
         }
     }
 
-    fn log_prob(&self, y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>) -> f64 {
+    fn log_prob(&self, /*y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>*/ ) -> Option<f64> {
         if let Some(op) = &self.op {
-            return op.dst.log_prob(y, x);
+            return op.dst.log_prob();
         }
-        let t = Self::sufficient_stat(y);
+        let y = self.obs.as_ref()?;
+        let t = Self::sufficient_stat(y.slice((0, 0), (y.nrows(), y.ncols())));
         let lp = self.suf_log_prob(t.slice((0, 0), (t.nrows(), t.ncols())));
         let loc_lp = match &self.loc_factor {
             Some(loc) => {
@@ -705,18 +713,18 @@ impl Distribution for MultiNormal {
                     1,
                     self.mu.data.as_slice()
                 );
-                loc.log_prob(mu_row.slice((0, 0), (0, self.mu.nrows())), None)
+                loc.suf_log_prob(mu_row.slice((0, 0), (0, self.mu.nrows())))
             },
             None => 0.0
         };
         let scale_lp = match &self.scale_factor {
             Some(scale) => {
                 let sinv_diag : DVector<f64> = self.sigma_inv.diagonal().clone_owned();
-                scale.log_prob(sinv_diag.slice((0, 0), (sinv_diag.nrows(), 1)), None)
+                scale.suf_log_prob(sinv_diag.slice((0, 0), (sinv_diag.nrows(), 1)))
             },
             None => 0.0
         };
-        lp + loc_lp + scale_lp
+        Some(lp + loc_lp + scale_lp)
     }
 
     fn sample_into(&self, mut dst : DMatrixSliceMut<'_, f64>) {

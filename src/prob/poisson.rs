@@ -1,10 +1,7 @@
 use super::*;
-// use super::gamma::*;
 use serde::{Serialize, Deserialize};
 use rand_distr;
-// use rand;
 use crate::fit::markov::*;
-// use std::ops::AddAssign;
 use std::default::Default;
 use serde::ser::{Serializer};
 use serde::de::Deserializer;
@@ -57,6 +54,8 @@ pub struct Poisson {
     name : Option<String>,
     
     obs : Option<DVector<f64>>,
+    
+    fixed_obs : Option<DMatrix<f64>>,
     
     n : usize
 
@@ -173,6 +172,10 @@ impl Distribution for Poisson
     fn mean<'a>(&'a self) -> &'a DVector<f64> {
         &self.lambda
     }
+    
+    fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
+        self.eta.column_mut(0)
+    }
 
     fn mode(&self) -> DVector<f64> {
         self.lambda.clone()
@@ -182,7 +185,7 @@ impl Distribution for Poisson
         self.lambda.clone()
     }
 
-    fn log_prob(&self, y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>) -> f64 {
+    fn log_prob(&self, /*y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>*/ ) -> Option<f64> {
         /*// assert!(y.ncols() == 1);
         let eta = self.eta.rows(0, self.eta.nrows());
         let factor_lp = match &self.factor {
@@ -197,7 +200,14 @@ impl Distribution for Poisson
             PoissonFactor::Empty => 0.
         };
         eta.dot(&y.slice((0, 0), (y.nrows(), 1))) - self.log_part[0] + factor_lp*/
-        super::univariate_log_prob(y.clone(), x, &self.factor, &self.view_parameter(true), &self.log_part, self.suf_lambda.clone())
+        super::univariate_log_prob(
+            self.obs.as_ref(),
+            self.fixed_obs.as_ref(),
+            &self.factor,
+            &self.view_parameter(true),
+            &self.log_part,
+            self.suf_lambda.clone()
+        )
     }
 
     fn sample_into(&self, mut dst : DMatrixSliceMut<'_,f64>) {
@@ -424,6 +434,7 @@ impl Default for Poisson {
             suf_lambda : None,
             log_part : DVector::from_element(1, (2.).ln()),
             obs : None,
+            fixed_obs : None,
             name : None,
             n : 0
         }

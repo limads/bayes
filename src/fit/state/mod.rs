@@ -1,5 +1,13 @@
 use crate::prob::MultiNormal;
 
+pub struct Kalman {
+
+}
+
+pub struct Particle {
+
+}
+
 /*pub enum Covariance {
     Constant,
     Linear,

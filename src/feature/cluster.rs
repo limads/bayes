@@ -29,6 +29,7 @@ impl AsRef<[usize]> for Cluster {
 /// between the closest elements (each from one of the cluster) will be used;
 /// In the complete linkage strategy (Farthest neighbor), the distance between the farthest elements (each from
 /// one of the clusters) will be used.
+#[derive(Debug, Clone, Copy)]
 pub enum Neighbor {
     Nearest,
     Farthest
@@ -43,17 +44,31 @@ pub enum Neighbor {
 /// If the user chooses the first strategy, a partial execution of the algorithm will end
 /// with several un-classified elements (the ones with the largest distances); while if the user
 /// chooses the second strategy, a partial execution will end with all elements classified at
-/// clusters of the same size (although not necessarily the "best" ones). 
+/// clusters of the same size (although not necessarily the "best" ones). If the mixed
+/// strategy is chosen, the algorithm starts with a divisive strategy, then applies an agglomerative
+/// strategy to the output of the first step.
 pub enum Strategy {
-    Divisive,
-    Agglomerative(Neighbor)
+    Divisive(StopCondition),
+    Agglomerative(Neighbor, StopCondition),
+    Mixed(StopCondition, (Neighbor, StopCondition))
 }
 
 /// Stop the algorithm when either Classified observations have been classified; or
 /// the given number of clusters has been formed; or all observations have been classified
 pub enum StopCondition {
+
+    // In a divise strategy, how many observations are NOT on the "background" cluster.
+    // In an agglomerative strategy, when the greatest cluster size is achieved.
     Observations(usize),
+    
+    // Stop when we have exactly the given number of clusters
     Clusters(usize),
+    
+    // Stop when we have between n and m clusters, returning the size with the highest separability
+    // ClusterRange(usize, usize),
+    
+    // In a divise strategy, stop when there are no observations left on the background cluster.
+    // In an agglomerative strategy, returns a single cluster for all observations.
     All
 }
 
@@ -126,17 +141,6 @@ pub fn distance_matrix(tall : DMatrix<f64>, opt_wide : Option<DMatrix<f64>>) -> 
     
     eucl
 }
-
-/*/// When iterating over an distance matrix, we can have the row observation
-/// assigned to a cluster; the column observation assigned to a cluster; neither, or both.
-/// The variants carry the cluster index the observation is assigned to (assuming clusters
-/// is a Vec<Vec<usize>> where the usize represents the observation index.
-enum Assignment {
-    Neither,
-    Row(usize),
-    Col(usize),
-    Both((usize, usize))
-}*/
 
 /*
 // closest_ix index the unassigned vector; closest is the actual distance matrix index
@@ -238,28 +242,6 @@ pub fn agglomerate(dist : &DMatrix<f64>, clusters : &[Cluster], neighbor : Neigh
 
 impl Dendrogram {
 
-    /*/// Returns which observations of the informed pair are already assigned, and at which cluster.
-    /// clusters is the vector of observation indices (corresponding to the arrangement at the distance
-    /// matrix); obs_row and obs_col is the actual index of the distance matrix.
-    fn verify_assignment(clusters : &[Cluster], obs_row : usize, obs_col : usize) -> Assignment {
-        let mut row_assigned = None;
-        let mut col_assigned = None;
-        for (clust_ix, cluster) in clusters.iter().enumerate() {
-            if row_assigned.is_none() && cluster.items.iter().find(|o| **o == obs_row ).is_some() {
-                row_assigned = Some(clust_ix);
-            }
-            if col_assigned.is_none() && cluster.items.iter().find(|o| **o == obs_col ).is_some() {
-                col_assigned = Some(clust_ix);
-            }
-        }
-        match (row_assigned, col_assigned) {
-            (Some(r_ix), Some(c_ix)) => Assignment::Both((r_ix, c_ix)),
-            (Some(r_ix), None) => Assignment::Row(r_ix),
-            (None, Some(c_ix)) => Assignment::Col(c_ix),
-            (None, None) => Assignment::Neither,
-        }
-    }*/
-    
     // Build sparse representation of upper triangular portion of the matrix as a Vec of (row, col, value),
     // ordered by smallest to largest observation distance.
     fn build_ordered_distances(dist : &DMatrix<f64>) -> Vec<(usize, usize, f64)> {
@@ -273,6 +255,35 @@ impl Dendrogram {
         ord_dist
     }
     
+    fn build_agglomerative(
+        opt_clusters : Option<Vec<Cluster>>,
+        dist : &DMatrix<f64>, 
+        stop : StopCondition, 
+        neighbor : Neighbor
+    ) -> Vec<Cluster> {
+        let mut clusters : Vec<Cluster> = opt_clusters
+            .unwrap_or_else(|| (0..dist.nrows()).map(|ix| Cluster{ items : vec![ix] } ).collect());
+        loop {
+            match stop {
+                StopCondition::Observations(n_obs) => {
+                    panic!("Observaitons conditions not applicable to agg strategy")
+                },
+                StopCondition::Clusters(n_clust) => {
+                    if clusters.len() >= n_clust {
+                        return clusters;
+                    }
+                },
+                StopCondition:: All => {
+                    if clusters.len() == 1 {
+                        return clusters;
+                    }        
+                }
+            }
+            clusters = agglomerate(&dist, &clusters[..], neighbor);
+        }
+        clusters
+    }
+    
     /// Builds a dendrogram using a divisive strategy, until a number of observations
     /// given by level are classified. The observations all start at an "unassigned"
     /// cluster. At each iteration, the smallest distance in this unassigned class is
@@ -283,7 +294,7 @@ impl Dendrogram {
     /// (number of classified observations) is reached, or there are no observations left to be assigned.
     /// The returned vector contains the indices of the observations at each cluster (each
     /// inner vector represents a different cluster).
-    fn build_divisive(dist : DMatrix<f64>, stop : StopCondition) -> Vec<Cluster> {
+    fn build_divisive(dist : &DMatrix<f64>, stop : StopCondition) -> Vec<Cluster> {
     
         let ord_dist = Self::build_ordered_distances(&dist);
         println!("Ordered distance: {:?}", ord_dist);
@@ -352,41 +363,58 @@ impl Dendrogram {
     /// Run clustering algorithm from iterator over variables nested within iterator over observations.
     pub fn build<'a, I,C>(
         data : I,
-        strat : Strategy,
-        stop : StopCondition
+        strat : Strategy
     ) -> Self 
     where
         I : Iterator<Item=C>,
         C : IntoIterator<Item=&'a f64>
     {
         let wide = build_wide_matrix(data);
-        Self::build_from_wide(wide, strat, stop)
+        Self::build_from_wide(wide, strat)
     }
     
     /// Run clustering algorithm assuming observations are rows
-    pub fn build_from_wide(wide : DMatrix<f64>, strat : Strategy, stop : StopCondition) -> Self {
+    pub fn build_from_wide(wide : DMatrix<f64>, strat : Strategy) -> Self {
         assert!(wide.ncols() >= wide.nrows());
         let tall = wide.transpose();
         let eucl = distance_matrix(tall, Some(wide));
-        Self::build_from_eucl(eucl, strat, stop)
+        Self::build_from_eucl(eucl, strat)
     }
     
     /// Run clustering algorithm from a prebuilt euclidian distance matrix
-    pub fn build_from_eucl(eucl : DMatrix<f64>, strat : Strategy, stop : StopCondition) -> Self {
+    pub fn build_from_eucl(eucl : DMatrix<f64>, strat : Strategy) -> Self {
         println!("Distance matrix shape: {:?}", eucl.shape());
         println!("Distance matrix: {:.3}", eucl);
         let clusters = match strat {
-            Strategy::Divisive => Self::build_divisive(eucl, stop),
-            Strategy::Agglomerative(_) => panic!("Agglomerative strategy not yet implemented")
+            Strategy::Divisive(stop) => {
+                Self::build_divisive(&eucl, stop)
+            },
+            Strategy::Agglomerative(neighbor, stop) => {
+                Self::build_agglomerative(
+                    None,
+                    &eucl, 
+                    stop, 
+                    neighbor
+                )
+            },
+            Strategy::Mixed(div_stop, (neighbor, agg_stop)) => {
+                let div_clusters = Self::build_divisive(&eucl, div_stop);
+                Self::build_agglomerative(
+                    Some(div_clusters),
+                    &eucl, 
+                    agg_stop, 
+                    neighbor
+                )
+            }
         };
         Self { clusters }
     }
     
     /// Run clustering algorithm assuming observations are columns
-    pub fn build_from_tall(tall : DMatrix<f64>, strat : Strategy, stop : StopCondition) -> Self {
+    pub fn build_from_tall(tall : DMatrix<f64>, strat : Strategy) -> Self {
         assert!(tall.ncols() <= tall.nrows());
         let eucl = distance_matrix(tall, None);
-        Self::build_from_eucl(eucl, strat, stop)
+        Self::build_from_eucl(eucl, strat)
     }
     
     /*/// Grow the cluster which is closest to the informed data point.
@@ -423,8 +451,7 @@ fn cluster() {
     let dist = distance_matrix(data.clone(), None);
     let dendr = Dendrogram::build_from_tall(
         data,
-        Strategy::Divisive, 
-        StopCondition::All
+        Strategy::Divisive(StopCondition::All), 
     );
     
     let mut clusters : Vec<Cluster> = dendr.clusters().to_vec();
