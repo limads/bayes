@@ -53,6 +53,8 @@ pub struct Poisson {
     
     name : Option<String>,
     
+    fixed_names : Option<Vec<String>>,
+    
     obs : Option<DVector<f64>>,
     
     fixed_obs : Option<DMatrix<f64>>,
@@ -297,19 +299,34 @@ impl Likelihood for Poisson {
         self
     }
     
+    fn view_fixed(&self) -> Option<Vec<String>> {
+        self.fixed_names.clone()
+    }
+    
+    fn with_fixed(&mut self, fixed : &[&str]) -> &mut Self {
+        self.fixed_names = Some(fixed.iter().map(|s| s.to_string()).collect());
+        self
+    }
+    
     fn observe(&mut self, sample : &dyn Sample) {
         //self.obs = Some(super::observe_univariate(self.name.clone(), self.lambda.len(), self.obs.take(), sample));
-        self.n = 0;
+        // self.n = 0;
         let mut obs = self.obs.take().unwrap_or(DVector::zeros(self.lambda.nrows()));
         if let Some(name) = &self.name {
             if let Variable::Count(col) = sample.variable(&name) {
                 for (tgt, src) in obs.iter_mut().zip(col) {
                     *tgt = *src as f64;
-                    self.n += 1;
+                    // self.n += 1;
                 }
             }
         }
         self.obs = Some(obs);
+        
+        if let Some(fixed_names) = &self.fixed_names {
+            let fix_names = fixed_names.clone();
+            super::observe_real_columns(&fix_names[..], sample, &mut self.fixed_obs, self.n);
+        }
+        
         // self
     }
     
@@ -435,6 +452,7 @@ impl Default for Poisson {
             log_part : DVector::from_element(1, (2.).ln()),
             obs : None,
             fixed_obs : None,
+            fixed_names : None,
             name : None,
             n : 0
         }

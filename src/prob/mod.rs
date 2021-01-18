@@ -94,8 +94,11 @@ pub trait Distribution
     /// natural form (eta) or canonical form (theta).
     fn view_parameter(&self, natural : bool) -> &DVector<f64>;
 
+    /// TODO make sure exposing the natural parameter always make evaluating
+    /// the log-probability be relative to any newly-set values (for example,
+    /// the lp evaluation cannot be based on the non-updated canonical parameter).
     fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64>;
-     
+    
     /// Set internal parameter vector at the informed value; either passing
     /// the natural form (eta) or the canonical form (theta).
     fn set_parameter(&mut self, p : DVectorSlice<'_, f64>, natural : bool);
@@ -155,6 +158,10 @@ pub trait Distribution
     }
 
     fn sample_into(&self, dst : DMatrixSliceMut<'_,f64>);
+    
+    fn param_len(&self) -> usize {
+        self.view_parameter(true).nrows()
+    }
     
     // fn sample_into_transposed(&self, dst : DVectorSliceMut<'_, f64>);
 
@@ -607,6 +614,14 @@ impl<'a> Iterator for Factors<'a> {
 /// the prior, since there is no marginalization required for 1D distributions. For multivariate conjugate
 /// and non-conjugate inference, usually a marginalization step is required to retrieve the posterior
 /// distribution.
+///
+/// Likelihood distributions might have a set of fixed variables, which require a multinormal conditioning
+/// factor representing linear combination coefficients for sampling and log-probability calculations. The
+/// linearity of those factors arises by assuming that the natural parameter of the current distribution
+/// and the fixed factors follow a joint multivariante distribution; which was conditioned on the fixed
+/// factors to yield the current mean estimate. In a factoring graph, the observations themselves do not
+/// constitute an independent factor, since they are fixed and do not have their own log-likelihood to
+/// be consdiered.
 pub trait Likelihood
     where
         Self : Distribution //+ ?Sized,
@@ -615,9 +630,16 @@ pub trait Likelihood
 
     fn view_variables(&self) -> Option<Vec<String>>;
     
+    fn view_fixed(&self) -> Option<Vec<String>>;
+    
     /// Bind a sequence of variable names to this distribution. This causes calls to
     /// Likelihood::observe to bind to the respective variable names for any Sample implementor.
     fn with_variables(&mut self, vars : &[&str]) -> &mut Self where Self : Sized;
+    
+    /// Bind a sequence of variable names which are assumed to be fixed with respect to this
+    /// distribution. This causes calls to Likelihood::observe to bind the respective data.
+    /// Fixed variable names 
+    fn with_fixed(&mut self, fixed : &[&str]) -> &mut Self where Self : Sized;
     
     /// Updates the full probabilistic graph from this likelihood node to all its
     /// parent factoring terms, binding any named likelihood nodes to the variable
@@ -1142,6 +1164,23 @@ where
             // let no_distr = None;
             // Box::new(no_distr.iter().map(|d| *d))
             None
+        }
+    }
+}
+
+fn observe_real_columns(names : &[String], sample : &dyn Sample, opt_obs : &mut Option<DMatrix<f64>>, n : usize) {
+    if opt_obs.is_none() {
+        *opt_obs = Some(DMatrix::zeros(n, names.len()));
+    }
+    let obs = opt_obs.as_mut().unwrap();
+    for (i, name) in names.iter().cloned().enumerate() {
+        if let Variable::Real(col) = sample.variable(&name) {
+            let mut total = 0;
+            for (tgt, src) in obs.column_mut(i).iter_mut().zip(col) {
+                *tgt = *src;
+                total += 1;
+            }
+            assert!(total == n);
         }
     }
 }

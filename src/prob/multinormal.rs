@@ -190,6 +190,8 @@ pub struct MultiNormal {
     
     names : Vec<String>,
     
+    fixed_names : Option<Vec<String>>,
+    
     fixed : bool
     
     // Vector of scale parameters; against which the Wishart factor
@@ -279,6 +281,7 @@ impl MultiNormal {
             scaled_mu : mu.clone(),
             obs : None,
             names : Vec::new(),
+            fixed_names : None,
             fixed : false,
             fixed_obs : None
         };
@@ -827,18 +830,25 @@ impl Likelihood for MultiNormal {
         self
     }
     
+    fn view_fixed(&self) -> Option<Vec<String>> {
+        self.fixed_names.clone()
+    }
+    
+    fn with_fixed(&mut self, fixed : &[&str]) -> &mut Self {
+        self.fixed_names = Some(fixed.iter().map(|s| s.to_string()).collect());
+        self
+    }
+    
     fn observe(&mut self, sample : &dyn Sample) {
-        let mut obs = self.obs.take().unwrap_or(DMatrix::zeros(self.n, self.mu.len()));
-        self.n = 0;
-        for (i, name) in self.names.iter().cloned().enumerate() {
-            if let Variable::Real(col) = sample.variable(&name) {
-                for (tgt, src) in obs.column_mut(i).iter_mut().zip(col) {
-                    *tgt = *src;
-                    self.n += 1;
-                }
-            }
+        // let mut obs = self.obs.take().unwrap_or(DMatrix::zeros(self.n, self.mu.len()));
+        // if let 
+        let names = self.names.clone();
+        super::observe_real_columns(&names[..], sample, &mut self.obs, self.n);
+        if let Some(fixed_names) = &self.fixed_names {
+            let fix_names = fixed_names.clone();
+            super::observe_real_columns(&fix_names[..], sample, &mut self.fixed_obs, self.n);
         }
-        self.obs = Some(obs);
+        // self.obs = Some(obs);
     }
     
     /*/// Returns the distribution with the parameters set to its

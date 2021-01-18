@@ -54,6 +54,32 @@ impl Trajectory {
         self.closed = true;
     }
     
+    /// Expands this trajectory, assuming the given element was expanded n times.
+    pub fn expanded_samples(&self, weights : &[usize]) -> DMatrix<f64> {
+        let final_sz = weights.iter().sum();
+        let mut out = DMatrix::zeros(final_sz, self.traj.nrows());
+        let mut curr_ix = 0;
+        let mut curr_count = 0;
+        for mut row_out in out.row_iter_mut(){
+            row_out.copy_from(&self.traj.row(curr_ix));
+            curr_count += 1;
+            if weights[curr_ix] == curr_count {
+                curr_ix += 1;
+            } 
+        }
+        out
+    }
+    
+    pub fn close(mut self) -> Self {
+        self.closed = true;
+        let curr_pos = self.pos;
+        let traj_sz = self.traj.nrows();
+        if self.traj.nrows() > self.pos+1 {
+            self.traj = self.traj.remove_rows(curr_pos, traj_sz);
+        }
+        self
+    }
+    
     /*pub fn new(start : DVectorSlice<'_, f64>) -> Self {
         let mut traj = DMatrix::zeros(start.nrows(), 1000);
         let weights = DVector::from_element(1000, 1.);
@@ -124,6 +150,13 @@ impl Trajectory {
         }
     }
 
+    pub fn trim_begin(mut self, n : usize) -> Self {
+        assert!(self.closed);
+        self.traj = self.traj.remove_rows(0, n);
+        self.pos -= n;
+        self
+    }
+    
     /// Builds a Histogram over a single parameter value in this trajectory.
     pub fn histogram(&self, ix : usize) -> Option<Histogram> {
         if ix < self.traj.nrows() {

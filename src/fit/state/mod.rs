@@ -1,11 +1,30 @@
 use crate::prob::MultiNormal;
+use nalgebra::*;
 
+/// The Kalman filter is applicable whenever we have a dynamical parameter estimation
+/// with state update that can be seted as a linear operator (a matrix multiplication).
 pub struct Kalman {
 
 }
 
+impl Kalman {
+
+    pub fn with_transition(&mut self, op : DMatrix<f64>) -> &mut Self {
+        self
+    }
+}
+
+/// The particle filter is applicable to dynamical parameter estimation with
+/// a state update that is an arbitrary (possibly non-linear) function.
 pub struct Particle {
 
+}
+
+impl Particle {
+
+    pub fn with_transition(&mut self, op : impl Fn(&mut [f64])) -> &mut Self {
+        self
+    }
 }
 
 /*pub enum Covariance {

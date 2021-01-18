@@ -221,7 +221,7 @@ pub fn agglomerate(dist : &DMatrix<f64>, clusters : &[Cluster], neighbor : Neigh
     assert!(clusters.len() % 2  == 0);
     
     let mut ord_dist = Vec::new();
-    for (i, ref_cluster) in clusters.iter().enumerate() /*.take(clusters.len() / 2)*/ {
+    for (i, ref_cluster) in clusters.iter().enumerate() {
         for (j, cand_cluster) in clusters.iter().enumerate().skip(i+1) {
             let cluster_dist = best_neighbor_dist(&dist, &ref_cluster, &cand_cluster, &neighbor);
             ord_dist.push((i, j, cluster_dist));
@@ -466,6 +466,15 @@ fn cluster() {
         let min = cluster.items().iter().min().unwrap();
         let max = cluster.items().iter().max().unwrap();
         assert!( (*max as i32) - (*min as i32) < 10);
+    }
+}
+
+/// Calculates the centroid of the informed cluster, from the full data matrix.
+pub fn centroid_mut(m : &DMatrix<f64>, cluster : &Cluster, centroid : &mut DVector<f64>) {
+    let n = cluster.items.len() as f64;
+    centroid.iter_mut().for_each(|c| *c = 0.0 );
+    for (c, v) in centroid.iter_mut().zip(cluster.items().iter()) {
+        *c += *v as f64 / n;
     }
 }
 

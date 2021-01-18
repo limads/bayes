@@ -162,94 +162,80 @@ impl Metropolis {
 
 }
 
-// Using as type parameter Estimator<dyn Distribution> and returning
-// the dynamic reference Ok(&self.model.into()) triggers a compiler error
-// (panic) at nightly (rustc 1.46.0-nightly (346aec9b0 2020-07-11))
-impl Estimator<RandomWalk> for Metropolis {
+fn mcmclib_metropolis(metr : &mut Metropolis, sample : &dyn Sample) -> Result<(), &'static str> {
+    metr.model.as_mut().observe(sample);
+    let (n, burn) = (metr.n, metr.burn);
+    let mut param_len = 0;
+    let (post_left, post_right) = metr.model.as_mut().factors_mut();
+    if let Some(left) = post_left {
+        param_len += utils::param_vec_length(left, param_len);
+    }
+    if let Some(right) = post_right {
+        param_len += utils::param_vec_length(right, param_len);
+    }
+    println!("Parameter vector length = {}", param_len);
+    if param_len == 0 {
+        return Err("Probabilistic graph does not have Posterior nodes");
+    };
+    let mut init_vec = DVector::zeros(param_len);
+    
+    /// Receives the samples from mcmclib at a tall matrix
+    let mut out = DMatrix::zeros(n, param_len);
 
-    // fn predict<'a>(&'a self, cond : Option<&'a Sample /*<'a>*/ >) -> Box<dyn Sample> {
-    //    unimplemented!()
-    // }
-    
-    fn take_posterior(mut self) -> Option<RandomWalk> {
-        self.rw.take()
-    }
-    
-    fn view_posterior<'a>(&'a self) -> Option<&'a RandomWalk> {
-        self.rw.as_ref()
-    }
-    
-    fn fit<'a>(&'a mut self, sample : &'a dyn Sample) -> Result<&'a RandomWalk, &'static str> {
-        self.model.as_mut().observe(sample);
-        let (n, burn) = (self.n, self.burn);
-        let mut param_len = 0;
-        let (post_left, post_right) = self.model.as_mut().factors_mut();
-        if let Some(left) = post_left {
-            param_len += utils::param_vec_length(left, param_len);
-        }
-        if let Some(right) = post_right {
-            param_len += utils::param_vec_length(right, param_len);
-        }
-        println!("Parameter vector length = {}", param_len);
-        if param_len == 0 {
-            return Err("Probabilistic graph does not have Posterior nodes");
-        };
-        let mut init_vec = DVector::zeros(param_len);
+    let mut distr_ptr = DistrPtr {
+        model : ((&mut metr.model) as *mut Model) as *mut c_void,
+        lp_func : model_log_prob
+    };
+    let sample_ok = unsafe { distr_mcmc(
+        &mut init_vec[0] as *mut f64,
+        &mut out[0] as *mut f64,
+        n,
+        param_len,
+        burn,
+        &mut distr_ptr as *mut DistrPtr
+    ) };
+
+    if sample_ok {
+        let samples = out.transpose();
         
-        /// Receives the samples from mcmclib at a tall matrix
-        let mut out = DMatrix::zeros(n, param_len);
-
-        let mut distr_ptr = DistrPtr {
-            model : ((&mut self.model) as *mut Model) as *mut c_void,
-            lp_func : model_log_prob
-        };
-        let sample_ok = unsafe { distr_mcmc(
-            &mut init_vec[0] as *mut f64,
-            &mut out[0] as *mut f64,
-            n,
-            param_len,
-            burn,
-            &mut distr_ptr as *mut DistrPtr
-        ) };
-
-        if sample_ok {
-            let samples = out.transpose();
-            
-            // We can't use AsMut<dyn Likelihood> for model here because set_external_trajectory
-            // is a generic method that uses iter_factors_mut(.), which requires T : Sized
-            match self.model {
-                Model::MN(ref mut m) => utils::set_external_trajectory(m, &samples),
-                Model::Bern(ref mut b) => utils::set_external_trajectory(b, &samples),
-                _ => unimplemented!()
-            }
-        } else {
-            return Err("Sampling failed");
+        // We can't use AsMut<dyn Likelihood> for model here because set_external_trajectory
+        // is a generic method that uses iter_factors_mut(.), which requires T : Sized
+        match metr.model {
+            Model::MN(ref mut m) => utils::set_external_trajectory(m, &samples),
+            Model::Bern(ref mut b) => utils::set_external_trajectory(b, &samples),
+            _ => unimplemented!()
         }
-        
-        self.rw = Some(RandomWalk{ model : self.model.clone(), weights : None, preds : HashMap::new() });
-        Ok(self.rw.as_ref().unwrap())
+    } else {
+        return Err("Sampling failed");
     }
-
+    
+    metr.rw = Some(RandomWalk{ model : metr.model.clone(), weights : None, preds : HashMap::new() });
+    //Ok(metr.rw.as_ref().unwrap())
+    Ok(())
 }
 
 /// Returns a vector of trajectories and a vector of how many times each position
 /// in the trajectory was resampled.
-fn metropolis_hastings(mut lik : impl Likelihood, n : usize) -> Result<(Vec<Trajectory>, Vec<usize>), String> {
+fn native_metropolis(
+    mut lik : impl Likelihood,
+    n : usize, 
+    burn : usize
+) -> Result<(Vec<Trajectory>, Vec<usize>), String> {
     let param_dims : Vec<usize> = lik
         .iter_factors_mut()
         .map(|factor| factor.view_parameter(true).nrows() )
         .collect();
     let mut trajs : Vec<Trajectory> = param_dims
         .iter()
-        .map(|p| Trajectory::new(n, *p) )
+        .map(|p| Trajectory::new(n + burn, *p) )
         .collect();
     let mut proposals : Vec<MultiNormal> = lik
         .iter_factors_mut()
         .map(|factor| {
-            let n = factor.view_parameter(true).nrows();
+            let f_len = factor.param_len();
             let mean = factor.mean().clone();
             let cov = factor.cov().unwrap();
-            MultiNormal::new(n, mean, cov).unwrap() 
+            MultiNormal::new(f_len, mean, cov).unwrap() 
         } ).collect();
     
     let mut prev_lp = lik.log_prob().ok_or(format!("Error evaluating log-probability"))?;
@@ -258,7 +244,7 @@ fn metropolis_hastings(mut lik : impl Likelihood, n : usize) -> Result<(Vec<Traj
     let mut draw_count : Vec<usize> = Vec::with_capacity(n);
     draw_count.push(1);
     
-    for i in 0..n {
+    for i in 0..(n + burn) {
     
         for (prop, mut traj) in proposals.iter().zip(trajs.iter_mut()) {
             prop.sample_into(traj.step());
@@ -283,9 +269,52 @@ fn metropolis_hastings(mut lik : impl Likelihood, n : usize) -> Result<(Vec<Traj
                 *last += 1;
             }
         }
-        
     }
-    Ok((trajs, draw_count))
+    
+    let trim_trajs : Vec<_> = trajs.drain(0..)
+        .map(|mut traj| traj.close().trim_begin(burn) )
+        .collect();
+    let trim_draw_count : Vec<_> = draw_count.drain(burn..).collect();
+    
+    Ok((trim_trajs, trim_draw_count))
+}
+
+// Using as type parameter Estimator<dyn Distribution> and returning
+// the dynamic reference Ok(&self.model.into()) triggers a compiler error
+// (panic) at nightly (rustc 1.46.0-nightly (346aec9b0 2020-07-11))
+impl Estimator<RandomWalk> for Metropolis {
+
+    // fn predict<'a>(&'a self, cond : Option<&'a Sample /*<'a>*/ >) -> Box<dyn Sample> {
+    //    unimplemented!()
+    // }
+    
+    fn take_posterior(mut self) -> Option<RandomWalk> {
+        self.rw.take()
+    }
+    
+    fn view_posterior<'a>(&'a self) -> Option<&'a RandomWalk> {
+        self.rw.as_ref()
+    }
+    
+    fn fit<'a>(&'a mut self, sample : &'a dyn Sample) -> Result<&'a RandomWalk, &'static str> {
+        let ans = match self.model {
+            Model::MN(ref mut m) => native_metropolis(m.clone(), self.n, self.burn),
+            Model::Bern(ref mut b) => native_metropolis(b.clone(), self.n, self.burn),
+            _ => unimplemented!()
+        };
+        match ans {
+            Ok((trajs, draw_count)) => {
+            
+                self.rw = Some(RandomWalk{ model : self.model.clone(), weights : Some(draw_count), preds : HashMap::new() });
+                Ok(self.rw.as_ref().unwrap())
+            },
+            Err(e) => {
+                println!("{}", e);
+                Err("MCMC fitting error")
+            }
+        }
+    }
+
 }
 
 #[test]

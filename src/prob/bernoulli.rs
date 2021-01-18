@@ -1,11 +1,7 @@
 use super::*;
-// use std::boxed::Box;
-// use super::beta::*;
-// use serde::{Serialize, Deserialize};
 use rand_distr;
 use rand;
 use crate::fit::markov::*;
-// use std::ops::AddAssign;
 use std::default::Default;
 use std::fmt::{self, Display};
 use anyhow;
@@ -13,7 +9,6 @@ use serde_json::{self, Value, map::Map};
 use crate::model::Model;
 use std::convert::{TryFrom, TryInto};
 use crate::model;
-// use argmin::prelude::*;
 use argmin;
 use either::Either;
 use crate::fit::Estimator;
@@ -116,6 +111,8 @@ pub struct Bernoulli {
     fixed_obs : Option<DMatrix<f64>>,
     
     name : Option<String>,
+    
+    fixed_names : Option<Vec<String>>,
     
     n : usize
 
@@ -289,10 +286,19 @@ impl Likelihood for Bernoulli {
         self
     }
     
+    fn view_fixed(&self) -> Option<Vec<String>> {
+        self.fixed_names.clone()
+    }
+    
+    fn with_fixed(&mut self, fixed : &[&str]) -> &mut Self {
+        self.fixed_names = Some(fixed.iter().map(|s| s.to_string()).collect());
+        self
+    }
+    
     fn observe(&mut self, sample : &dyn Sample) {
         //self.obs = Some(super::observe_univariate(self.name.clone(), self.theta.len(), self.obs.take(), sample));
         let mut obs = self.obs.take().unwrap_or(DVector::zeros(self.theta.len()));
-        self.n = 0;
+        // self.n = 0;
         if let Some(name) = &self.name {
             if let Variable::Binary(col) = sample.variable(&name) {
                 for (tgt, src) in obs.iter_mut().zip(col) {
@@ -301,11 +307,17 @@ impl Likelihood for Bernoulli {
                     } else {
                         *tgt = 0.0;
                     }
-                    self.n += 1;
+                    // self.n += 1;
                 }
             }
         }
         self.obs = Some(obs);
+        
+        if let Some(fixed_names) = &self.fixed_names {
+            let fix_names = fixed_names.clone();
+            super::observe_real_columns(&fix_names[..], sample, &mut self.fixed_obs, self.n);
+        }
+        
         //self
     }
     
@@ -631,6 +643,7 @@ impl Default for Bernoulli {
             obs : None,
             fixed_obs : None,
             name : None,
+            fixed_names : None,
             n : 0
         }
     }
