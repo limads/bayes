@@ -336,6 +336,10 @@ fn native_metropolis<O : ?Sized>(
 // there are multiple ways to achieve Posterior P from L.
 impl Estimator<'_, RandomWalk> for Metropolis {
 
+    type Algorithm = ();
+
+    type Error = &'static str;
+
     // fn predict<'a>(&'a self, cond : Option<&'a Sample /*<'a>*/ >) -> Box<dyn Sample> {
     //    unimplemented!()
     // }
@@ -348,7 +352,7 @@ impl Estimator<'_, RandomWalk> for Metropolis {
         self.rw.as_ref()
     }*/
     
-    fn fit<'a>(&'a mut self, sample : &'a dyn Sample) -> Result<RandomWalk, &'static str> {
+    fn fit<'a>(&'a mut self, algorithm : Option<Self::Algorithm>) -> Result<RandomWalk, &'static str> {
         #[cfg(feature="mcmclib")]
         {
             mcmclib_metropolis(&mut self.metropolis, &sample)?;

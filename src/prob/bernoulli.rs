@@ -329,11 +329,11 @@ impl Likelihood<bool> for Bernoulli {
         self.fixed_obs.as_ref()
     }
 
-    fn observe_sample(&mut self, sample : &dyn Sample) {
+    fn observe_sample(&mut self, sample : &dyn Sample, vars : &[&str]) {
         //self.obs = Some(super::observe_univariate(self.name.clone(), self.theta.len(), self.obs.take(), sample));
         let mut obs = self.obs.take().unwrap_or(DMatrix::zeros(self.theta.len(), 1));
         // self.n = 0;
-        if let Some(name) = &self.name {
+        if let Some(name) = vars.get(0) {
             if let Variable::Binary(col) = sample.variable(&name) {
                 for (tgt, src) in obs.iter_mut().zip(col) {
                     if src {
@@ -347,10 +347,10 @@ impl Likelihood<bool> for Bernoulli {
         }
         self.obs = Some(obs);
         
-        if let Some(fixed_names) = &self.fixed_names {
+        /*if let Some(fixed_names) = &self.fixed_names {
             let fix_names = fixed_names.clone();
             super::observe_real_columns(&fix_names[..], sample, &mut self.fixed_obs, self.n);
-        }
+        }*/
         
         //self
     }
@@ -435,6 +435,10 @@ impl Likelihood<bool> for Bernoulli {
 
 impl<'a> Estimator<'a, &'a Beta> for Bernoulli {
 
+    type Algorithm = ();
+
+    type Error = &'static str;
+
     //fn predict<'a>(&'a self, cond : Option<&'a Sample/*<'a>*/>) -> Box<dyn Sample /*<'a>*/> {
     //    unimplemented!()
     //}
@@ -447,8 +451,8 @@ impl<'a> Estimator<'a, &'a Beta> for Bernoulli {
         unimplemented!()
     }*/
     
-    fn fit(&'a mut self, sample : &'a dyn Sample) -> Result<&'a Beta, &'static str> {
-        self.observe_sample(sample);
+    fn fit(&'a mut self, algorithm : Option<()>) -> Result<&'a Beta, &'static str> {
+        // self.observe_sample(sample);
         // assert!(y.ncols() == 1);
         // assert!(x.is_none());
         match self.factor {
@@ -470,17 +474,21 @@ impl<'a> Estimator<'a, &'a Beta> for Bernoulli {
 /// Implementation for logistic regression
 impl<'a> Estimator<'a, &'a MultiNormal> for Bernoulli {
 
+    type Algorithm = ();
+
+    type Error = &'static str;
+
     /// Runs the inference algorithm for the informed sample matrix,
     /// returning a reference to the modified model (from which
     /// the posterior information of interest can be retrieved).
-    fn fit(&'a mut self, sample : &'a dyn Sample) -> Result<&'a MultiNormal, &'static str> {
+    fn fit(&'a mut self, algorithm : Option<Self::Algorithm>) -> Result<&'a MultiNormal, &'static str> {
         unimplemented!()
     }
 
 }
 
 impl Distribution for Bernoulli
-where Self : Sized
+    where Self : Sized
 {
 
     fn set_natural<'a>(&'a mut self, new_eta : &'a mut dyn Iterator<Item=&'a f64>) {
@@ -660,12 +668,13 @@ impl Into<serde_json::Value> for Bernoulli {
 impl Predictive for Bernoulli {
 
     fn predict<'a>(&'a mut self, fixed : Option<&dyn Sample>) -> Option<&'a dyn Sample> {
-        super::collect_fixed_if_required(self, fixed);
+        /*super::collect_fixed_if_required(self, fixed);
         let transf = |obs : &f64| -> bool { if *obs == 1.0 { true } else { false } };
         let preds = super::try_build_generalized_predictions(self, transf)
             .map_err(|e| println!("{}", e)).unwrap();
         self.sample = preds;
-        self.view_prediction()
+        self.view_prediction()*/
+        unimplemented!()
     }
 
     fn view_prediction<'a>(&'a self) -> Option<&'a dyn Sample> {

@@ -360,11 +360,11 @@ impl Likelihood<usize> for Poisson {
         self.fixed_obs.as_ref()
     }
 
-    fn observe_sample(&mut self, sample : &dyn Sample) {
+    fn observe_sample(&mut self, sample : &dyn Sample, vars : &[&str]) {
         //self.obs = Some(super::observe_univariate(self.name.clone(), self.lambda.len(), self.obs.take(), sample));
         // self.n = 0;
         let mut obs = self.obs.take().unwrap_or(DMatrix::zeros(self.lambda.nrows(), 1));
-        if let Some(name) = &self.name {
+        if let Some(name) = vars.get(0) {
             if let Variable::Count(col) = sample.variable(&name) {
                 for (tgt, src) in obs.iter_mut().zip(col) {
                     *tgt = src as f64;
@@ -374,10 +374,10 @@ impl Likelihood<usize> for Poisson {
         }
         self.obs = Some(obs);
         
-        if let Some(fixed_names) = &self.fixed_names {
+        /*if let Some(fixed_names) = &self.fixed_names {
             let fix_names = fixed_names.clone();
             super::observe_real_columns(&fix_names[..], sample, &mut self.fixed_obs, self.n);
-        }
+        }*/
         
         // self
     }
@@ -428,12 +428,13 @@ impl Likelihood<usize> for Poisson {
 impl Predictive for Poisson {
 
     fn predict<'a>(&'a mut self, fixed : Option<&dyn Sample>) -> Option<&'a dyn Sample> {
-        super::collect_fixed_if_required(self, fixed);
+        /*super::collect_fixed_if_required(self, fixed);
         let transf = |obs : &f64| -> usize { *obs as usize };
         let preds = super::try_build_generalized_predictions(self, transf)
             .map_err(|e| println!("{}", e)).unwrap();
         self.sample = preds;
-        self.view_prediction()
+        self.view_prediction()*/
+        unimplemented!()
     }
 
     fn view_prediction<'a>(&'a self) -> Option<&'a dyn Sample> {
@@ -448,6 +449,10 @@ impl Predictive for Poisson {
 
 impl<'a> Estimator<'a, &'a Gamma> for Poisson {
 
+    type Algorithm = ();
+
+    type Error = &'static str;
+
     //fn predict<'a>(&'a self, cond : Option<&'a Sample/*<'a>*/>) -> Box<dyn Sample /*<'a>*/ > {
     //    unimplemented!()
     //}
@@ -460,8 +465,8 @@ impl<'a> Estimator<'a, &'a Gamma> for Poisson {
         unimplemented!()
     }*/
     
-    fn fit(&'a mut self, sample : &'a dyn Sample) -> Result<&'a Gamma, &'static str> {
-        self.observe_sample(sample);
+    fn fit(&'a mut self, algorithm : Option<()>) -> Result<&'a Gamma, &'static str> {
+        // self.observe_sample(sample);
         match self.factor {
             PoissonFactor::Conjugate(ref mut gamma) => {
                 let y = self.obs.clone().unwrap();

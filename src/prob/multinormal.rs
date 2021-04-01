@@ -946,15 +946,15 @@ impl Likelihood<[f64]> for MultiNormal {
         self.fixed_obs.as_ref()
     }
 
-    fn observe_sample(&mut self, sample : &dyn Sample) {
+    fn observe_sample(&mut self, sample : &dyn Sample, vars : &[&str]) {
         // let mut obs = self.obs.take().unwrap_or(DMatrix::zeros(self.n, self.mu.len()));
         // if let 
-        let names = self.names.clone();
-        super::observe_real_columns(&names[..], sample, &mut self.obs, self.n);
-        if let Some(fixed_names) = &self.fixed_names {
+        // let names = self.names.clone();
+        super::observe_real_columns(vars, sample, &mut self.obs, self.n);
+        /*if let Some(fixed_names) = &self.fixed_names {
             let fix_names = fixed_names.clone();
             super::observe_real_columns(&fix_names[..], sample, &mut self.fixed_obs, self.n);
-        }
+        }*/
         // self.obs = Some(obs);
     }
     
@@ -987,6 +987,10 @@ impl Likelihood<[f64]> for MultiNormal {
 
 impl<'a> Estimator<'a, &'a MultiNormal> for MultiNormal {
 
+    type Algorithm = ();
+
+    type Error = &'static str;
+
     //fn predict<'a>(&'a self, cond : Option<&'a Sample/*<'a>*/>) -> Box<dyn Sample/*<'a>*/> {
     //    unimplemented!()
     //}
@@ -999,8 +1003,8 @@ impl<'a> Estimator<'a, &'a MultiNormal> for MultiNormal {
         unimplemented!()
     }*/
     
-    fn fit(&'a mut self, sample : &'a dyn Sample) -> Result<&'a MultiNormal, &'static str> {
-        self.observe_sample(sample);
+    fn fit(&'a mut self, algorithm : Option<()>) -> Result<&'a MultiNormal, &'static str> {
+        // self.observe_sample(sample);
         let y = self.obs.clone().unwrap();
         let n = y.nrows() as f64;
         match (&mut self.loc_factor, &mut self.scale_factor) {

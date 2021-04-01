@@ -454,11 +454,11 @@ impl Likelihood<f64> for Normal {
         self.fixed_obs.as_ref()
     }
 
-    fn observe_sample(&mut self, sample : &dyn Sample) {
+    fn observe_sample(&mut self, sample : &dyn Sample, vars : &[&str]) {
         //self.obs = Some(super::observe_univariate(self.name.clone(), self.mu.len(), self.obs.take(), sample));
         // self.n = 0;
         let mut obs = self.obs.take().unwrap_or(DMatrix::zeros(self.mu.nrows(), 1));
-        if let Some(name) = &self.name {
+        if let Some(name) = vars.get(0) {
             if let Variable::Real(col) = sample.variable(&name) {
                 for (tgt, src) in obs.iter_mut().zip(col) {
                     *tgt = src;
@@ -468,10 +468,10 @@ impl Likelihood<f64> for Normal {
         }
         self.obs = Some(obs);
         
-        if let Some(fixed_names) = &self.fixed_names {
+        /*if let Some(fixed_names) = &self.fixed_names {
             let fix_names = fixed_names.clone();
             super::observe_real_columns(&fix_names[..], sample, &mut self.fixed_obs, self.n);
-        }
+        }*/
         
         // self
     }
@@ -616,6 +616,10 @@ impl Conditional<Gamma> for Normal {
 
 impl<'a> Estimator<'a, &'a Normal> for Normal {
 
+    type Algorithm = ();
+
+    type Error = &'static str;
+
     //fn predict<'a>(&'a self, cond : Option<&'a Sample/*<'a>*/>) -> Box<dyn Sample/*<'a>*/> {
     //    unimplemented!()
     //}
@@ -628,8 +632,8 @@ impl<'a> Estimator<'a, &'a Normal> for Normal {
         unimplemented!()
     }*/
     
-    fn fit(&'a mut self, sample : &'a dyn Sample) -> Result<&'a Normal, &'static str> {
-        self.observe_sample(sample);
+    fn fit(&'a mut self, algorithm : Option<Self::Algorithm>) -> Result<&'a Normal, &'static str> {
+        // self.observe_sample(sample);
         let prec1 = 1. / self.var()[0];
         match (&mut self.loc_factor, &mut self.scale_factor) {
             (NormalFactor::Conjugate(ref mut norm), Some(ref mut gamma)) => {
@@ -669,10 +673,11 @@ impl Observable for Normal {
 impl Predictive for Normal {
 
     fn predict<'a>(&'a mut self, fixed : Option<&dyn Sample>) -> Option<&'a dyn Sample> {
-        super::collect_fixed_if_required(self, fixed);
+        /*super::collect_fixed_if_required(self, fixed);
         let preds = super::try_build_real_predictions(self).map_err(|e| println!("{}", e)).unwrap();
         self.sample = Some(preds);
-        self.view_prediction()
+        self.view_prediction()*/
+        unimplemented!()
     }
 
     fn view_prediction<'a>(&'a self) -> Option<&'a dyn Sample> {

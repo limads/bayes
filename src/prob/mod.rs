@@ -733,7 +733,7 @@ pub trait Likelihood<O>
     /// tree contains at least one top-level likelihood node, but possibly many likelihood nodes up to its
     /// kth level, corresponding to multilevel models, where observations are conditioned on other observations.
     /// After the k+1 level, there cannot be distributions which receive data (only non-named prior distributions).
-    fn observe_sample(&mut self, sample : &dyn Sample);
+    fn observe_sample(&mut self, sample : &dyn Sample, vars : &[&str]);
 
     // where
     //    R : IntoIterator<Item=&'a f64>,
@@ -897,7 +897,7 @@ pub trait Predictive {
     
 }
 
-/// Used internally to sample all likelihood nodes together. The HashMap is then
+/*/// Used internally to sample all likelihood nodes together. The HashMap is then
 /// Boxed into dyn Sample before being sent to the user. 
 pub(crate) fn predict_from_likelihood<L, O>(
     lik : &mut L, 
@@ -916,7 +916,7 @@ where
         sample.insert(name.to_string(), out.column(i).clone_owned().data.into());
     }
     sample
-}
+}*/
 
 /*/// Return (mean, var) pair over a sample.
 fn univariate_mle(y : DMatrixSlice<'_, f64>) -> (f64, f64) {
@@ -1467,7 +1467,7 @@ where
     }
 }
 
-fn observe_real_columns(names : &[String], sample : &dyn Sample, opt_obs : &mut Option<DMatrix<f64>>, n : usize) {
+fn observe_real_columns(names : &[&str], sample : &dyn Sample, opt_obs : &mut Option<DMatrix<f64>>, n : usize) {
     if opt_obs.is_none() {
         *opt_obs = Some(DMatrix::zeros(n, names.len() + 1));
     }
@@ -1641,7 +1641,7 @@ where
     }
 }
 
-fn collect_fixed_if_required<L,O>(distr : &mut L, informed_fixed : Option<&dyn Sample>) -> Result<(), String>
+/*fn collect_fixed_if_required<L,O>(distr : &mut L, informed_fixed : Option<&dyn Sample>) -> Result<(), String>
 where
     L : Likelihood<O> + Distribution
 {
@@ -1661,7 +1661,7 @@ where
         },
         _ => Ok(())
     }
-}
+}*/
 
 /// Implemented by distributions whose parameter values can be updated by a Markov increment
 /// step from the current parameter value.

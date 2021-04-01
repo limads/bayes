@@ -46,10 +46,14 @@ pub trait Estimator<'a, P>
     //    P : Distribution //+ ?Sized + Posterior
 {
 
+    type Error;
+
+    type Algorithm;
+
     /// Runs the inference algorithm for the informed sample matrix,
     /// returning a reference to the modified model (from which
     /// the posterior information of interest can be retrieved).
-    fn fit(&'a mut self, sample : &'a dyn Sample) -> Result<P, &'static str>;
+    fn fit(&'a mut self, algorithm : Option<Self::Algorithm>) -> Result<P, Self::Error>;
     
     /*/// If fit(.) has been called successfully at least once, returns the current state
     /// of the posterior distribution, whithout changing the algorithm state.
