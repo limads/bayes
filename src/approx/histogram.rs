@@ -3,13 +3,14 @@ use nalgebra::storage::*;
 use std::cmp::Ordering;
 use super::*;
 
+/// Structure to represent one-dimensional empirical distributions non-parametrically (Work in progress).
 /// One-dimensional histogram, useful for representing univariate marginal distributions
 /// of sampled posteriors non-parametrically. Retrieved by indexing a Sample structure.
 /// The histogram resolution is a linear function of the sample size. Histograms can be
 /// thought of as a non-parametric counterpart to bayes::distr::Normal in the sense that it
 /// represents a distribution over an unbounded real variable. But unlike Normals, which are
 /// defined only by mean and variance, histograms can represent any empiric univariate distribution.
-/// Histogram implements Distribution API. 
+/// Histogram implements Distribution API.
 pub struct Histogram {
 
     ord_sample : DVector<f64>,

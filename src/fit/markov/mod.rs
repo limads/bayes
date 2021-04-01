@@ -5,7 +5,7 @@ use std::ops::AddAssign;
 use serde::{Serialize, Deserialize};
 use std::ops::Index;
 use nalgebra::storage::*;
-use crate::prob::Histogram;
+use crate::approx::Histogram;
 
 // Metropolis-Hastings posterior sampler (Work in progress).
 mod metropolis;
@@ -116,19 +116,21 @@ impl Trajectory {
         self.traj.slice((self.pos, 0), (1, dim))
     }
     
+    /// Retrieves the previous step value
     pub fn prev_state<'a>(&'a self) -> DMatrixSlice<'a, f64> {
         assert!(self.pos >= 1);
         let dim = self.traj.ncols();
         self.traj.slice((self.pos - 1, 0), (1, dim))
     }
     
+    /// Retrieves a mutable reference to the current step
     pub fn state_mut<'a>(&'a mut self) -> DMatrixSliceMut<'a, f64> {
         let dim = self.traj.ncols();
         let pos = self.pos;
         self.traj.slice_mut((pos, 0), (1, dim))
     }
     
-    /// Increments the current position and retrives a mutable reference to the new current state.
+    /// Increments the current step and retrives a mutable reference to the new current state.
     /// This method can be used in conjunction with distr1.sample_mut(distr2.trajectory_mut().state_mut());
     /// Sampling column-wise (into a wide matrix) makes it easier to calculate log-probabilities later,
     /// because we can pass the column slice as a natural parameter. But sampling row-wise makes it easier

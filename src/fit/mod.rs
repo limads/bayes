@@ -36,23 +36,26 @@ pub mod linear;
 /// how you instantiate your object. If you are building a general-purpose estimator, it is recommended
 /// that your builder method is a generic function receiving Into<Model> as argument, which allows
 /// your method to work both for methods built in the source code or specified as JSON files. You can then
-/// match on the received model to decide the model admissibility for your algorithm.
-pub trait Estimator<D>
+/// match on the received model to decide the model admissibility for your algorithm. Implementing
+/// Estimator<P> for L where L implements likelihood reads: The posterior P can be estimated from
+/// the generative model L, which is a top-level likelihood node L plus any prior factors.
+pub trait Estimator<'a, P>
     where
+    P : 'a
         // Self : ?Sized,
-        D : Distribution //+ ?Sized + Posterior
+    //    P : Distribution //+ ?Sized + Posterior
 {
 
     /// Runs the inference algorithm for the informed sample matrix,
     /// returning a reference to the modified model (from which
     /// the posterior information of interest can be retrieved).
-    fn fit<'a>(&'a mut self, sample : &'a dyn Sample) -> Result<&'a D, &'static str>;
+    fn fit(&'a mut self, sample : &'a dyn Sample) -> Result<P, &'static str>;
     
-    /// If fit(.) has been called successfully at least once, returns the current state
+    /*/// If fit(.) has been called successfully at least once, returns the current state
     /// of the posterior distribution, whithout changing the algorithm state.
-    fn view_posterior<'a>(&'a self) -> Option<&'a D>;
+    fn view_posterior<'a>(&'a self) -> Option<&'a P>;
     
-    fn take_posterior(self) -> Option<D>;
+    fn take_posterior(self) -> Option<P>;*/
     
 }
 
@@ -195,26 +198,33 @@ fn logistic() {
 }*/
 
 /*
-/// Generic function used for testing that the mean of the posterior resulting from estimator e
-/// converges to the bias vector informed by the user as the number of samples (collected by
-/// resampling the user-informed sample) grows. Biasedness is formally defined by
-/// E[t|theta] = theta asymptotically, where t is a statistic calculated from the data.
-pub fn bias<P, R, C>(e : impl Estimator<P>, sample : &dyn Sample<R,C>, bias : &[f64]) {
+/// Estimator evaluation generic functions, mostly for testing purposes. If a given estimator
+/// is known to satisfy some algebraic property, those generic functions can be called with
+/// the estimator to verify if they hold. The informed sample should be arbitrarily
+/// big (e.g. a structure that outputs samples by sampling form a RNG).
+pub mod eval {
 
+    /// Generic function used for testing that the mean of the posterior resulting from estimator e
+    /// converges to the bias vector informed by the user as the number of samples (collected by
+    /// resampling the user-informed sample) grows. Biasedness is formally defined by
+    /// E[t|theta] = theta asymptotically, where t is a statistic calculated from the data.
+    pub fn bias<P, R, C>(e : impl Estimator<P>, sample : &dyn Sample<R,C>, bias : &[f64]) {
+
+    }
+
+    /// Generic function used to test that the variance (or covariance diagonal) of the posterior
+    /// resulting from estimator e converges to the variance vector informed by the user as the number
+    /// of samples (collected by resampling the user-informed sample) grows.
+    pub fn variance<P, R, C>(e : impl Estimator<P>, sample : &dyn Sample<R, C>, variance : &[f64]) {
+
+    }
+
+    /// Generic function used to test if the mean of the posterior calculated by an an estimator E consistently approach
+    /// a "true" value, defiend by a generative process informed by the user as the last argument.
+    pub fn consistency<P, R, C>(e : impl Estimator<P>, sample : &dyn Sample<R, C>, true : impl Distribution) {
+
+    }
 }
-
-/// Generic function used to test that the variance (or covariance diagonal) of the posterior
-/// resulting from estimator e converges to the variance vector informed by the user as the number
-/// of samples (collected by resampling the user-informed sample) grows.
-pub fn variance<P, R, C>(e : impl Estimator<P>, sample : &dyn Sample<R, C>, variance : &[f64]) {
-
-}
-
-/// Generic function used to test if the mean of the posterior calculated by an an estimator E consistently approach
-/// a "true" value, defiend by a generative process informed by the user as the last argument.
-pub fn consistency<P, R, C>(e : impl Estimator<P>, sample : &dyn Sample<R, C>, true : impl Distribution) {
-
-} 
 */
 
 

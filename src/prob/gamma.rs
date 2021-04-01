@@ -108,8 +108,8 @@ impl ExponentialFamily<Dynamic> for Gamma {
         self.eta.dot(&t.column(0)) - self.log_part[0]
     }
 
-    fn update_log_partition<'a>(&'a mut self, eta : DVectorSlice<'_, f64>) {
-        let log_part_v = Gamma::ln_gamma(eta[0] + 1.) - (eta[0] + 1.)*(-1.*eta[1]).ln();
+    fn update_log_partition<'a>(&'a mut self, /*eta : DVectorSlice<'_, f64>*/ ) {
+        let log_part_v = Gamma::ln_gamma(self.eta[0] + 1.) - (self.eta[0] + 1.)*(-1.*self.eta[1]).ln();
         self.log_part = DVector::from_element(1, log_part_v);
     }
 
@@ -151,10 +151,29 @@ impl Distribution for Gamma
             true => p.clone_owned(),
             false => Self::link(&p)
         };
+        self.set_natural(&mut eta.iter());
+    }
+
+    fn dyn_factors(&self) -> (Option<&dyn Distribution>, Option<&dyn Distribution>) {
+        match &self.factor {
+            Some(ref g) => (Some(g.as_ref() as &dyn Distribution), None),
+            None => (None, None)
+        }
+    }
+
+    fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Distribution>, Option<&mut dyn Distribution>) {
+        match &mut self.factor {
+            Some(ref mut g) => (Some(g.as_mut() as &mut dyn Distribution), None),
+            None => (None, None)
+        }
+    }
+
+    fn set_natural<'a>(&'a mut self, new_eta : &'a mut dyn Iterator<Item=&'a f64>) {
+        let eta = DVector::from_iterator(2, new_eta.cloned());
         let ab = Self::link_inverse(&eta);
         self.mean = DVector::from_element(1, ab[0] / ab[1]);
-        self.update_log_partition((&eta).into());
         self.eta = eta;
+        self.update_log_partition();
     }
 
     fn view_parameter(&self, natural : bool) -> &DVector<f64> {
@@ -164,10 +183,6 @@ impl Distribution for Gamma
         }
     }
 
-    fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
-        self.eta.column_mut(0)
-    }
-    
     fn cov(&self) -> Option<DMatrix<f64>> {
         None
     }
@@ -207,13 +222,6 @@ impl Distribution for Gamma
 
 impl Posterior for Gamma {
 
-    fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>) {
-        match &mut self.factor {
-            Some(ref mut g) => (Some(g.as_mut() as &mut dyn Posterior), None),
-            None => (None, None)
-        }
-    }
-
     fn approximation_mut(&mut self) -> Option<&mut MultiNormal> {
         self.approx.as_mut()
     }
@@ -237,6 +245,18 @@ impl Posterior for Gamma {
     /// Finish the trajectory before its predicted end.
     fn finish_trajectory(&mut self) {
         self.traj.as_mut().unwrap().closed = true;
+    }
+
+}
+
+impl Markov for Gamma {
+
+    fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
+        self.eta.column_mut(0)
+    }
+
+    fn canonical_mut<'a>(&'a mut self) -> Option<DVectorSliceMut<'a, f64>> {
+        None
     }
 
 }

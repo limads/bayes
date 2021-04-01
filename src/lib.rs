@@ -16,6 +16,7 @@
 // #![feature(vec_into_raw_parts)]
 // #![feature(extern_types)]
 // #![feature(is_sorted)]
+// #![feature(min_const_generics)] (Perhaps implement MultiNormal<N : usize>)
 
 #![doc(html_logo_url = "https://raw.githubusercontent.com/limads/bayes/master/assets/bayes-logo.png")]
 
@@ -33,7 +34,7 @@ pub mod sample;
 /// Feature extraction traits, structures and algorithms.
 pub mod feature;
 
-/// Probability models defined at runtime.
+// Probability models defined at runtime.
 pub mod model;
 
 /// Estimation algorithms
@@ -42,3 +43,8 @@ pub mod fit;
 // Foreign source code to interface with MKL, GSL and mcmclib.
 mod foreign;
 
+/// Mathematical functions useful for probability-related calculations
+pub mod calc;
+
+/// Non-parametric distribution representations
+pub mod approx;

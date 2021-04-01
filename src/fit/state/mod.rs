@@ -161,3 +161,65 @@ pub type GaussProcess = Process<MultiNormal>;
 pub type Kalman = Process<MultiNormal>;
 
 */
+
+/*struct RLSFilter {
+
+    // Attenuation factor λ^{n - i} (i = 0..p)
+    lambda : f64,
+
+    n : usize,
+
+    // Model signal
+    model_sig : DVector<f64>,
+
+    state : RLSState
+}
+
+pub struct RLSParams {
+    model_sig : DVector<f64>,
+    attenuation_factor : f64
+}
+
+impl<'a> AdaptiveFilter<'a, RLSState, RLSParams> for RLSFilter {
+
+    /// Starts a new RLS filter implementation, with an optional
+    /// attenuation factor (0,1]
+    fn init(
+        pt : DVector<f64>,
+        state : Option<S>,
+        params : Option<I>
+    ) -> Self {
+        match params {
+            Some(params) => {
+                if lambda > 0 && lambda <= 1.0 {
+                    self.lambda = lambda;
+                    Ok(())
+                } else {
+                    return Err("Invalid attenuation factor. Should be within (0, 1]")
+                }
+            },
+            None => { Err("No model signal informed.") }
+        }
+    }
+
+    fn update(
+        &'a mut self,
+        pt : DVector<f64>
+    ) -> &'a mut DVector<f64> {
+        // Update gain
+        let gain_scale = 1.0 / (self.lambda + pt.transpose() * self.state.precision * pt);
+        self.state.gain = self.state.precision * pt * gain_scale;
+        let err = self.model_sig - pt * self.weights;
+
+        // Update weights
+        self.weights += self.state.gain.scale(err);
+
+        // Update precision for next iteration
+        self.state.precision = 1.0 / self.lambda * self.state.precision -
+            self.state.gain * pt.transpose() * 1.0 / self.lambda * self.state.precision;
+    }
+
+    fn state(&'a self) -> RLSState {
+
+    }
+}*/

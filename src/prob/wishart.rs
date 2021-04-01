@@ -186,6 +186,10 @@ impl Distribution for Wishart {
         unimplemented!()
     }
 
+    fn set_natural<'a>(&'a mut self, eta : &'a mut dyn Iterator<Item=&'a f64>) {
+        unimplemented!()
+    }
+
     fn view_parameter(&self, _natural : bool) -> &DVector<f64> {
         unimplemented!()
     }
@@ -195,10 +199,6 @@ impl Distribution for Wishart {
         unimplemented!()
     }
 
-    fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
-        unimplemented!()
-    }
-    
     fn mode(&self) -> DVector<f64> {
         unimplemented!()
     }
@@ -245,16 +245,28 @@ impl Distribution for Wishart {
 
 }
 
+impl Markov for Wishart {
+
+    fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
+        unimplemented!()
+    }
+
+    fn canonical_mut<'a>(&'a mut self) -> Option<DVectorSliceMut<'a, f64>> {
+        unimplemented!()
+    }
+
+}
+
 impl Posterior for Wishart {
 
-    fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>) {
+    /*fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>) {
         match &mut self.rot_fact {
             Some(ref mut v) => {
                 (Some(v as &mut dyn Posterior), None)
             },
             _ => (None, None)
         }
-    }
+    }*/
 
     fn approximation_mut(&mut self) -> Option<&mut MultiNormal> {
         self.approx.as_mut().map(|apprx| apprx.as_mut())
@@ -302,7 +314,7 @@ impl ExponentialFamily<U1> for Wishart
         unimplemented!()
     }
 
-    fn update_log_partition<'a>(&'a mut self, _eta : DVectorSlice<'_, f64>) {
+    fn update_log_partition<'a>(&'a mut self, /*_eta : DVectorSlice<'_, f64>*/ ) {
         unimplemented!()
     }
 

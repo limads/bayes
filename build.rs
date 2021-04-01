@@ -9,12 +9,6 @@ use std::path::Path;
 // git clone https://github.com/kthohr/gcem.git
 // git clone https://github.com/kthohr/mcmc
 
-/*fn link_gsl() {
-    println!("cargo:rustc-link-lib=gsl");
-    println!("cargo:rustc-link-lib=gslcblas");
-    println!("cargo:rustc-link-lib=m");
-}*/
-
 fn compile_mcmclib() {
     cc::Build::new()
         .cpp(true)
@@ -76,18 +70,6 @@ fn compile_gcem() {
     false
 }*/
 
-fn try_link_mkl() {
-    if let Ok(_) = env::var("CARGO_FEATURE_MKL") {
-        println!("cargo:rustc-link-lib=mkl_intel_lp64");
-        println!("cargo:rustc-link-lib=mkl_intel_thread");
-        println!("cargo:rustc-link-lib=mkl_core");
-        println!("cargo:rustc-link-lib=pthread");
-        println!("cargo:rustc-link-lib=dl");
-        println!("cargo:rustc-link-lib=iomp5");
-    }
-
-}
-
 fn try_link_gsl() {
     if let Ok(_) = env::var("CARGO_FEATURE_GSL") {
         println!("cargo:rustc-link-lib=gsl");
@@ -101,7 +83,6 @@ fn main() {
     println!("cargo:rerun-if-changed=src/foreign/mcmc/mcmc.cpp");
     println!("cargo:rerun-if-changed=src/foreign/stats/stats.cpp");
     try_link_gsl();
-    try_link_mkl();
     compile_mcmclib();
     compile_gcem();
     

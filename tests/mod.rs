@@ -1,17 +1,17 @@
 use nalgebra::*;
-use bayes::foreign::gsl::randist::*;
-use bayes::foreign::gsl::vector_double::*;
-use bayes::foreign::gsl::matrix_double::*;
-use bayes::foreign::gsl::utils::*;
-use bayes::distr::*;
-use bayes::inference::sim::Histogram;
-use bayes::distr::multinormal;
+// Move those to specific modules
+// use bayes::foreign::gsl::randist::*;
+// use bayes::foreign::gsl::vector_double::*;
+// use bayes::foreign::gsl::matrix_double::*;
+// use bayes::foreign::gsl::utils::*;
+// use bayes::inference::sim::Histogram;
+use bayes::prob::MultiNormal;
 
 use rand;
 
 const EPS : f64 = 10E-8;
 
-fn unit_interval_seq(n : usize) -> DMatrix<f64> {
+/*fn unit_interval_seq(n : usize) -> DMatrix<f64> {
     DMatrix::from_fn(n, 1, |i,j| (i+1) as f64 * (1. / n as f64) )
 }
 
@@ -117,10 +117,6 @@ fn multinormal() {
 
     let mut mu = DVector::from_fn(5, |_,_| rand::random() );
 
-    /*let mut sigma = DMatrix::from_element(5, 5, 0.0);
-    sigma.set_diagonal(&DVector::from_element(5, 2.));
-    sigma.row_mut(0).copy_from_slice(&[1.0, 0.5, 0.0, 0.0, 0.0]);
-    sigma.row_mut(1).copy_from_slice(&[0.5, 1.0, 0.0, 0.0, 0.0]);*/
     let sigma = multinormal::approx_pd(DMatrix::from_fn(5, 5, |_,_| rand::random() ) );
     println!("mu = {}", mu);
     println!("sigma = {}", sigma);
@@ -154,11 +150,6 @@ fn normal() {
         }
         //}
     }
-    /*let n = Normal::new(1, Some(0.), Some(1.));
-    let ym = DMatrix::from_element(1, 1, 0.0);
-    unsafe {
-        assert!( (gsl_ran_gaussian_pdf(0., 1.) - n.prob(ym.rows(0,1))).abs()  < EPS );
-    }*/
 }
 
 #[test]
@@ -192,11 +183,10 @@ fn histogram() {
 
 #[test]
 fn gradients() {
-
     let p = Poisson::new(5, Some(0.5));
     let data = DVector::from_column_slice(&[1., 1., 2., 1., 2.]);
     println!("gradient = {}", p.grad((&data).into(), None) );
-}
+}*/
 
 /*#[test]
 fn sequence() {

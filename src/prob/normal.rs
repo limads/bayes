@@ -8,6 +8,8 @@ use std::fmt::{self, Display};
 use anyhow;
 use crate::fit::Estimator;
 
+type NormalFactor = UnivariateFactor<Box<Normal>>;
+
 /// The Normal is the exponential-family distribution
 /// used as the likelihood for continuous unbounded outcomes and as priors
 /// for the location parameter for such outcomes. Each realization is parametrized
@@ -43,7 +45,7 @@ pub struct Normal {
 
     scaled_mu : DVector<f64>,
 
-    loc_factor : Option<Box<Normal>>,
+    loc_factor : NormalFactor,
 
     scale_factor : Option<Gamma>,
 
@@ -66,11 +68,13 @@ pub struct Normal {
     
     fixed_names : Option<Vec<String>>,
     
-    obs : Option<DVector<f64>>,
+    obs : Option<DMatrix<f64>>,
     
     fixed_obs : Option<DMatrix<f64>>,
     
-    n : usize
+    n : usize,
+
+    sample : Option<(Vec<String>, DMatrix<f64>)>
 
     // When updating the scale, also update this as
     // the second element to the sufficient statistic vector
@@ -89,7 +93,7 @@ impl Normal {
             assert!(s > 0.0, "Variance should be a strictly positive value");
         }
         let mu = DVector::from_element(n, loc.unwrap_or(0.0));
-        let loc_factor = None;
+        let loc_factor = NormalFactor::Empty;
         let scale_factor = None;
         let var = var.unwrap_or(1.);
         let prec_suff = DVector::from_column_slice(&[(1. / var).ln(), 1. / var]);
@@ -100,7 +104,8 @@ impl Normal {
         let mut norm = Self{ 
             mu : mu.clone(), 
             scaled_mu : mu.clone(), 
-            loc_factor, traj : None, 
+            loc_factor,
+            traj : None,
             // rng,
             eta_traj, 
             prec_suff : prec_suff.clone(), 
@@ -111,11 +116,23 @@ impl Normal {
             fixed_names : None,
             obs : None,
             fixed_obs : None,
-            n
+            n,
+            sample : None
         };
         norm.set_var(var);
         norm.set_parameter(mu.rows(0, mu.nrows()), false);
         norm
+    }
+
+    pub fn standardize(&self, val : f64) -> f64 {
+        assert!(self.n == 1);
+        val - self.mu[0] / self.stddev()
+    }
+
+    // Will not work for heteroscedastic distributions.
+    pub fn stddev(&self) -> f64 {
+        let v = 1. / self.prec_suff[1];
+        v.sqrt()
     }
 
     pub fn set_var(&mut self, var : f64) {
@@ -125,8 +142,8 @@ impl Normal {
         self.minus_half_prec = (-1.)*prec / 2.;
         self.scaled_mu = self.mu.scale(prec);
         // TODO remove requirement for argument to update_log_partition eta vector.
-        let unused : DVector<f64> = DVector::zeros(1);
-        self.update_log_partition((&unused).into());
+        // let unused : DVector<f64> = DVector::zeros(1);
+        self.update_log_partition( /*(&unused).into()*/ );
     }
 
     /*pub fn mle(y : DMatrixSlice<'_, f64>) -> (f64, f64) {
@@ -203,7 +220,7 @@ impl ExponentialFamily<U1> for Normal
     /// Re-fixing the scale at each iteration, however, will not lead to a convex likelihood but an exp-looking
     /// function. The correct scale maximum likelihood must be set at the beginning of the optimization (equal
     /// to chosing a slice at the mu-sigma plane that pass through the sigma MLE).
-    fn update_log_partition<'a>(&'a mut self, _mu : DVectorSlice<'_, f64>) {
+    fn update_log_partition<'a>(&'a mut self, /*_mu : DVectorSlice<'_, f64>*/ ) {
 
         // This is the expression for unknown variance
         self.log_part = self.mu.map(|m| m.powf(2.) / (2.*self.var()[0]) + self.var()[0].sqrt().ln() );
@@ -249,13 +266,18 @@ impl Distribution for Normal
     where Self : Sized
 {
 
+    fn set_natural<'a>(&'a mut self, eta : &'a mut dyn Iterator<Item=&'a f64>) {
+        self.mu.iter_mut().zip(eta).for_each(|(old, new)| *old = *new );
+        self.scaled_mu = self.prec_suff[1] * self.mu.clone();
+        self.update_log_partition();
+    }
+
     // The parameter set at the eta scale should be assumed to be the scaled mu;
     // the parameter set at the theta scale should be assumed to be mu (conditional
     // on the current inverse scale).
-    fn set_parameter(&mut self, mu : DVectorSlice<'_, f64>, _natural : bool) {
-        self.mu = mu.clone_owned();
-        self.scaled_mu = self.prec_suff[1] * self.mu.clone();
-        self.update_log_partition(mu);
+    fn set_parameter(&mut self, mu : DVectorSlice<'_, f64>, natural : bool) {
+        assert!(natural);
+        self.set_natural(&mut mu.iter());
     }
 
     fn view_parameter(&self, _natural : bool) -> &DVector<f64> {
@@ -263,10 +285,6 @@ impl Distribution for Normal
         &self.mu
     }
 
-    fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
-        self.mu.column_mut(0)
-    }
-    
     fn mean<'a>(&'a self) -> &'a DVector<f64> {
         &self.mu
     }
@@ -294,8 +312,9 @@ impl Distribution for Normal
             None => self.mu.rows(0, self.mu.nrows())
         };*/
         let loc_lp = match self.loc_factor {
-            Some(ref loc) => loc.suf_log_prob(self.mu.slice((0, 0), (self.mu.nrows(), 1))),
-            None => 0.
+            NormalFactor::Conjugate(ref loc) => loc.suf_log_prob(self.mu.slice((0, 0), (self.mu.nrows(), 1))),
+            NormalFactor::CondExpect(ref mn) => mn.suf_log_prob(self.mu.slice((0, 0), (self.mu.nrows(), 1))),
+            NormalFactor::Empty => 0.
         };
         let scale_lp = match self.scale_factor {
             Some(ref scale) => scale.suf_log_prob(self.prec_suff.slice((0,0), (2, 1))),
@@ -313,24 +332,54 @@ impl Distribution for Normal
         // for (i, m) in self.mu.iter().enumerate() {
         //    dst[(i,0)] = self.rng.normal(*m, var.sqrt() );
         // }
+
+        let opt_mu = sample_natural_factor_boxed(self.view_fixed_values(), &self.loc_factor, self.n);
+        let mu = opt_mu.as_ref().unwrap_or(&self.mu);
+
         use rand::prelude::*;
         let var = self.var()[0];
         let sd = var.sqrt();
-        for (i, m) in self.mu.iter().enumerate() {
+        for (i, m) in mu.iter().enumerate() {
             let n : f64 = rand::thread_rng().sample(rand_distr::StandardNormal);
             dst[(i,0)] = sd * (n + m);
         }
     }
 
+    fn dyn_factors(&self) -> (Option<&dyn Distribution>, Option<&dyn Distribution>) {
+        let loc = match self.loc_factor {
+            NormalFactor::Conjugate(ref n) => Some(n.as_ref() as &dyn Distribution),
+            NormalFactor::CondExpect(ref mn) => Some(mn as &dyn Distribution),
+            NormalFactor::Empty => None
+        };
+        let scale = self.scale_factor.as_ref().map(|sf| sf as &dyn Distribution);
+        (loc, scale)
+    }
+
+    fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Distribution>, Option<&mut dyn Distribution>) {
+        let loc = match self.loc_factor {
+            NormalFactor::Conjugate(ref mut n) => Some(n.as_mut() as &mut dyn Distribution),
+            NormalFactor::CondExpect(ref mut mn) => Some(mn as &mut dyn Distribution),
+            NormalFactor::Empty => None
+        };
+        let scale = self.scale_factor.as_mut().map(|sf| sf as &mut dyn Distribution);
+        (loc, scale)
+    }
+
+}
+
+impl Markov for Normal {
+
+    fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
+        self.mu.column_mut(0)
+    }
+
+    fn canonical_mut<'a>(&'a mut self) -> Option<DVectorSliceMut<'a, f64>> {
+        None
+    }
+
 }
 
 impl Posterior for Normal {
-
-    fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>) {
-        let loc = self.loc_factor.as_mut().map(|lf| lf.as_mut() as &mut dyn Posterior);
-        let scale = self.scale_factor.as_mut().map(|sf| sf as &mut dyn Posterior);
-        (loc, scale)
-    }
 
     fn approximation_mut(&mut self) -> Option<&mut MultiNormal> {
         //Some(self)
@@ -361,15 +410,26 @@ impl Posterior for Normal {
 
 }
 
-impl Likelihood for Normal {
+impl Likelihood<f64> for Normal {
 
     fn view_variables(&self) -> Option<Vec<String>> {
         self.name.as_ref().map(|name| vec![name.clone()] )
     }
     
-    fn factors_mut<'a>(&'a mut self) -> (Option<&'a mut dyn Posterior>, Option<&'a mut dyn Posterior>) {
-        self.dyn_factors_mut()
+    fn likelihood<'a>(obs : impl IntoIterator<Item=&'a f64>) -> Self {
+        let mut norm = Normal::new(1, None, None);
+        norm.observe(obs);
+        norm
     }
+
+    fn observe<'a>(&mut self, obs : impl IntoIterator<Item=&'a f64>) {
+        observe_univariate_generic(self, obs.into_iter());
+    }
+
+    /*fn factors_mut<'a>(&'a mut self) -> (Option<&'a mut dyn Posterior>, Option<&'a mut dyn Posterior>) {
+        //Conditional::<Normal>::dyn_factors_mut(&mut self)
+        unimplemented!()
+    }*/
     
     fn with_variables(&mut self, vars : &[&str]) -> &mut Self {
         assert!(vars.len() == 1);
@@ -386,14 +446,22 @@ impl Likelihood for Normal {
         self
     }
     
-    fn observe(&mut self, sample : &dyn Sample) {
+    fn view_variable_values(&self) -> Option<&DMatrix<f64>> {
+        self.obs.as_ref()
+    }
+
+    fn view_fixed_values(&self) -> Option<&DMatrix<f64>> {
+        self.fixed_obs.as_ref()
+    }
+
+    fn observe_sample(&mut self, sample : &dyn Sample) {
         //self.obs = Some(super::observe_univariate(self.name.clone(), self.mu.len(), self.obs.take(), sample));
         // self.n = 0;
-        let mut obs = self.obs.take().unwrap_or(DVector::zeros(self.mu.nrows()));
+        let mut obs = self.obs.take().unwrap_or(DMatrix::zeros(self.mu.nrows(), 1));
         if let Some(name) = &self.name {
             if let Variable::Real(col) = sample.variable(&name) {
                 for (tgt, src) in obs.iter_mut().zip(col) {
-                    *tgt = *src;
+                    *tgt = src;
                     // self.n += 1;
                 }
             }
@@ -455,29 +523,61 @@ impl Conditional<Normal> for Normal {
 
     fn condition(mut self, n : Normal) -> Normal {
         assert!(n.n == 1);
-        self.loc_factor = Some(Box::new(n));
+        self.loc_factor = NormalFactor::Conjugate(Box::new(n));
         // TODO update sampler vector
         self
     }
 
     fn view_factor(&self) -> Option<&Normal> {
         match &self.loc_factor {
-            Some(bx_norm) => Some(bx_norm.as_ref()),
+            NormalFactor::Conjugate(bx_norm) => Some(bx_norm.as_ref()),
             _ => None
         }
     }
 
     fn take_factor(self) -> Option<Normal> {
         match self.loc_factor {
-            Some(bx_norm) => Some(*bx_norm),
+            NormalFactor::Conjugate(bx_norm) => Some(*bx_norm),
             _ => None
         }
     }
 
     fn factor_mut(&mut self) -> Option<&mut Normal> {
         match &mut self.loc_factor {
-            Some(bx_norm) => Some(bx_norm.as_mut()),
-            None => None
+            NormalFactor::Conjugate(bx_norm) => Some(bx_norm.as_mut()),
+            _ => None
+        }
+    }
+
+}
+
+impl Conditional<MultiNormal> for Normal {
+
+    fn condition(mut self, mn : MultiNormal) -> Normal {
+        // assert!(mn.n == 1);
+        self.loc_factor = NormalFactor::CondExpect(mn);
+        // TODO update sampler vector
+        self
+    }
+
+    fn view_factor(&self) -> Option<&MultiNormal> {
+        match &self.loc_factor {
+            NormalFactor::CondExpect(ref mn) => Some(mn),
+            _ => None
+        }
+    }
+
+    fn take_factor(self) -> Option<MultiNormal> {
+        match self.loc_factor {
+            NormalFactor::CondExpect(mn) => Some(mn),
+            _ => None
+        }
+    }
+
+    fn factor_mut(&mut self) -> Option<&mut MultiNormal> {
+        match &mut self.loc_factor {
+            NormalFactor::CondExpect(ref mut mn) => Some(mn),
+            _ => None
         }
     }
 
@@ -514,28 +614,28 @@ impl Conditional<Gamma> for Normal {
 
 }
 
-impl Estimator<Normal> for Normal {
+impl<'a> Estimator<'a, &'a Normal> for Normal {
 
     //fn predict<'a>(&'a self, cond : Option<&'a Sample/*<'a>*/>) -> Box<dyn Sample/*<'a>*/> {
     //    unimplemented!()
     //}
     
-    fn take_posterior(self) -> Option<Normal> {
+    /*fn take_posterior(self) -> Option<Normal> {
         unimplemented!()
     }
     
     fn view_posterior<'a>(&'a self) -> Option<&'a Normal> {
         unimplemented!()
-    }
+    }*/
     
-    fn fit<'a>(&'a mut self, sample : &'a dyn Sample) -> Result<&'a Normal, &'static str> {
-        self.observe(sample);
+    fn fit(&'a mut self, sample : &'a dyn Sample) -> Result<&'a Normal, &'static str> {
+        self.observe_sample(sample);
         let prec1 = 1. / self.var()[0];
         match (&mut self.loc_factor, &mut self.scale_factor) {
-            (Some(ref mut norm), Some(ref mut gamma)) => {
+            (NormalFactor::Conjugate(ref mut norm), Some(ref mut gamma)) => {
                 unimplemented!()
             },
-            (Some(ref mut norm), None) => {
+            (NormalFactor::Conjugate(ref mut norm), None) => {
                 let y = self.obs.clone().unwrap();
                 assert!(norm.mean().len() == 1, "Length of mean vector should be one");
                 let n = y.nrows() as f64;
@@ -550,6 +650,33 @@ impl Estimator<Normal> for Normal {
             },
             _ => Err("Distribution does not have a conjugate location factor")
         }
+    }
+
+}
+
+impl Observable for Normal {
+
+    fn observations(&mut self) -> &mut Option<DMatrix<f64>> {
+        &mut self.obs
+    }
+
+    fn sample_size(&mut self) -> &mut usize {
+        &mut self.n
+    }
+
+}
+
+impl Predictive for Normal {
+
+    fn predict<'a>(&'a mut self, fixed : Option<&dyn Sample>) -> Option<&'a dyn Sample> {
+        super::collect_fixed_if_required(self, fixed);
+        let preds = super::try_build_real_predictions(self).map_err(|e| println!("{}", e)).unwrap();
+        self.sample = Some(preds);
+        self.view_prediction()
+    }
+
+    fn view_prediction<'a>(&'a self) -> Option<&'a dyn Sample> {
+        self.sample.as_ref().map(|s| s as &dyn Sample )
     }
 
 }

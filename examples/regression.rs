@@ -1,12 +1,13 @@
-use bayes::prob::normal::Normal;
+use bayes::prob::Normal;
 use std::collections::HashMap;
 use bayes::sample::Sample;
+use bayes::prob::MultiNormal;
 
 const N : usize = 100;
 
 const BETA : [f64; 2] = [1.0, 2.0];
 
-fn generate_observations() -> HashMap<String, Vec<f64>> {
+/*fn generate_observations() -> HashMap<String, Vec<f64>> {
     let data_range = 0..N;
     let err_distr = Normal::new(N, 0.0, 2.0);
     let err = err_distr.sample();
@@ -20,14 +21,14 @@ fn generate_observations() -> HashMap<String, Vec<f64>> {
     data.insert("x2", x2);
     data.insert("y", y);
     data
-}
+}*/
 
 fn main() {
-    let x = MultiNormal::new_standard(100)
+    /*let x = MultiNormal::new_standard(100)
         .fix(&["x1", "x2"]);
     let model = Normal::new(100, None, None)
-        .observe(&["y"]);
+        .observe(&["y"])
         .condition(x);
         
-    let obs = generate_observations();
+    let obs = generate_observations();*/
 }

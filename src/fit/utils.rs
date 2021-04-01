@@ -4,11 +4,14 @@ use std::cell::RefCell;
 use nalgebra::*;
 use crate::fit::markov::Trajectory;
 
-/// Iterates the factor graph in a depth-first fashion, copying all
+/*/// Iterates the factor graph in a depth-first fashion, copying all
 /// natural parameter values into the v vector buffer, if its size allows it.
 /// The iteration does not change the factors (although a mutable reference is
 /// required to satisfy the Posterior interface).
-pub fn collect_parameters(distr : &mut dyn Posterior, output : &mut [f64]) -> Result<(), Error> {
+pub fn collect_parameters<F>(distr : &mut impl Conditional<F>, output : &mut [f64]) -> Result<(), Error>
+where
+    F : Distribution
+{
     let nat_param = distr.view_parameter(true);
     let param_len = nat_param.nrows();
     if param_len > output.len() {
@@ -35,9 +38,9 @@ pub fn collect_parameters(distr : &mut dyn Posterior, output : &mut [f64]) -> Re
     } else {
         Ok(())
     }
-}
+}*/
 
-/// Calculates the full parameter vector length required for this probabilistic graph.
+/*/// Calculates the full parameter vector length required for this probabilistic graph.
 /// Start with param_vec_len(post, 0);
 pub fn param_vec_length(distr : &mut dyn Posterior, mut len : usize) -> usize {
     len += distr.view_parameter(true).nrows();
@@ -49,9 +52,9 @@ pub fn param_vec_length(distr : &mut dyn Posterior, mut len : usize) -> usize {
         len += param_vec_length(f2, len);
     }
     len
-}
+}*/
 
-/// Iterates the factor graph in a depth-first fashion, copying the natural
+/*/// Iterates the factor graph in a depth-first fashion, copying the natural
 /// parameter values from v into the corresponding distributions, if its size
 /// allows it.
 pub fn update_parameters(distr : &mut dyn Posterior, values : &[f64]) -> Result<(), Error> {
@@ -78,9 +81,9 @@ pub fn update_parameters(distr : &mut dyn Posterior, values : &[f64]) -> Result<
     } else {
         Ok(())
     }
-}
+}*/
 
-/// full_traj : Wide matrix of sample trajectories
+/*/// full_traj : Wide matrix of sample trajectories
 /// row_offset : Where to begin taking the trajectory for the current node.
 pub fn set_external_trajectory(distr : &mut impl Likelihood, full_traj : &DMatrix<f64>) {
     let mut row_offset = 0;
@@ -94,15 +97,15 @@ pub fn set_external_trajectory(distr : &mut impl Likelihood, full_traj : &DMatri
         row_offset += dim;
     }
     assert!(row_offset == full_traj.nrows());
-}
+}*/
 
-fn collect_samples(distr : &mut impl Likelihood) -> Vec<DMatrix<f64>> {
+/*fn collect_samples(distr : &mut impl Likelihood) -> Vec<DMatrix<f64>> {
     unimplemented!()
 }
 
 fn collect_names(distr : &mut impl Likelihood) -> Vec<String> {
     unimplemented!()
-}
+}*/
 
 /// Assuming samples carry the result of natural parameter iterations,
 /// distribute the samples over RandomWalk structures maintained by

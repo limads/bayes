@@ -137,6 +137,11 @@ impl LinearOp {
 
 }
 
+/*
+Perhaps use as reference the book "Computational Bayesian Statistics"
+https://web.ma.utexas.edu/users/pmueller/compbayes/
+*/
+
 /// Multivariate normal parametrized by μ (px1) and Σ (pxp). While the public API always
 /// work by receiving covariance matrices, this structure holds both the covariance and
 /// the precision (inverse covariance) matrices internally. Re-setting the covariance
@@ -290,6 +295,30 @@ impl MultiNormal {
         Ok(norm)
     }
 
+    pub fn get_mean(&self, ix : usize) -> f64 {
+        self.mu[ix]
+    }
+
+    pub fn get_variance(&self, ix : usize) -> f64 {
+        self.sigma[(ix, ix)]
+    }
+
+    pub fn get_stddev(&self, ix : usize) -> f64 {
+        self.get_variance(ix).sqrt()
+    }
+
+    /// Marginal correlation between a pair of variables (ignoring any interactions for k >= 3 variables)
+    pub fn marginal_correlation(&self, a : usize, b : usize) -> f64 {
+        self.sigma[(a, b)] / (self.sigma[(a, a)] * self.sigma[(b, b)]).sqrt()
+    }
+
+    /// Partial correlation between a pair of variables (the residual correlations between
+    /// the residuals of the two variables, when each variable is regressed against all other
+    /// variables). This accounts for interactions among k >= 3 variables.
+    pub fn partial_correlation(&self, a : usize, b : usize) -> f64 {
+        self.sigma_inv[(a, b)] / (self.sigma_inv[(a, a)] * self.sigma_inv[(b, b)]).sqrt()
+    }
+
     /// Scales this multinormal by the informed value.
     pub fn scale_by(&mut self, scale : DMatrix<f64>) {
         match self.op.take() {
@@ -339,7 +368,7 @@ impl MultiNormal {
     /// Returns the reduced multivariate normal [ix, ix+n) by marginalizing over
     /// the remaining indices [0, ix) and [ix+n,p). This requires a simple copy
     /// of the corresponding entries. The scale and shift matrices are also
-    /// sliced at the respective entries.
+    /// sliced at the respective entries. TODO return ns : NormalSlice, then ns.clone_multivariate()
     pub fn marginal(&self, ix : usize, n : usize) -> MultiNormal {
         let size = n - ix;
         let mut marg = self.clone();
@@ -356,6 +385,7 @@ impl MultiNormal {
     /// other random variables.
     /// conditioning a multivariate normal by fixing a subset of its variables is implemented via
     /// a least-squares problem.
+    /// TODO return ns : NormalSlice, then clone_multivariate OR clone_univariate.
     pub fn conditional(&self, value : DVector<f64>) -> ConditionalNormal {
         /*let mut cond = self.marginal(0, value.nrows());
         cond.cond_update_from(&self, value);
@@ -434,7 +464,7 @@ impl MultiNormal {
         self.scaled_mu = prec.clone() * &self.mu;
         self.sigma_inv = prec;
         let mu = self.mu.clone();
-        self.update_log_partition(mu.rows(0, mu.nrows()));
+        self.update_log_partition( /*mu.rows(0, mu.nrows())*/ );
         if let Some(mut op) = self.op.take() {
             op.update_from(&self);
             self.op = Some(op);
@@ -505,6 +535,40 @@ impl MultiNormal {
         self
     }
 
+    pub fn fixed_from_sample(sample : &dyn Sample, coefs : &[f64], names : &[&str]) -> Option<Self> {
+        let obs = collect_from_sample(sample, names)?;
+        let mut mn = MultiNormal::new_standard(obs.nrows(), obs.ncols());
+        mn.mu.iter_mut().enumerate().for_each(|(ix, m)| *m = coefs[ix] );
+        mn.fixed_obs = Some(obs);
+        Some(mn)
+    }
+
+    pub fn from_sample(sample : &dyn Sample, names : &[&str]) -> Option<Self> {
+        let obs = collect_from_sample(sample, names)?;
+        let mut mn = MultiNormal::new_standard(obs.nrows(), obs.ncols());
+        mn.obs = Some(obs);
+        Some(mn)
+    }
+
+}
+
+fn collect_from_sample(sample : &dyn Sample, names : &[&str]) -> Option<DMatrix<f64>> {
+    let mut joint_vars = Vec::new();
+    let mut n = 0;
+    for name in names.iter() {
+        match sample.variable(name) {
+            Variable::Real(r) => {
+                joint_vars.extend(r);
+                if n == 0 {
+                    n = joint_vars.len();
+                }
+            },
+            _ => return None
+        }
+    }
+    assert!(n > 0);
+    let p = joint_vars.len() / n;
+    Some(DMatrix::from_vec(n, p, joint_vars))
 }
 
 impl ExponentialFamily<Dynamic> for MultiNormal {
@@ -560,11 +624,11 @@ impl ExponentialFamily<Dynamic> for MultiNormal {
     /// The log-partition of the multivariate normal is a quadratic form of
     /// the covariance matrix (taking the new location as parameter) that
     /// has half the log of the determinant of the covariance (scaled by -2) subtracted from it.
-    fn update_log_partition<'a>(&'a mut self, eta : DVectorSlice<'_, f64>) {
+    fn update_log_partition<'a>(&'a mut self, /*eta : DVectorSlice<'_, f64>*/ ) {
         // TODO update eta parameter here.
         // let cov = Self::invert_scale(&self.sigma_inv);
         let log_part = Self::multinormal_log_part(
-            eta,
+            self.mu.rows(0, self.mu.nrows()),
             self.scaled_mu.rows(0, self.scaled_mu.nrows()),
             &self.sigma,
             &self.sigma_inv
@@ -653,17 +717,34 @@ impl Distribution for MultiNormal {
         }
     }
 
-    /// Set parameter should verify if there is a scale factor. If there is,
-    /// also sets the eta of those factors and write the new implied covariance
-    /// into self. Only after the new covariance is set to self, call self.update_log_partition().
-    fn set_parameter(&mut self, p : DVectorSlice<'_, f64>, _natural : bool) {
-        self.mu.copy_from(&p.column(0));
+    fn dyn_factors(&self) -> (Option<&dyn Distribution>, Option<&dyn Distribution>) {
+        let loc = self.loc_factor.as_ref().map(|lf| lf.as_ref() as &dyn Distribution);
+        let scale = self.scale_factor.as_ref().map(|sf| sf as &dyn Distribution);
+        (loc, scale)
+    }
+
+    fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Distribution>, Option<&mut dyn Distribution>) {
+        let loc = self.loc_factor.as_mut().map(|lf| lf.as_mut() as &mut dyn Distribution);
+        let scale = self.scale_factor.as_mut().map(|sf| sf as &mut dyn Distribution);
+        (loc, scale)
+    }
+
+    fn set_natural<'a>(&'a mut self, eta : &'a mut dyn Iterator<Item=&'a f64>) {
+        self.mu.iter_mut().zip(eta).for_each(|(old, new)| *old = *new );
         self.scaled_mu = self.sigma_inv.clone() * &self.mu;
-        self.update_log_partition(p);
+        self.update_log_partition( /*p*/ );
         if let Some(mut op) = self.op.take() {
             op.update_from(&self);
             self.op = Some(op);
         }
+    }
+
+    /// Set parameter should verify if there is a scale factor. If there is,
+    /// also sets the eta of those factors and write the new implied covariance
+    /// into self. Only after the new covariance is set to self, call self.update_log_partition().
+    fn set_parameter(&mut self, p : DVectorSlice<'_, f64>, natural : bool) {
+        assert!(natural);
+        self.set_natural(&mut p.iter());
     }
 
     fn mean<'a>(&'a self) -> &'a DVector<f64> {
@@ -673,10 +754,6 @@ impl Distribution for MultiNormal {
         }
     }
 
-    fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
-        self.mu.column_mut(0)
-    }
-    
     fn mode(&self) -> DVector<f64> {
         self.mean().clone()
     }
@@ -780,13 +857,25 @@ impl Distribution for MultiNormal {
 
 }
 
+impl Markov for MultiNormal {
+
+    fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
+        self.mu.column_mut(0)
+    }
+
+    fn canonical_mut<'a>(&'a mut self) -> Option<DVectorSliceMut<'a, f64>> {
+        None
+    }
+
+}
+
 impl Posterior for MultiNormal {
 
-    fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>) {
+    /*fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>) {
         let loc = self.loc_factor.as_mut().map(|lf| lf.as_mut() as &mut dyn Posterior);
         let scale = self.scale_factor.as_mut().map(|sf| sf as &mut dyn Posterior);
         (loc, scale)
-    }
+    }*/
 
     fn approximation_mut(&mut self) -> Option<&mut MultiNormal> {
         Some(self)
@@ -815,16 +904,26 @@ impl Posterior for MultiNormal {
 
 }
 
-impl Likelihood for MultiNormal {
+impl Likelihood<[f64]> for MultiNormal {
 
     fn view_variables(&self) -> Option<Vec<String>> {
         Some(self.names.clone())
     }
     
-    fn factors_mut<'a>(&'a mut self) -> (Option<&'a mut dyn Posterior>, Option<&'a mut dyn Posterior>) {
-        self.dyn_factors_mut()
+    fn likelihood<'a>(obs : impl IntoIterator<Item=&'a [f64]>) -> Self {
+        let mut mn = MultiNormal::new_standard(1, 1);
+        mn.observe(obs);
+        mn
+    }
+
+    fn observe<'a>(&mut self, obs : impl IntoIterator<Item=&'a [f64]>) {
+        observe_multivariate_generic(self, obs.into_iter());
     }
     
+    /*fn factors_mut<'a>(&'a mut self) -> (Option<&'a mut dyn Posterior>, Option<&'a mut dyn Posterior>) {
+        self.dyn_factors_mut()
+    }*/
+
     fn with_variables(&mut self, vars : &[&str]) -> &mut Self {
         self.names = vars.iter().map(|v| v.to_string()).collect();
         self
@@ -839,7 +938,15 @@ impl Likelihood for MultiNormal {
         self
     }
     
-    fn observe(&mut self, sample : &dyn Sample) {
+    fn view_variable_values(&self) -> Option<&DMatrix<f64>> {
+        self.obs.as_ref()
+    }
+
+    fn view_fixed_values(&self) -> Option<&DMatrix<f64>> {
+        self.fixed_obs.as_ref()
+    }
+
+    fn observe_sample(&mut self, sample : &dyn Sample) {
         // let mut obs = self.obs.take().unwrap_or(DMatrix::zeros(self.n, self.mu.len()));
         // if let 
         let names = self.names.clone();
@@ -878,22 +985,22 @@ impl Likelihood for MultiNormal {
     }*/
 }
 
-impl Estimator<MultiNormal> for MultiNormal {
+impl<'a> Estimator<'a, &'a MultiNormal> for MultiNormal {
 
     //fn predict<'a>(&'a self, cond : Option<&'a Sample/*<'a>*/>) -> Box<dyn Sample/*<'a>*/> {
     //    unimplemented!()
     //}
     
-    fn take_posterior(self) -> Option<MultiNormal> {
+    /*fn take_posterior(self) -> Option<MultiNormal> {
         unimplemented!()
     }
     
     fn view_posterior<'a>(&'a self) -> Option<&'a MultiNormal> {
         unimplemented!()
-    }
+    }*/
     
-    fn fit<'a>(&'a mut self, sample : &'a dyn Sample) -> Result<&'a MultiNormal, &'static str> {
-        self.observe(sample);
+    fn fit(&'a mut self, sample : &'a dyn Sample) -> Result<&'a MultiNormal, &'static str> {
+        self.observe_sample(sample);
         let y = self.obs.clone().unwrap();
         let n = y.nrows() as f64;
         match (&mut self.loc_factor, &mut self.scale_factor) {
@@ -923,6 +1030,19 @@ impl Estimator<MultiNormal> for MultiNormal {
             },
             _ => Err("Distribution does not have a conjugate location factor")
         }
+        // Ok(&mut self.loc_factor)
+    }
+
+}
+
+impl Observable for MultiNormal {
+
+    fn observations(&mut self) -> &mut Option<DMatrix<f64>> {
+        &mut self.obs
+    }
+
+    fn sample_size(&mut self) -> &mut usize {
+        &mut self.n
     }
 
 }
@@ -1109,6 +1229,46 @@ impl<'a> TryFrom<&'a Model> for &'a MultiNormal {
     }
 }
 
+fn collect_fixed<'a>(values : impl Iterator<Item=&'a [f64]>) -> DMatrix<f64> {
+    let mut p = 0;
+    let mut m : Vec<f64> = Vec::new();
+    values.for_each(|row| {
+        if p == 0 {
+            p = row.len();
+        } else {
+            assert!(p == row.len());
+        }
+        m.extend(row.iter());
+    });
+    let n = m.len() / p;
+    let wide = DMatrix::from_vec(p, n, m);
+    wide.transpose()
+}
+
+impl Fixed<[f64]> for MultiNormal {
+
+    fn observe_fixed<'a>(&mut self, values : impl Iterator<Item=&'a [f64]>) {
+        let fixed = collect_fixed(values);
+        self.fixed_obs = Some(fixed.transpose());
+    }
+
+    fn fixed<'a>(values : impl Iterator<Item=&'a [f64]>, coefs : impl Iterator<Item=&'a f64>) -> Self {
+        let fixed = collect_fixed(values);
+        let mut mn = MultiNormal::new_standard(fixed.nrows(), fixed.ncols());
+        let mu_vec : Vec<_> = coefs.cloned().collect();
+        let mut mu = DVector::from_vec(mu_vec);
+        assert!(mu.nrows() == fixed.ncols());
+        mn.mu = mu;
+        mn.fixed_obs = Some(fixed.transpose());
+        mn
+    }
+
+    // fn observe_fixed<'a>(values : impl Iterator<Item=&'a Sample>, coefs : impl Iterator<Item=&'a f64>);
+    // Updates an initially random distribution by fixig its values:
+    // let m = MultiNormal::prior(&[0.2, 0.3]).fix(&[&[0.1, 0.2], &[1.2, 1.2]]);
+    // fn fix(&mut self, obs : &[Sample]);
+}
+
 impl Into<serde_json::Value> for MultiNormal {
 
     fn into(self) -> serde_json::Value {
@@ -1282,5 +1442,150 @@ impl Sub<MultiNormal> for MultiNormal {
         rows.push(v);
     }
     rows
+}*/
+
+/*/// Distribution resulting from either a marginalization or conditioning operation on
+/// a multivariate normal. It implements the descriptive interface of distribution,
+/// but it never yields any factors. Returned by mn.marginal(.) (in which case cond will
+/// be None) or mn.conditional(a) (in which case cond will be a).
+pub struct NormalSlice<'a> {
+    mn : &'a MultiNormal
+    offset : usize,
+    dim : usize,
+    cond : Option<DVector<f64>>
+}
+
+impl<'a> NormalSlice<'a> {
+
+    /// Creates a new full multivariate from this slice
+    pub fn clone_multivariate(&self) -> MultiNormal {
+        unimplemented!()
+    }
+
+    /// Creates a new univariate from this slice, if it has dimension one.
+    pub fn clone_univariate(&self) -> Option<Normal> {
+        unimplemented!()
+    }
+
+}*/
+
+/*impl Distribution for NormalSlice
+    where Self : Debug + Display
+{
+
+    /// Returns the expected value of the distribution, which is a function of
+    /// the current parameter vector.
+    fn mean(&self) -> &DVector<f64> {
+        unimplemented!()
+    }
+
+    // TODO transform API to:
+    // "natural" is always the linear (or scaled in the normal case) parameter;
+    // "canonical" is always the non-linear (or unscaled in the normal case) parameter.
+
+    // view_natural() / set_natural()
+    // view_canonical() / set_canonical()
+
+    /// Acquires reference to internal parameter vector; either in
+    /// natural form (eta) or canonical form (theta).
+    fn view_parameter(&self, natural : bool) -> &DVector<f64> {
+        unimplemented!()
+    }
+
+    fn set_natural<'a>(&'a mut self, eta : &'a mut dyn Iterator<Item=&'a f64>) {
+        unimplemented!()
+    }
+
+    /// Set internal parameter vector at the informed value; either passing
+    /// the natural form (eta) or the canonical form (theta).
+    fn set_parameter(&mut self, p : DVectorSlice<'_, f64>, natural : bool) {
+        unimplemented!()
+    }
+
+    /// Returns the global maximum of the log-likelihood, which is a function
+    /// of the current parameter vector. Note that
+    /// for bounded distributions (Gamma, Beta, Dirichlet), this value might just the the
+    /// the parameter domain inferior or superior limit.
+    fn mode(&self) -> DVector<f64> {
+        unimplemented!()
+    }
+
+    /// Returns the dispersion of the distribution. This is a simple function of the
+    /// parameter vector for discrete distributions; but is a constant or conditioning
+    /// factor for continuous distributions. Returns the diagonal of the covariance
+    /// matrix for continuous distributions.
+    fn var(&self) -> DVector<f64> {
+        unimplemented!()
+    }
+
+    /// Returns None for univariate distributions; Returns the positive-definite
+    /// covariance matrix (inverse of precision matrix) for multivariate distributions
+    /// with independent scale parameters.
+    fn cov(&self) -> Option<DMatrix<f64>> {
+        unimplemented!()
+    }
+
+    /// Returns the inverse-covariance (precision) for multivariate
+    /// distributinos; Returns None for univariate distributions.
+    fn cov_inv(&self) -> Option<DMatrix<f64>> {
+        unimplemented!()
+    }
+
+    fn corr(&self) -> Option<DMatrix<f64>> {
+        // D^{-1/2} self.cov { D^{-1/2} }
+        unimplemented!()
+    }
+
+    // Returns a histogram if this distribution is univariate
+    fn histogram(&self, bins : usize) -> Option<Histogram> {
+        None
+    }
+
+    // Returns a kernel density estimate if this distribution is univariate
+    fn smooth(&self, kernel : Kernel) -> Option<Density> {
+        None
+    }
+
+    // Returns a symmetric interval around the mean if this distribution is univariate and symmetric
+    fn interval(&self) -> Option<Interval> {
+        None
+    }
+
+    // Returns a highest-density interval if this distribution is univariate
+    fn hdi(&self) -> Option<HDI> {
+        None
+    }
+
+    // fn observations(&self) -> Option<&DMatrix<f64>> {
+    //    unimplemented!()
+    // }
+
+    // Effectively updates the name of this distribution.
+    // fn rename(&mut self);
+
+    /// Evaluates the log-probability of the sample y with respect to the current
+    /// parameter state, and optionally by transforming the random variable by the matrix x.
+    /// This method just dispatches to a sufficient statistic log-probability
+    /// or to a conditional log-probability evaluation depending on the conditioning factors
+    /// of the implementor. The samples at matrix y are assumed to be independent over rows (or at least
+    /// conditionally-independent given the current factor graph). Univariate factors require that
+    /// y has a single column; Multivariate factors require y has a number of columns equal to the
+    /// distribution parameter vector.
+    fn log_prob(&self /*, y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>*/ ) -> Option<f64> {
+        unimplemented!()
+    }
+
+    fn sample_into(&self, dst : DMatrixSliceMut<'_,f64>) {
+        unimplemented!()
+    }
+
+    fn dyn_factors(&self) -> (Option<&dyn Distribution>, Option<&dyn Distribution>) {
+        (None, None)
+    }
+
+    fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Distribution>, Option<&mut dyn Distribution>) {
+        (None, None)
+    }
+
 }*/
 

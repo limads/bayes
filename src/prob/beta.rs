@@ -104,11 +104,11 @@ impl ExponentialFamily<Dynamic> for Beta {
         self.ab.dot(&t.column(0)) - self.log_part[0]
     }
 
-    fn update_log_partition<'a>(&'a mut self, eta : DVectorSlice<'_, f64>) {
+    fn update_log_partition<'a>(&'a mut self /*, eta : DVectorSlice<'_, f64>*/ ) {
         //println!("{}", eta);
-        let log_part_val = Gamma::ln_gamma(eta[0] as f64) +
-            Gamma::ln_gamma(eta[1] as f64) -
-            Gamma::ln_gamma(eta[0] as f64 + eta[1] as f64 );
+        let log_part_val = Gamma::ln_gamma(self.ab[0] as f64) +
+            Gamma::ln_gamma(self.ab[1] as f64) -
+            Gamma::ln_gamma(self.ab[0] as f64 + self.ab[1] as f64 );
         self.log_part = DVector::from_element(1, log_part_val);
     }
 
@@ -141,19 +141,35 @@ impl Distribution for Beta
     where Self : Sized
 {
 
-    fn set_parameter(&mut self, p : DVectorSlice<'_, f64>, _natural : bool) {
-        self.ab = p.clone_owned();
-        let (a, b) = (p[0], p[1]);
+    fn set_parameter(&mut self, p : DVectorSlice<'_, f64>, natural : bool) {
+        assert!(natural);
+        self.set_natural(&mut p.iter());
+    }
+
+    fn set_natural<'a>(&'a mut self, eta : &'a mut dyn Iterator<Item=&'a f64>) {
+        self.ab[0] = *eta.next().unwrap();
+        self.ab[1] = *eta.next().unwrap();
+        let (a, b) = (self.ab[0], self.ab[1]);
         self.mean = DVector::from_element(1, a / (a + b));
-        self.update_log_partition(p);
+        self.update_log_partition();
+    }
+
+    fn dyn_factors(&self) -> (Option<&dyn Distribution>, Option<&dyn Distribution>) {
+        match &self.factor {
+            Some(ref b) => (Some(b.as_ref() as &dyn Distribution), None),
+            None => (None, None)
+        }
+    }
+
+    fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Distribution>, Option<&mut dyn Distribution>) {
+        match &mut self.factor {
+            Some(ref mut b) => (Some(b.as_mut() as &mut dyn Distribution), None),
+            None => (None, None)
+        }
     }
 
     fn view_parameter(&self, _natural : bool) -> &DVector<f64> {
         &self.ab
-    }
-
-    fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
-        self.ab.column_mut(0)
     }
     
     fn cov(&self) -> Option<DMatrix<f64>> {
@@ -225,14 +241,19 @@ impl Distribution for Beta
 
 }
 
-impl Posterior for Beta {
+impl Markov for Beta {
 
-    fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>) {
-        match &mut self.factor {
-            Some(ref mut b) => (Some(b.as_mut() as &mut dyn Posterior), None),
-            None => (None, None)
-        }
+    fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
+        self.ab.column_mut(0)
     }
+
+    fn canonical_mut<'a>(&'a mut self) -> Option<DVectorSliceMut<'a, f64>> {
+        None
+    }
+
+}
+
+impl Posterior for Beta {
 
     fn approximation_mut(&mut self) -> Option<&mut MultiNormal> {
         self.approx.as_mut()

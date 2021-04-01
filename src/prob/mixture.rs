@@ -94,6 +94,10 @@ impl Distribution for NormalMixture
         unimplemented!()
     }
 
+    fn set_natural<'a>(&'a mut self, eta : &'a mut dyn Iterator<Item=&'a f64>) {
+        unimplemented!()
+    }
+
     fn set_parameter(&mut self, p : &[f64]) {
         unimplemented!()
     }

@@ -1,7 +1,7 @@
 use bayes::prob::*;
 
 fn main() -> Result<(), &'static str> {
-    println!("Normal model:");
+    /*println!("Normal model:");
     let mut m = Normal::new(1,None,None)
         .condition(Normal::new(1,None,None))
         .condition(Gamma::new(1.,1.));
@@ -22,7 +22,7 @@ fn main() -> Result<(), &'static str> {
     println!("Poisson model:");
     let mut p = Poisson::new(1,None)
         .condition(Gamma::new(1., 1.));
-    p.visit_factors(|f| println!("Factor: {}", f) );
+    p.visit_factors(|f| println!("Factor: {}", f) );*/
     Ok(())
 }
 

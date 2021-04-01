@@ -8,12 +8,6 @@ pub mod matrix_double;
 pub mod vector_double;
 
 #[allow(non_camel_case_types,unused_variables,missing_docs,non_upper_case_globals,non_snake_case,unused_imports,dead_code,unused,unused_assignments,unused_unsafe)]
-pub mod wavelet;
-
-#[allow(non_camel_case_types,unused_variables,missing_docs,non_upper_case_globals,non_snake_case,unused_imports,dead_code,unused,unused_assignments,unused_unsafe)]
-pub mod wavelet2d;
-
-#[allow(non_camel_case_types,unused_variables,missing_docs,non_upper_case_globals,non_snake_case,unused_imports,dead_code,unused,unused_assignments,unused_unsafe)]
 pub mod errno;
 
 #[allow(non_camel_case_types,unused_variables,missing_docs,non_upper_case_globals,non_snake_case,unused_imports,dead_code,unused,unused_assignments,unused_unsafe)]

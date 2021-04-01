@@ -182,7 +182,7 @@ impl Distribution for Model
         }
     }
 
-    fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
+    fn set_natural<'a>(&'a mut self, eta : &'a mut dyn Iterator<Item=&'a f64>) {
         unimplemented!()
     }
     
@@ -429,7 +429,7 @@ pub fn matrix_to_value(dmat : &DMatrix<f64>) -> Value {
     rows.into()
 }
 
-// Likelihood cannot be made into a object because it resuts &mut self at variables and has
+/*// Likelihood cannot be made into a object because it resuts &mut self at variables and has
 // the compare method.
 impl<'a> AsRef<dyn Likelihood + 'a> for Model {
     fn as_ref(&self) -> &(dyn Likelihood + 'a) {
@@ -449,7 +449,7 @@ impl<'a> AsMut<dyn Likelihood + 'a> for Model {
             Model::Other => unimplemented!()
         }
     }
-}
+}*/
 
 pub fn parse_vector(val : &Value) -> Result<DVector<f64>, String> {
     match val {

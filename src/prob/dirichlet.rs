@@ -23,14 +23,14 @@ impl Distribution for Dirichlet {
         unimplemented!()
     }
 
+    fn set_natural<'a>(&'a mut self, eta : &'a mut dyn Iterator<Item=&'a f64>) {
+        unimplemented!()
+    }
+
     fn mean<'a>(&'a self) -> &'a DVector<f64> {
         unimplemented!()
     }
 
-    fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
-        unimplemented!()
-    }
-    
     fn mode(&self) -> DVector<f64> {
         unimplemented!()
     }
@@ -60,11 +60,23 @@ impl Distribution for Dirichlet {
 
 }
 
-impl Posterior for Dirichlet {
+impl Markov for Dirichlet {
 
-    fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>) {
+    fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
         unimplemented!()
     }
+
+    fn canonical_mut<'a>(&'a mut self) -> Option<DVectorSliceMut<'a, f64>> {
+        unimplemented!()
+    }
+
+}
+
+impl Posterior for Dirichlet {
+
+    /*fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>) {
+        unimplemented!()
+    }*/
 
     fn approximation_mut(&mut self) -> Option<&mut MultiNormal> {
         self.approx.as_mut()
@@ -110,7 +122,7 @@ impl ExponentialFamily<Dynamic> for Dirichlet
         unimplemented!()
     }
 
-    fn update_log_partition<'a>(&'a mut self, _eta : DVectorSlice<'_, f64>) {
+    fn update_log_partition<'a>(&'a mut self, /*_eta : DVectorSlice<'_, f64>*/ ) {
         unimplemented!()
     }
 

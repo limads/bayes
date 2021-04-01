@@ -5,17 +5,224 @@ use std::cmp::Eq;
 use std::hash::Hash;
 use ::csv::{Reader, StringRecord};
 pub mod csv;
+use postgres;
+use either::Either;
+use std::iter::{self, Iterator};
+use std::ops::Index;
 
 use rand;
 
-/// Variable iterator.
-pub type VarIter<'a, T> = Box<dyn Iterator<Item=&'a T> + 'a>;
+/// Variable iterator. Perhaps consider it &'a dyn Iterator<Item=T>
+pub type VarIter<'a, T> = Box<dyn Iterator<Item=T> + 'a>;
 
+/*pub enum Observation<'a> {
+    Real(f64),
+    Count(usize),
+    Binary(bool),
+    Factor(&'a str),
+    Missing
+}*/
+
+/// Represents a memory-contiguous region on non-missing data
+pub enum Column<'a> {
+    Real(&'a [f64]),
+    Count(&'a [usize]),
+    Binary(&'a [bool]),
+    Factor(&'a [&'a str])
+}
+
+impl<'b> Sample for HashMap<&str, Column<'b>> {
+
+    fn variable<'a>(&'a self, name : &'a str) -> Variable<'a> {
+        match self.get(name) {
+            Some(Column::Real(r)) => Variable::Real(Box::new(r.iter().cloned())),
+            Some(Column::Count(c)) => Variable::Count(Box::new(c.iter().cloned())),
+            Some(Column::Binary(b)) => Variable::Binary(Box::new(b.iter().cloned())),
+            Some(Column::Factor(f)) => Variable::Factor(Box::new(f.iter().cloned())),
+            _ => Variable::Missing
+        }
+    }
+
+}
+
+/// Represents a complete, but not necessarily contiguous region of data.
+pub type Real<'a> = Box<dyn Iterator<Item=f64> + 'a>;
+
+pub type Count<'a> = Box<dyn Iterator<Item=usize> + 'a>;
+
+pub type Binary<'a> = Box<dyn Iterator<Item=bool> + 'a>;
+
+pub type Categorical<'a> = Box<dyn Iterator<Item=&'a str>>;
+
+/// Represents an incomplete and not necessarily contiguous region of data.
+pub type Missing<T> = Box<dyn Iterator<Item=Option<T>>>;
+
+pub enum Variate<V> {
+    Complete(V),
+    Missing(Missing<V>),
+    Unavailable
+}
+
+// Implemented by estimators which can iterate over the graph and attribute observations
+// to named distributions.
+/*pub trait Model
+where
+    Self : Estimator
+{
+
+    fn observe_sample(&mut self, sample : &dyn Sample);
+
+}*/
+
+/* The bayes crate makes the assumption that a sample is only independent given fixed
+values for the model parameters. Correlations in the sample are accounted for when
+the model is fully specified. This is why we view data "observations" as part of the model
+definition step (models cannot be specified independent of the data they refer to). */
+
+/// Generic trait for structures that contain random samples. If you store your observations
+/// into a custom type T, You usually want to implement Variate for a container of T, such as
+/// Vec<T> or HashMap<str, T>.
+pub trait VariateTrait<'a> {
+
+    fn real(&'a self, var : &str) -> Variate<Real<'a>>;
+
+    fn count(&'a self, var : &str) -> Variate<Count<'a>>;
+
+    fn binary(&'a self, var : &str) -> Variate<Binary<'a>>;
+
+    fn categorical(&'a self, var : &'a str) -> Variate<Categorical<'a>>;
+
+}
+
+/*pub struct Table<'a> {
+    content : HashMap<String, Column<'a>>
+}
+
+impl Table {
+
+    pub fn new(content : &[(&str, Column)]) {
+        let mut content = HashMap::new();
+        for (key, col) in content.iter() {
+            content.push(key.to_string(), content);
+        }
+        Self{ content }
+    }
+}*/
+
+/* Example for custom user struct
+
+pub struct Observation {
+    days : usize,
+    profits : f64
+}
+
+impl<'a> VariateTrait<'a> for Vec<Observation> {
+
+    fn real(&'a self, var : &str) -> Variate<Real> {
+        match var {
+            "profits" => Variate::Complete(Box::new(self.iter().map(|o| o.profits ))),
+            _ => Variate::Unavailable
+        }
+    }
+
+    fn count(&'a self, var : &str) -> Variate<Count> {
+        match var {
+            "profits" => Variate::Complete(Box::new(self.iter().map(|o| o.days ))),
+            _ => Variate::Unavailable
+        }
+    }
+
+    fn binary(&'a self, var : &str) -> Variate<Binary> {
+        Variate::Unavailable
+    }
+
+    fn categorical(&'a self, var : &'a str) -> Variate<Categorical<'a>> {
+        Variate::Unavailable
+    }
+}*/
+
+/*impl<'a> VariateTrait<'a> for HashMap<&str, Column<'a>> {
+
+    fn real(&'a self, var : &str) -> Variate<Real> {
+        match self.get(var) var {
+            Some(Column::Real(r)) => Variate::Complete(Box::new(self.iter().map(|o| o.profits ))),
+            _ => Variate::Unavailable
+        }
+    }
+
+    fn count(&'a self, var : &str) -> Variate<Count> {
+        match var {
+            "profits" => Variate::Complete(Box::new(self.iter().map(|o| o.days ))),
+            _ => Variate::Unavailable
+        }
+    }
+
+    fn binary(&'a self, var : &str) -> Variate<Binary> {
+        Variate::Unavailable
+    }
+
+    fn categorical(&'a self, var : &'a str) -> Variate<Categorical<'a>> {
+        Variate::Unavailable
+    }
+
+    fn variable<'a>(&'a self, name : &'a str) -> Variable<'a> {
+        match self.get(name) {
+            Some(Column::Real(r)) => Variable::Real(Box::new(r.iter().cloned())),
+            Some(Column::Count(c)) => Variable::Count(Box::new(c.iter().cloned())),
+            Some(Column::Binary(b)) => Variable::Binary(Box::new(b.iter().cloned())),
+            Some(Column::Factor(f)) => Variable::Factor(Box::new(f.iter().cloned())),
+            _ => Variable::Missing
+        }
+    }
+
+}*/
+
+/*impl<V> Sample for HashMap<&str, &dyn FnMut()->V>
+where
+    V : Iterator<Item=Variable>
+{
+
+    fn variable<'a>(&'a self, name : &'a str) -> Variable<'a> {
+
+    }
+}*/
+
+/*impl<'b, T> Sample for Vec<T>
+where
+    T : Index<&'b str, Output=Observation<'b>>
+{
+    fn variable<'a>(&'a self, name : &'a str) -> Variable<'a> {
+        let mut real = None;
+        let mut bin = None;
+        let mut fac = None;
+        let mut count = None;
+        for el in self.iter() {
+            match el[name] {
+                Observation::
+            }
+        }
+    }
+}*/
+
+//TODO rename to Variate
 /// A variable type from a sample. Essentially, wraps one of all the possible
 /// iterators that can be used to retrieve data. Does not imply how the data
-/// is organized in memory, which is why it wraps a boxed dynamic iterator. Each
+/// is organized in memory (it might come from a packed vector, or unpacked JSON/database record),
+/// which is why it wraps a boxed dynamic iterator. Each
 /// distribution is interested in exactly one of the variants, and it will check
-/// that the required variable name is admissible at runtime.
+/// that the required variable name is admissible at runtime. Although all calculations
+/// by the crate are done in double precision, we present the Sample/Variable API which
+/// is a type safe way to match outside-world data to the data required by each Distribution:
+/// | Distribution | Required variable type |
+/// |--------------|------------------------|
+/// | Gamma        | Real (f64 iterator)    |
+/// | Normal       | Real (f64 iterator)    |
+/// | Bernoulli    | Binary (bool iterator) |
+/// | Categorical  | Factor (&str iterator) |
+/// | Poisson      | Count (usize iterator) |
+/// Variates do not really store the data: They are just rules to iterate over a container
+/// structure that has possibly heterogenous data. They are lightweight structures that tell
+/// the distributions how to pull data, irrespective of how this data is laid out in memory.
 pub enum Variable<'a> {
 
     /// Real, unbounded quantities, usually read by Normal, Gamma or MultiNormal nodes
@@ -35,11 +242,61 @@ pub enum Variable<'a> {
     
 }
 
-impl<'a> From<&'a [f64]> for Variable<'a> {
-    fn from(s : &'a [f64]) -> Self {
+/*impl<'a, I, F> From<iter::Map<I, F>> for Variable<'a>
+where
+    I : Iterator<Item=f64> + 'a,
+    F : FnMut(f64)->f64 + 'a
+{
+    fn from(s : iter::Map<I, F>) -> Self {
+        Variable::Real(Box::new(s))
+    }
+}*/
+
+/*impl<'a, I, F> From<iter::Map<I, F>> for Variable<'a>
+where
+    I : Iterator<Item=usize> + 'a,
+    F : FnMut(usize)->usize + 'a
+{
+    fn from(s : iter::Map<I, F>) -> Self {
+        Variable::Count(Box::new(s))
+    }
+}*/
+
+/*impl<'a, I> From<I> for Variable<'a>
+where
+    I : Iterator<Item=f64> + 'a
+{
+    fn from(s : I) -> Self {
         Variable::Real(Box::new(s.into_iter()))
     }
 }
+
+impl<'a, I> From<I> for Variable<'a>
+where
+    I : Iterator<Item=usize> + 'a
+{
+    fn from(s : I) -> Self {
+        Variable::Count(Box::new(s.into_iter()))
+    }
+}
+
+impl<'a, I> From<I> for Variable<'a>
+where
+    I : Iterator<Item=bool> + 'a
+{
+    fn from(s : I) -> Self {
+        Variable::Binary(Box::new(s.into_iter()))
+    }
+}
+
+impl<'a, I> From<I> for Variable<'a>
+where
+    I : Iterator<Item=&str> + 'a
+{
+    fn from(s : I) -> Self {
+        Variable::Factor(Box::new(s.into_iter()))
+    }
+}*/
 
 /// A sample is a data structure from which three iterators can be retrieved:
 /// One iterator over variable names (&str), another iterator over potentially non-contiguous row values (f64),
@@ -91,7 +348,12 @@ pub trait Sample
     // Implementing both row and column assume a certain order for Self::Name.
     // fn row(&'a self, ix : usize) -> Option<Self::Row>;
 
-    fn variable<'a>(&'a self, name : &str) -> Variable<'a>;
+    // TODO rename to get_variate()
+    fn variable<'a>(&'a self, name : &'a str) -> Variable<'a>;
+
+    // fn all_variables() -> Box<dyn Index<&str>, String,
+
+    // TODO add method iter_variates() to iterate over (name, Variate) pairs.
 
 }
 
@@ -119,14 +381,365 @@ impl Sample for HashMap<String, Vec<f64>>
         None
     }*/
 
-    fn variable<'a>(&'a self, name : &str) -> Variable<'a> {
+    fn variable<'a>(&'a self, name : &'a str) -> Variable<'a> {
         if let Some(col) = self.get(name) {
-            Variable::from(col.as_ref())
+            Variable::Real(Box::new(col.iter().map(|val| *val)))
         } else {
             Variable::Missing
         }
     }
-    
+
+}
+
+impl Sample for HashMap<String, Either<Vec<f64>, Vec<bool>>> {
+
+    fn variable<'a>(&'a self, name : &'a str) -> Variable<'a> {
+        if let Some(col) = self.get(name) {
+            match col {
+                Either::Left(real) => Variable::Real(Box::new(real.iter().map(|val| *val))),
+                Either::Right(binary) => Variable::Binary(Box::new(binary.iter().map(|val| *val)))
+            }
+        } else {
+            Variable::Missing
+        }
+    }
+
+}
+
+/*match el.downcast_ref::<&[f64]>()
+    Some(f) => Variable::Real(Box::new(f.iter())
+    None => match el.downcast_ref::<&[usize]>() {
+        Some(f) => Variable::Count(Box::new(f.iter())),
+        None => match el.downcast_ref::<&[bool]>() {
+            Some(f) => Variable::Count(Box::new(f.iter())),
+            None => Variabe::
+        }
+    }
+}*/
+
+/*
+If we determine that we always observe via &impl IntoIterator<Item=f64>,
+then we have:
+
+pub trait Sample {
+
+    fn real(name : &str) -> Variate::Real;
+}
+
+let rows = cli.query("select * from patients;").unwrap();
+let n = Normal::likelihood(rows.variate("this").assume_real());
+let n = n.observe_missing(rows.variate("this").assume_missing_real());
+*/
+
+/*/// Implement Sample for Fn-like closures that reference arbitrary user-defined structures
+/// and returns the required iterators. Perhaps we can further require that F just implements
+/// Into<Variable> and let the user write standard structure-access iterators. In this implementation,
+/// each distribution in the graph "knows" which closure to call to yield its data values. The implementation
+/// below might be the basis for a #[derive(Sample)] for custom transparent types with public fields,
+/// where the distributions should receive names matching the type names. This derive would write
+/// an Into<Box<dyn Sample>> for &[T], by hiding the HashMap behind the Box.
+///
+/// ```
+/// pub struct Coord { x : f64, y : f64 }
+/// let coords = [Coord{x : 1.0, y : 2.0}, Coord{x : 2.0, y : 3.0}];
+/// let mut sample = HashMap::new();
+/// sample.insert("x", || coords.iter().map(|c| c.x) );
+/// sample.insert("y", || coords.iter().map(|c| c.y) );
+/// distr.fit(&sample);
+/// ```
+impl<'b, I, F> Sample for HashMap<I, F>
+where
+    I : AsRef<str> + Hash + Eq,
+    F : Fn()->Variable<'b>,
+    str : AsRef<I>
+{
+    fn variable<'a>(&'a self, name : &'a str) -> Variable<'a>
+    where
+        'b : 'a,
+        Self : 'a + 'b
+    {
+        self.get(name.as_ref()) {
+            Some(f) => f(),
+            None => Variable::Missing
+        }
+    }
+}*/
+
+impl Sample for bool
+{
+    fn variable<'a>(&'a self, name : &'a str) -> Variable<'a> {
+        if name.is_empty() {
+            Variable::Binary(Box::new(Some(self.clone()).into_iter()))
+        } else {
+            Variable::Missing
+        }
+    }
+}
+
+impl Sample for &[bool]
+{
+    fn variable<'a>(&'a self, name : &'a str) -> Variable<'a> {
+        if name.is_empty() {
+            Variable::Binary(Box::new(self.iter().cloned()))
+        } else {
+            Variable::Missing
+        }
+    }
+}
+
+impl Sample for usize
+{
+    fn variable<'a>(&'a self, name : &'a str) -> Variable<'a> {
+        if name.is_empty() {
+            Variable::Count(Box::new(Some(self.clone()).into_iter()))
+        } else {
+            Variable::Missing
+        }
+    }
+}
+
+impl Sample for &[usize]
+{
+    fn variable<'a>(&'a self, name : &'a str) -> Variable<'a> {
+        if name.is_empty() {
+            Variable::Count(Box::new(self.iter().cloned()))
+        } else {
+            Variable::Missing
+        }
+    }
+}
+
+impl Sample for &str
+{
+    fn variable<'a>(&'a self, name : &'a str) -> Variable<'a> {
+        if name.is_empty() {
+            Variable::Factor(Box::new(Some(self.clone()).into_iter()))
+        } else {
+            Variable::Missing
+        }
+    }
+}
+
+impl Sample for &[&str]
+{
+    fn variable<'a>(&'a self, name : &'a str) -> Variable<'a> {
+        if name.is_empty() {
+            Variable::Factor(Box::new(self.iter().cloned()))
+        } else {
+            Variable::Missing
+        }
+    }
+}
+
+impl Sample for f64
+{
+    fn variable<'a>(&'a self, name : &'a str) -> Variable<'a> {
+        if name.is_empty() {
+            Variable::Real(Box::new(Some(self.clone()).into_iter()))
+        } else {
+            Variable::Missing
+        }
+    }
+}
+
+impl Sample for &[f64]
+{
+    fn variable<'a>(&'a self, name : &'a str) -> Variable<'a> {
+        if name.is_empty() {
+            Variable::Real(Box::new(self.iter().cloned()))
+        } else {
+            Variable::Missing
+        }
+    }
+}
+
+/*impl<'a, I,F> Sample for iter::Map<I, F>
+where
+    I: Iterator<Item=&'a bool>,
+    F: FnMut(<I as Iterator>::Item) -> &'a bool
+{
+    fn variable<'b>(&'b self, name : &'b str) -> Variable<'b>
+    where
+        'a : 'b
+    {
+        if name.is_empty() {
+            let map = self.clone().map(|b| *b);
+            Variable::Binary(Box::new(map))
+        } else {
+            Variable::Missing
+        }
+    }
+}*/
+
+/* or we do something like:
+Normal::with_observer(|| t.field )
+Where observer is a closure that takes no arguments but captures a generic structure and output a f64 field (or what the distribution
+requires).
+*/
+/* The observer pattern might benefit from a Fn()->Box<dyn Iterator<Item=f64>> that takes no arguments, but captures an
+slice of arbitrary object in its body (so it is a Fn), which returns the iterator required to yield values. If
+a distribution has an observer, it does not require a name, and fit(.) does not require a &dyn Sample.
+*/
+
+impl Sample for HashMap<String, Either<Vec<f64>, Vec<usize>>> {
+
+    fn variable<'a>(&'a self, name : &'a str) -> Variable<'a> {
+        if let Some(col) = self.get(name) {
+            match col {
+                Either::Left(real) => Variable::Real(Box::new(real.iter().cloned())),
+                Either::Right(count) => Variable::Count(Box::new(count.iter().cloned()))
+            }
+        } else {
+            Variable::Missing
+        }
+    }
+
+}
+
+/// Assign variates to columns of a matrix
+impl Sample for (Vec<String>, DMatrix<f64>) {
+
+    fn variable<'a>(&'a self, name : &'a str) -> Variable<'a> {
+        if let Some(ix) = self.0.iter().position(|n| &n[..] == name ) {
+            if ix < self.1.ncols() {
+                let offset = self.1.nrows()*ix;
+                let slice_range = offset..offset+self.1.nrows();
+                let col_slice = &self.1.data.as_vec()[slice_range];
+                Variable::Real(Box::new(col_slice.iter().map(|val| *val )))
+            } else {
+                Variable::Missing
+            }
+        } else {
+            Variable::Missing
+        }
+    }
+}
+
+impl Sample for Vec<postgres::Row> {
+
+    fn variable<'a>(&'a self, name : &'a str) -> Variable<'a> {
+        let cols = self[0].columns();
+        match cols.iter().position(|col| col.name() == name ) {
+            Some(col_ix) => {
+                let ty = cols[col_ix].type_();
+
+                // Binary variant
+                if *ty == postgres::types::Type::BOOL {
+                    return Variable::Binary(Box::new(self.iter()
+                        .map(move |row| row.get::<_, bool>(col_ix))
+                    ))
+                }
+
+                // TODO verify if value is positive at runtime for Count variant.
+                if *ty == postgres::types::Type::INT2 {
+                    return Variable::Count(Box::new(self.iter()
+                        .map(move |row| row.get::<_, i16>(col_ix) as usize )
+                    ))
+                }
+
+                if *ty == postgres::types::Type::INT4 {
+                    return Variable::Count(Box::new(self.iter()
+                        .map(move |row| row.get::<_, i32>(col_ix) as usize )
+                    ))
+                }
+
+                if *ty == postgres::types::Type::INT8 {
+                    return Variable::Count(Box::new(self.iter()
+                        .map(move |row| row.get::<_, i64>(col_ix) as usize )
+                    ))
+                }
+
+                // Real variants
+                if *ty == postgres::types::Type::FLOAT4 {
+                    return Variable::Real(Box::new(self.iter()
+                        .map(move |row| row.get::<_, f32>(col_ix) as f64 )
+                    ))
+                }
+                if *ty == postgres::types::Type::FLOAT8 {
+                    return Variable::Real(Box::new(self.iter()
+                        .map(move |row| row.get::<_, f64>(col_ix) )
+                    ))
+                }
+
+                // Factor variant
+                if *ty == postgres::types::Type::TEXT {
+                    return Variable::Factor(Box::new(self.iter()
+                        .map(move |row| row.get::<_, &str>(col_ix) )
+                    ))
+                }
+
+                // For any other type, treat as missing
+                Variable::Missing
+            },
+            None => Variable::Missing
+        }
+    }
+
+}
+
+impl Sample for serde_json::Value {
+
+    fn variable<'a>(&'a self, name : &'a str) -> Variable<'a> {
+        match self {
+            serde_json::Value::Object(map) => {
+                match map.get(name) {
+                    Some(serde_json::Value::Array(arr)) => {
+                        match arr.get(0) {
+                            Some(val) => match val {
+                                serde_json::Value::Bool(_) => {
+                                    let data : Vec<bool> = arr.iter()
+                                        .filter_map(|obj| obj.as_bool() )
+                                        .collect();
+                                    if data.len() == arr.len() {
+                                        Variable::Binary(Box::new(data.into_iter()))
+                                    } else {
+                                        Variable::Missing
+                                    }
+                                },
+                                serde_json::Value::Number(n) => {
+                                    if n.is_u64() {
+                                        let data : Vec<usize> = arr.iter()
+                                            .filter_map(|obj| obj.as_u64() )
+                                            .map(|obj| obj as usize )
+                                            .collect();
+                                        if data.len() == arr.len() {
+                                            Variable::Count(Box::new(data.into_iter()))
+                                        } else {
+                                            Variable::Missing
+                                        }
+                                    } else {
+                                        let data : Vec<f64> = arr.iter()
+                                            .filter_map(|obj| obj.as_f64() )
+                                            .collect();
+                                        if data.len() == arr.len() {
+                                            Variable::Real(Box::new(data.into_iter()))
+                                        } else {
+                                            Variable::Missing
+                                        }
+                                    }
+                                },
+                                serde_json::Value::String(_) => {
+                                    let data : Vec<&'a str> = arr.iter()
+                                        .filter_map(|obj| obj.as_str() )
+                                        .collect();
+                                    if data.len() == arr.len() {
+                                        Variable::Factor(Box::new(data.into_iter()))
+                                    } else {
+                                        Variable::Missing
+                                    }
+                                },
+                                _ => Variable::Missing
+                            },
+                            None => Variable::Missing
+                        }
+                    },
+                    _ => Variable::Missing
+                }
+            },
+            _ => Variable::Missing
+        }
+    }
+
 }
 
 /*/// Read variables from a packed string record container, assuming the first record contains
@@ -271,7 +884,7 @@ pub trait Sample<'a, O>
     /// Useful for algorithms requiring subsampling. Keep one implementor
     /// with size m < n; and a full implentor with size n. Draw a set of samples
     /// (ix_1 ... ix_m); and copy them into the subsample. Indices passed at
-    /// ignore (if any) are not used in the resampling.
+    /// ignore (if any) are not used in the resampling. TODO consider fastrand::shuffle
     fn draw_from(&mut self, other : &'a Self, n : usize, ignore : Option<&[usize]>) {
         let mut ord_ignore = Vec::from_iter(
             ignore.unwrap_or(&[])
@@ -300,5 +913,28 @@ pub trait Sample<'a, O>
         self.repopulate(&selected[..]);
     }
 }*/
+
+/*// Suppose we have a packed structure such as:
+#[repr(C)]
+pub struct Data {
+    a : f64,
+    b : f64,
+    c : f64
+}
+
+// Then &[Data] is consistent with a row-ordered data matrix. We provide the implementation:
+// Which we can write a #[derive(Sample)] for any homogeneous, packed structure.
+impl AsRef<[f64]> for &[Data] {
+
+    fn as_ref(&self) -> &[f64] {
+        unsafe { slice::from_raw_parts(&data[0] as *const _, data.len()) }
+    }
+
+}
+
+Casting the above to DMatrixSlice<'_, f64> leaves us with a plain "wide" data matrix, since
+matrices are column-ordered, and we can use a single transposition to create a distance
+matrix, saving up one data copy.
+*/
 
 

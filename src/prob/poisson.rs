@@ -8,6 +8,7 @@ use serde::de::Deserializer;
 use std::fmt::{self, Display};
 use anyhow;
 use crate::fit::Estimator;
+use crate::calc::Variate;
 
 pub type PoissonFactor = UnivariateFactor<Gamma>;
 
@@ -55,11 +56,13 @@ pub struct Poisson {
     
     fixed_names : Option<Vec<String>>,
     
-    obs : Option<DVector<f64>>,
+    obs : Option<DMatrix<f64>>,
     
     fixed_obs : Option<DMatrix<f64>>,
     
-    n : usize
+    n : usize,
+
+    sample : HashMap<String, Either<Vec<f64>, Vec<usize>>>
 
 }
 
@@ -75,6 +78,18 @@ impl Poisson {
         let l = DVector::from_element(n, lambda.unwrap_or(1.));
         p.set_parameter(l.rows(0, l.nrows()), false);
         p
+    }
+
+}
+
+impl Observable for Poisson {
+
+    fn observations(&mut self) -> &mut Option<DMatrix<f64>> {
+        &mut self.obs
+    }
+
+    fn sample_size(&mut self) -> &mut usize {
+        &mut self.n
     }
 
 }
@@ -107,12 +122,12 @@ impl ExponentialFamily<U1> for Poisson
         self.eta[0] * t[0] - self.log_part[0]
     }
 
-    fn update_log_partition<'a>(&'a mut self, eta : DVectorSlice<'_, f64>) {
-        if self.log_part.nrows() != eta.nrows() {
-            self.log_part = DVector::zeros(eta.nrows());
+    fn update_log_partition<'a>(&'a mut self, /*eta : DVectorSlice<'_, f64>*/ ) {
+        if self.log_part.nrows() != self.eta.nrows() {
+            self.log_part = DVector::zeros(self.eta.nrows());
         }
         self.log_part.iter_mut()
-            .zip(eta.iter())
+            .zip(self.eta.iter())
             .for_each(|(l,e)| { *l = e.exp() } );
     }
 
@@ -152,9 +167,14 @@ impl Distribution for Poisson
         } else {
             Self::link(&p)
         };
-        self.lambda = Self::link_inverse(&eta);
-        self.update_log_partition(eta.rows(0,eta.nrows()));
-        self.eta = eta;
+        self.set_natural(&mut eta.iter());
+    }
+
+    fn set_natural<'a>(&'a mut self, new_eta : &'a mut dyn Iterator<Item=&'a f64>) {
+        let (eta, lambda) = (&mut self.eta, &mut self.lambda);
+        eta.iter_mut().zip(new_eta).for_each(|(old, new)| *old = *new );
+        lambda.iter_mut().zip(eta.iter()).for_each(|(old, new)| *old = new.sigmoid() );
+        self.update_log_partition();
         if let Some(ref mut suf) = self.suf_lambda {
             *suf = Gamma::sufficient_stat(self.lambda.slice((0,0), (self.lambda.nrows(),1)));
         }
@@ -175,10 +195,6 @@ impl Distribution for Poisson
         &self.lambda
     }
     
-    fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
-        self.eta.column_mut(0)
-    }
-
     fn mode(&self) -> DVector<f64> {
         self.lambda.clone()
     }
@@ -214,7 +230,9 @@ impl Distribution for Poisson
 
     fn sample_into(&self, mut dst : DMatrixSliceMut<'_,f64>) {
         use rand_distr::{Distribution};
-        for (i, _) in self.lambda.iter().enumerate() {
+        let opt_lambda = sample_canonical_factor::<Poisson,_>(self.view_fixed_values(), &self.factor, self.n);
+        let lambda = opt_lambda.as_ref().unwrap_or(&self.lambda);
+        for (i, _) in lambda.iter().enumerate() {
             let s : u64 = self.sampler[i].sample(&mut rand::thread_rng());
             dst[(i,0)] = s as f64;
         }
@@ -228,6 +246,13 @@ impl Distribution for Poisson
         None
     }
 
+    fn dyn_factors(&self) -> (Option<&dyn Distribution>, Option<&dyn Distribution>) {
+         (super::univariate_factor(&self.factor), None)
+    }
+
+    fn dyn_factors_mut<'a>(&'a mut self) -> (Option<&'a mut dyn Distribution>, Option<&'a mut dyn Distribution>) {
+        (super::univariate_factor_mut(&mut self.factor), None)
+    }
 
 }
 
@@ -250,6 +275,18 @@ impl Distribution for Poisson
     }
 
 }*/
+
+impl Markov for Poisson {
+
+    fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
+        self.eta.column_mut(0)
+    }
+
+    fn canonical_mut<'a>(&'a mut self) -> Option<DVectorSliceMut<'a, f64>> {
+        Some(self.lambda.column_mut(0))
+    }
+
+}
 
 impl Conditional<Gamma> for Poisson {
 
@@ -283,14 +320,21 @@ impl Conditional<Gamma> for Poisson {
 
 }
 
-impl Likelihood for Poisson {
+impl Likelihood<usize> for Poisson {
+
+    fn observe<'a>(&mut self, obs : impl IntoIterator<Item=&'a usize>) {
+        let cvt_obs : Vec<f64> = obs.into_iter().map(|val| *val as f64 ).collect();
+        observe_univariate_generic(self, cvt_obs.iter());
+    }
+    
+    fn likelihood<'a>(obs : impl IntoIterator<Item=&'a usize>) -> Self {
+        let mut poiss = Poisson::new(1, None);
+        poiss.observe(obs);
+        poiss
+    }
 
     fn view_variables(&self) -> Option<Vec<String>> {
         self.name.as_ref().map(|name| vec![name.clone()] )
-    }
-    
-    fn factors_mut<'a>(&'a mut self) -> (Option<&'a mut dyn Posterior>, Option<&'a mut dyn Posterior>) {
-        (super::univariate_factor(&mut self.factor), None)
     }
     
     fn with_variables(&mut self, vars : &[&str]) -> &mut Self {
@@ -308,14 +352,22 @@ impl Likelihood for Poisson {
         self
     }
     
-    fn observe(&mut self, sample : &dyn Sample) {
+    fn view_variable_values(&self) -> Option<&DMatrix<f64>> {
+        self.obs.as_ref()
+    }
+
+    fn view_fixed_values(&self) -> Option<&DMatrix<f64>> {
+        self.fixed_obs.as_ref()
+    }
+
+    fn observe_sample(&mut self, sample : &dyn Sample) {
         //self.obs = Some(super::observe_univariate(self.name.clone(), self.lambda.len(), self.obs.take(), sample));
         // self.n = 0;
-        let mut obs = self.obs.take().unwrap_or(DVector::zeros(self.lambda.nrows()));
+        let mut obs = self.obs.take().unwrap_or(DMatrix::zeros(self.lambda.nrows(), 1));
         if let Some(name) = &self.name {
             if let Variable::Count(col) = sample.variable(&name) {
                 for (tgt, src) in obs.iter_mut().zip(col) {
-                    *tgt = *src as f64;
+                    *tgt = src as f64;
                     // self.n += 1;
                 }
             }
@@ -373,22 +425,43 @@ impl Likelihood for Poisson {
 
 }
 
-impl Estimator<Gamma> for Poisson {
+impl Predictive for Poisson {
+
+    fn predict<'a>(&'a mut self, fixed : Option<&dyn Sample>) -> Option<&'a dyn Sample> {
+        super::collect_fixed_if_required(self, fixed);
+        let transf = |obs : &f64| -> usize { *obs as usize };
+        let preds = super::try_build_generalized_predictions(self, transf)
+            .map_err(|e| println!("{}", e)).unwrap();
+        self.sample = preds;
+        self.view_prediction()
+    }
+
+    fn view_prediction<'a>(&'a self) -> Option<&'a dyn Sample> {
+        if self.sample.is_empty() {
+            None
+        } else {
+            Some(&self.sample as &dyn Sample )
+        }
+    }
+
+}
+
+impl<'a> Estimator<'a, &'a Gamma> for Poisson {
 
     //fn predict<'a>(&'a self, cond : Option<&'a Sample/*<'a>*/>) -> Box<dyn Sample /*<'a>*/ > {
     //    unimplemented!()
     //}
     
-    fn take_posterior(self) -> Option<Gamma> {
+    /*fn take_posterior(self) -> Option<Gamma> {
         unimplemented!()
     }
     
     fn view_posterior<'a>(&'a self) -> Option<&'a Gamma> {
         unimplemented!()
-    }
+    }*/
     
-    fn fit<'a>(&'a mut self, sample : &'a dyn Sample) -> Result<&'a Gamma, &'static str> {
-        self.observe(sample);
+    fn fit(&'a mut self, sample : &'a dyn Sample) -> Result<&'a Gamma, &'static str> {
+        self.observe_sample(sample);
         match self.factor {
             PoissonFactor::Conjugate(ref mut gamma) => {
                 let y = self.obs.clone().unwrap();
@@ -454,7 +527,8 @@ impl Default for Poisson {
             fixed_obs : None,
             fixed_names : None,
             name : None,
-            n : 0
+            n : 0,
+            sample : HashMap::new()
         }
     }
 

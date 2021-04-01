@@ -42,7 +42,7 @@ impl Categorical {
             log_part : DVector::from_element(1,1.),
             factor : None
         };
-        cat.update_log_partition(eta.rows(0,eta.nrows()));
+        cat.update_log_partition( /*eta.rows(0,eta.nrows())*/ );
         cat
     }
 
@@ -57,21 +57,24 @@ impl Distribution for Categorical {
         }
     }
 
-    fn set_parameter(&mut self, p : DVectorSlice<'_, f64>, natural : bool) {
-        if natural {
-            self.eta = p.clone_owned();
-            self.theta = Self::link_inverse(&self.eta);
-        } else {
-            self.theta = p.clone_owned();
-            self.eta = Self::link(&self.theta);
-        }
+    fn set_natural<'a>(&'a mut self, new_eta : &'a mut dyn Iterator<Item=&'a f64>) {
+        let (eta, theta) = (&mut self.eta, &mut self.theta);
+        eta.iter_mut().zip(new_eta).for_each(|(old, new)| *old = *new );
+        self.theta = Self::link_inverse(&self.eta);
         self.log_theta = self.theta.map(|t| t.ln());
+        self.update_log_partition();
     }
 
-    fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
-        self.eta.column_mut(0)
+    fn set_parameter(&mut self, p : DVectorSlice<'_, f64>, natural : bool) {
+        if natural {
+            self.set_natural(&mut p.iter());
+        } else {
+            let theta = p.clone_owned();
+            let eta = Self::link(&theta);
+            self.set_natural(&mut eta.iter());
+        }
     }
-    
+
     fn mean<'a>(&'a self) -> &'a DVector<f64> {
         &self.theta
     }
@@ -113,6 +116,18 @@ impl Distribution for Categorical {
 
 }
 
+impl Markov for Categorical {
+
+    fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
+        self.eta.column_mut(0)
+    }
+
+    fn canonical_mut<'a>(&'a mut self) -> Option<DVectorSliceMut<'a, f64>> {
+        Some(self.theta.column_mut(0))
+    }
+
+}
+
 impl ExponentialFamily<Dynamic> for Categorical
     where
         Self : Distribution
@@ -131,8 +146,8 @@ impl ExponentialFamily<Dynamic> for Categorical
         self.eta.dot(&t.column(0)) - self.log_part[0]
     }
 
-    fn update_log_partition<'a>(&'a mut self, eta : DVectorSlice<'_, f64>) {
-        let e_sum = eta.iter().fold(0.0, |acc, e| acc + e.exp() );
+    fn update_log_partition<'a>(&'a mut self) {
+        let e_sum = self.eta.iter().fold(0.0, |acc, e| acc + e.exp() );
         self.log_part[0] = (1. + e_sum).ln();
     }
 

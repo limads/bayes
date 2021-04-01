@@ -12,6 +12,8 @@ use crate::model;
 use argmin;
 use either::Either;
 use crate::fit::Estimator;
+use crate::calc::Variate;
+use std::mem;
 
 pub type BernoulliFactor = UnivariateFactor<Beta>;
 
@@ -106,7 +108,7 @@ pub struct Bernoulli {
     /// with [log(theta) log(1-theta)]; and pass it instead of the eta as the log-prob argument.
     suf_theta : Option<DMatrix<f64>>,
 
-    obs : Option<DVector<f64>>,
+    obs : Option<DMatrix<f64>>,
     
     fixed_obs : Option<DMatrix<f64>>,
     
@@ -114,7 +116,9 @@ pub struct Bernoulli {
     
     fixed_names : Option<Vec<String>>,
     
-    n : usize
+    n : usize,
+
+    sample : HashMap<String, Either<Vec<f64>, Vec<bool>>>
 
 }
 
@@ -135,6 +139,17 @@ impl Bernoulli {
         let theta = DVector::from_element(n, theta.unwrap_or(0.5));
         bern.set_parameter(theta.rows(0,theta.nrows()), false);
         bern
+    }
+
+    pub fn from_sample(sample : &dyn Sample, name : &str) -> Option<Self> {
+        match sample.variable(name) {
+            Variable::Binary(b) => {
+                let vars : Vec<_> = b.collect();
+                let bern = Bernoulli::likelihood(vars.iter());
+                Some(bern)
+            },
+            _ => None
+        }
     }
 
     /*pub fn factorial(n: usize) -> usize {
@@ -235,12 +250,12 @@ impl ExponentialFamily<U1> for Bernoulli
         self.eta[0] * t[0] - self.log_part[0]
     }
 
-    fn update_log_partition<'a>(&'a mut self, eta : DVectorSlice<'_, f64>) {
-        if self.log_part.nrows() != eta.nrows() {
-            self.log_part = DVector::zeros(eta.nrows());
+    fn update_log_partition<'a>(&'a mut self, /*eta : DVectorSlice<'_, f64>*/ ) {
+        if self.log_part.nrows() != self.eta.nrows() {
+            self.log_part = DVector::zeros(self.eta.nrows());
         }
         self.log_part.iter_mut()
-            .zip(eta.iter())
+            .zip(self.eta.iter())
             .for_each(|(l,e)| { *l = (1. + e.exp()).ln(); } );
     }
 
@@ -259,27 +274,38 @@ impl ExponentialFamily<U1> for Bernoulli
     fn link_inverse<S>(eta : &Matrix<f64, Dynamic, U1, S>) -> DVector<f64>
     where S : Storage<f64, Dynamic, U1>
     {
-        eta.map(|e| 1. / (1. + (-1.* e).exp() ) )
+        eta.map(|e| e.sigmoid() )
     }
 
     fn link<S>(theta : &Matrix<f64, Dynamic, U1, S>) -> DVector<f64>
     where S : Storage<f64, Dynamic, U1>
     {
-        theta.map(|p| (p / (1. - p)).ln() )
+        theta.map(|p| p.logit() )
     }
 
 }
 
-impl Likelihood for Bernoulli {
+impl Likelihood<bool> for Bernoulli {
 
     fn view_variables(&self) -> Option<Vec<String>> {
         self.name.as_ref().map(|name| vec![name.clone()] )
     }
     
-    fn factors_mut<'a>(&'a mut self) -> (Option<&'a mut dyn Posterior>, Option<&'a mut dyn Posterior>) {
-        (super::univariate_factor(&mut self.factor), None)
+    fn likelihood<'a>(obs : impl IntoIterator<Item=&'a bool>) -> Self {
+        let mut bern = Bernoulli::new(1, None);
+        bern.observe(obs);
+        bern
+    }
+
+    fn observe<'a>(&mut self, obs : impl IntoIterator<Item=&'a bool>) {
+        let cvt_obs : Vec<f64> = obs.into_iter().map(|val| if *val { 1.0 } else { 0.0 }).collect();
+        observe_univariate_generic(self, cvt_obs.iter());
     }
     
+    /*fn factors_mut<'a>(&'a mut self) -> (Option<&'a mut dyn Posterior>, Option<&'a mut dyn Posterior>) {
+        (super::univariate_factor(&mut self.factor), None)
+    }*/
+
     fn with_variables(&mut self, vars : &[&str]) -> &mut Self {
         assert!(vars.len() == 1);
         self.name = Some(vars[0].to_string());
@@ -295,14 +321,22 @@ impl Likelihood for Bernoulli {
         self
     }
     
-    fn observe(&mut self, sample : &dyn Sample) {
+    fn view_variable_values(&self) -> Option<&DMatrix<f64>> {
+        self.obs.as_ref()
+    }
+
+    fn view_fixed_values(&self) -> Option<&DMatrix<f64>> {
+        self.fixed_obs.as_ref()
+    }
+
+    fn observe_sample(&mut self, sample : &dyn Sample) {
         //self.obs = Some(super::observe_univariate(self.name.clone(), self.theta.len(), self.obs.take(), sample));
-        let mut obs = self.obs.take().unwrap_or(DVector::zeros(self.theta.len()));
+        let mut obs = self.obs.take().unwrap_or(DMatrix::zeros(self.theta.len(), 1));
         // self.n = 0;
         if let Some(name) = &self.name {
             if let Variable::Binary(col) = sample.variable(&name) {
                 for (tgt, src) in obs.iter_mut().zip(col) {
-                    if *src {
+                    if src {
                         *tgt = 1.0;
                     } else {
                         *tgt = 0.0;
@@ -399,22 +433,22 @@ impl Likelihood for Bernoulli {
 
 }
 
-impl Estimator<Beta> for Bernoulli {
+impl<'a> Estimator<'a, &'a Beta> for Bernoulli {
 
     //fn predict<'a>(&'a self, cond : Option<&'a Sample/*<'a>*/>) -> Box<dyn Sample /*<'a>*/> {
     //    unimplemented!()
     //}
     
-    fn take_posterior(self) -> Option<Beta> {
+    /*fn take_posterior(self) -> Option<Beta> {
         unimplemented!()
     }
     
     fn view_posterior<'a>(&'a self) -> Option<&'a Beta> {
         unimplemented!()
-    }
+    }*/
     
-    fn fit<'a>(&'a mut self, sample : &'a dyn Sample) -> Result<&'a Beta, &'static str> {
-        self.observe(sample);
+    fn fit(&'a mut self, sample : &'a dyn Sample) -> Result<&'a Beta, &'static str> {
+        self.observe_sample(sample);
         // assert!(y.ncols() == 1);
         // assert!(x.is_none());
         match self.factor {
@@ -433,19 +467,27 @@ impl Estimator<Beta> for Bernoulli {
 
 }
 
+/// Implementation for logistic regression
+impl<'a> Estimator<'a, &'a MultiNormal> for Bernoulli {
+
+    /// Runs the inference algorithm for the informed sample matrix,
+    /// returning a reference to the modified model (from which
+    /// the posterior information of interest can be retrieved).
+    fn fit(&'a mut self, sample : &'a dyn Sample) -> Result<&'a MultiNormal, &'static str> {
+        unimplemented!()
+    }
+
+}
+
 impl Distribution for Bernoulli
 where Self : Sized
 {
 
-    fn set_parameter(&mut self, p : DVectorSlice<'_, f64>, natural : bool) {
-        let eta = if natural {
-            p.clone_owned()
-        } else {
-            Self::link(&p)
-        };
-        self.theta = Self::link_inverse(&eta);
-        self.update_log_partition(eta.rows(0,eta.nrows()));
-        self.eta = eta;
+    fn set_natural<'a>(&'a mut self, new_eta : &'a mut dyn Iterator<Item=&'a f64>) {
+        let (eta, theta) = (&mut self.eta, &mut self.theta);
+        eta.iter_mut().zip(new_eta).for_each(|(old, new)| *old = *new );
+        theta.iter_mut().zip(eta.iter()).for_each(|(old, new)| *old = new.sigmoid() );
+        self.update_log_partition();
         if let Some(ref mut suf) = self.suf_theta {
             *suf = Beta::sufficient_stat(self.theta.slice((0,0), (self.theta.nrows(),1)));
         }
@@ -453,6 +495,16 @@ where Self : Sized
         for t in self.theta.iter() {
             self.sampler.push(rand_distr::Bernoulli::new(*t).unwrap());
         }
+
+    }
+
+    fn set_parameter(&mut self, p : DVectorSlice<'_, f64>, natural : bool) {
+        let eta = if natural {
+            p.clone_owned()
+        } else {
+            Self::link(&p)
+        };
+        self.set_natural(&mut eta.iter());
     }
 
     fn view_parameter(&self, natural : bool) -> &DVector<f64> {
@@ -462,10 +514,6 @@ where Self : Sized
         }
     }
 
-    fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
-        self.eta.column_mut(0)
-    }
-    
     // fn observations(&self) -> Option<&DMatrix<f64>> {
     //    self.obs.as_ref()
     // }
@@ -503,13 +551,35 @@ where Self : Sized
 
     fn sample_into(&self, mut dst : DMatrixSliceMut<'_,f64>) {
         use rand_distr::{Distribution};
-        for (i, _) in self.theta.iter().enumerate() {
+        let opt_theta = sample_canonical_factor::<Bernoulli,_>(self.view_fixed_values(), &self.factor, self.n);
+        let theta = opt_theta.as_ref().unwrap_or(&self.theta);
+        for (i, _) in theta.iter().enumerate() {
             dst[(i,0)] = (self.sampler[i].sample(&mut rand::thread_rng()) as i32) as f64;
         }
     }
     
+    fn dyn_factors(&self) -> (Option<&dyn Distribution>, Option<&dyn Distribution>) {
+         (super::univariate_factor(&self.factor), None)
+    }
+
+    fn dyn_factors_mut<'a>(&'a mut self) -> (Option<&'a mut dyn Distribution>, Option<&'a mut dyn Distribution>) {
+        (super::univariate_factor_mut(&mut self.factor), None)
+    }
+
     //fn sample_into_transposed(&self, dst : DVectorSliceMut<'_, f64>) {
     //}
+
+}
+
+impl Markov for Bernoulli {
+
+    fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
+        self.eta.column_mut(0)
+    }
+
+    fn canonical_mut<'a>(&'a mut self) -> Option<DVectorSliceMut<'a, f64>> {
+        Some(self.theta.column_mut(0))
+    }
 
 }
 
@@ -548,6 +618,18 @@ impl<'a> TryFrom<&'a Model> for &'a Bernoulli {
     }
 }
 
+impl Observable for Bernoulli {
+
+    fn observations(&mut self) -> &mut Option<DMatrix<f64>> {
+        &mut self.obs
+    }
+
+    fn sample_size(&mut self) -> &mut usize {
+        &mut self.n
+    }
+
+}
+
 impl Into<serde_json::Value> for Bernoulli {
 
     fn into(mut self) -> serde_json::Value {
@@ -571,6 +653,27 @@ impl Into<serde_json::Value> for Bernoulli {
         // let mut parent = Map::new();
         // parent.insert(String::from("bernoulli"), Value::Object(child));
         Value::Object(child)
+    }
+
+}
+
+impl Predictive for Bernoulli {
+
+    fn predict<'a>(&'a mut self, fixed : Option<&dyn Sample>) -> Option<&'a dyn Sample> {
+        super::collect_fixed_if_required(self, fixed);
+        let transf = |obs : &f64| -> bool { if *obs == 1.0 { true } else { false } };
+        let preds = super::try_build_generalized_predictions(self, transf)
+            .map_err(|e| println!("{}", e)).unwrap();
+        self.sample = preds;
+        self.view_prediction()
+    }
+
+    fn view_prediction<'a>(&'a self) -> Option<&'a dyn Sample> {
+        if self.sample.is_empty() {
+            None
+        } else {
+            Some(&self.sample as &dyn Sample )
+        }
     }
 
 }
@@ -644,7 +747,8 @@ impl Default for Bernoulli {
             fixed_obs : None,
             name : None,
             fixed_names : None,
-            n : 0
+            n : 0,
+            sample : HashMap::new()
         }
     }
 

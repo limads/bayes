@@ -12,11 +12,8 @@ use std::slice;
 use either::Either;
 use std::iter;
 use std::collections::HashMap;
-
-/// Structure to represent one-dimensional empirical distributions non-parametrically (Work in progress).
-mod histogram;
-
-pub use histogram::*;
+use std::iter::IntoIterator;
+use crate::approx::*;
 
 /// Collection of histograms, product of marginalization.
 mod marginal;
@@ -94,10 +91,7 @@ pub trait Distribution
     /// natural form (eta) or canonical form (theta).
     fn view_parameter(&self, natural : bool) -> &DVector<f64>;
 
-    /// TODO make sure exposing the natural parameter always make evaluating
-    /// the log-probability be relative to any newly-set values (for example,
-    /// the lp evaluation cannot be based on the non-updated canonical parameter).
-    fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64>;
+    fn set_natural<'a>(&'a mut self, eta : &'a mut dyn Iterator<Item=&'a f64>);
     
     /// Set internal parameter vector at the informed value; either passing
     /// the natural form (eta) or the canonical form (theta).
@@ -127,6 +121,26 @@ pub trait Distribution
     fn corr(&self) -> Option<DMatrix<f64>> {
         // D^{-1/2} self.cov { D^{-1/2} }
         unimplemented!()
+    }
+
+    // Returns a histogram if this distribution is univariate
+    fn histogram(&self, bins : usize) -> Option<Histogram> {
+        None
+    }
+
+    // Returns a kernel density estimate if this distribution is univariate
+    fn smooth(&self, kernel : Kernel) -> Option<Density> {
+        None
+    }
+
+    // Returns a symmetric interval around the mean if this distribution is univariate and symmetric
+    fn interval(&self) -> Option<Interval> {
+        None
+    }
+
+    // Returns a highest-density interval if this distribution is univariate
+    fn hdi(&self) -> Option<HDI> {
+        None
     }
 
     // fn observations(&self) -> Option<&DMatrix<f64>> {
@@ -163,6 +177,20 @@ pub trait Distribution
         self.view_parameter(true).nrows()
     }
     
+    fn iter_factors_mut<'a>(&'a mut self) -> FactorsMut<'a>
+        where Self: std::marker::Sized
+    {
+        FactorsMut { curr : (Some(self as &mut dyn Distribution), None), returned_curr : false }
+    }
+
+    fn dyn_factors(&self) -> (Option<&dyn Distribution>, Option<&dyn Distribution>) {
+        unimplemented!()
+    }
+
+    fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Distribution>, Option<&mut dyn Distribution>) {
+        unimplemented!()
+    }
+
     // fn sample_into_transposed(&self, dst : DVectorSliceMut<'_, f64>);
 
 }
@@ -214,7 +242,7 @@ pub trait Conditional<D>
     /// Returns a mutable reference to the parent factor. This is useful if you have to
     /// iterate over the factor graph in a way that preserves some state: Just call your
     /// function or closure recursively using factor_mut(.) as the argument at every call
-    /// until the full graph is visited.
+    /// until the full graph is visited. TODO rename to modify_factor(.)
     fn factor_mut(&mut self) -> Option<&mut D>;
     
     // Searches the given factor by variable name, returning it if successful.
@@ -272,7 +300,7 @@ pub enum Condition<D> {
 #[derive(Debug, Clone)]
 pub enum UnivariateFactor<D>
 where 
-    D : Distribution + ExponentialFamily<Dynamic>
+    // D : Distribution + ExponentialFamily<Dynamic>
 {
 
     /// Represents a stand-alone parametric distribution. The joint distribution
@@ -305,8 +333,19 @@ where
     Conjugate(D)
 }
 
+/*impl<D> UnivariateFactor<D> {
+
+    pub fn to_ref(&'a self) -> UnivariateFactor<'a D> {
+        match self {
+            UnivariateFactor::MultiNormal(mn) => UnivariateFactor::MultiNormal(mn.clone()),
+            UnivariateFactor::Conjugate()
+        }
+        UnivariateFactor::Conjugate(&d)
+    }
+}*/
+
 fn univariate_log_prob<D>(
-    y : Option<&DVector<f64>>,
+    y : Option<&DMatrix<f64>>,
     x : Option<&DMatrix<f64>>,
     factor : &UnivariateFactor<D>,
     eta : &DVector<f64>,
@@ -415,7 +454,7 @@ where
     /// The unnormalized log-probability is always defined as the inner product of a sufficient
     /// statistic with the natural parameter minus a term dependent on the parameter
     /// alone. This method updates this term for every parameter update.
-    fn update_log_partition<'a>(&'a mut self, eta : DVectorSlice<'_, f64>);
+    fn update_log_partition<'a>(&'a mut self, /*eta : DVectorSlice<'_, f64>*/ );
 
     // The gradient of an exponential-family distribution is a linear function
     // of the sufficient statistic (constant) and the currently set natural parameter.
@@ -501,26 +540,26 @@ where
 
 }
 
-type OptPosterior<'a> = Option<&'a mut (dyn Posterior + 'a)>;
+type OptDistribution<'a> = Option<&'a mut (dyn Distribution + 'a)>;
 
-/// FactorsMut is a safe iterator over mutable references to Posterior factors in a probabilistic graph.
+/// FactorsMut is a safe iterator over mutable references to distribution factors in a probabilistic graph.
 /// It guarantees that you have either a reference to a current node or a pair of references to its
 /// parents at any given iteration.
-// pub struct Factors<'a>(Either<OptPosterior<'a>, (OptPosterior<'a>, OptPosterior<'a>)>); 
+// pub struct Factors<'a>(Either<OptDistribution<'a>, (OptDistribution<'a>, OptDistribution<'a>)>);
 pub struct FactorsMut<'a> {
-    curr : (OptPosterior<'a>, OptPosterior<'a>),
+    curr : (OptDistribution<'a>, OptDistribution<'a>),
     returned_curr : bool
 }
 
 pub struct Factors<'a> {
-    curr : Box<dyn Iterator<Item=&'a (dyn Posterior + 'a)>>
+    curr : Box<dyn Iterator<Item=&'a (dyn Distribution + 'a)>>
 }
 
 impl<'a> Iterator for FactorsMut<'a> {
 
-    type Item = &'a mut dyn Posterior;
+    type Item = &'a mut dyn Distribution;
     
-    fn next(&mut self) -> Option<&'a mut dyn Posterior> {
+    fn next(&mut self) -> Option<&'a mut dyn Distribution> {
         match next_factor((self.curr.0.take(), self.curr.1.take()), &mut self.returned_curr) {
             Either::Left(Some(f)) => Some(f),
             Either::Right(parents) => {
@@ -534,9 +573,9 @@ impl<'a> Iterator for FactorsMut<'a> {
 }
 
 fn next_factor<'a>(
-    mut curr : (OptPosterior<'a>, OptPosterior<'a>), 
+    mut curr : (OptDistribution<'a>, OptDistribution<'a>),
     returned_curr : &mut bool
-) -> Either<OptPosterior<'a>, (OptPosterior<'a>, OptPosterior<'a>)> {
+) -> Either<OptDistribution<'a>, (OptDistribution<'a>, OptDistribution<'a>)> {
     if ! *returned_curr {
         *returned_curr = true;
         if curr.0.is_some() {
@@ -565,13 +604,39 @@ fn next_factor<'a>(
 
 impl<'a> Iterator for Factors<'a> {
 
-    type Item = &'a mut dyn Posterior;
+    type Item = &'a mut dyn Distribution;
     
-    fn next(&mut self) -> Option<&'a mut dyn Posterior> {
+    fn next(&mut self) -> Option<&'a mut dyn Distribution> {
         unimplemented!()
     }
     
 }
+
+/*
+Proposal: Reduce likelihood into:
+
+pub trait Likelihood<S> {
+
+    fn observe(&mut self, impl Iterator<Item=&S>);
+
+    fn likelihood(impl Iterator<Item=&S>) -> Self;
+}
+
+So that we might have one likelihood for each possible Sample type T. We can provide
+a generic impl Likelihood<&dyn AsRef[f64]> for MultiNormal or impl Likelihood<&dyn Iterator<Item=&f64>>.
+If the user implements those traits for its custom type, then &[T] where T is any user-defined type
+can be used as samples to feed a distribution.
+
+To deal with dynamic structures (Row, Value), we can do:
+
+impl Likelihood<(&Value, String)> for Normal { }
+
+Where to use the second entry to perform a custom indexing operation. Or even
+
+impl Likelihood<(&dyn Index<&str>, String)> for Normal { }
+
+To allow for any string-indexable types to yield observations.
+*/
 
 /// Implemented by distributions which can have their
 /// log-probability evaluated with respect to a random sample directly.
@@ -621,17 +686,37 @@ impl<'a> Iterator for Factors<'a> {
 /// and the fixed factors follow a joint multivariante distribution; which was conditioned on the fixed
 /// factors to yield the current mean estimate. In a factoring graph, the observations themselves do not
 /// constitute an independent factor, since they are fixed and do not have their own log-likelihood to
-/// be consdiered.
-pub trait Likelihood
+/// be considered.
+pub trait Likelihood<O>
     where
-        Self : Distribution //+ ?Sized,
+        Self : Distribution, //+ ?Sized,
+        O : ?Sized
         // C : Dim
 {
+
+    fn likelihood<'a>(obs : impl IntoIterator<Item=&'a O>) -> Self
+    where
+        O : 'a,
+        Self : Sized
+    {
+        unimplemented!()
+    }
+
+    fn observe<'a>(&mut self, obs : impl IntoIterator<Item=&'a O>)
+    where
+        O : 'a
+    {
+        unimplemented!()
+    }
 
     fn view_variables(&self) -> Option<Vec<String>>;
     
     fn view_fixed(&self) -> Option<Vec<String>>;
     
+    fn view_variable_values(&self) -> Option<&DMatrix<f64>>;
+
+    fn view_fixed_values(&self) -> Option<&DMatrix<f64>>;
+
     /// Bind a sequence of variable names to this distribution. This causes calls to
     /// Likelihood::observe to bind to the respective variable names for any Sample implementor.
     fn with_variables(&mut self, vars : &[&str]) -> &mut Self where Self : Sized;
@@ -644,8 +729,12 @@ pub trait Likelihood
     /// Updates the full probabilistic graph from this likelihood node to all its
     /// parent factoring terms, binding any named likelihood nodes to the variable
     /// names found at sample. This incurs in copying the data from the sample implementor
-    /// into a column-oriented data cache kept by each distribution separately.
-    fn observe(&mut self, sample : &dyn Sample);
+    /// into a column-oriented data cache kept by each distribution separately. A full probabilistic
+    /// tree contains at least one top-level likelihood node, but possibly many likelihood nodes up to its
+    /// kth level, corresponding to multilevel models, where observations are conditioned on other observations.
+    /// After the k+1 level, there cannot be distributions which receive data (only non-named prior distributions).
+    fn observe_sample(&mut self, sample : &dyn Sample);
+
     // where
     //    R : IntoIterator<Item=&'a f64>,
     //    V : IntoIterator<Item=&'a f64>;
@@ -700,10 +789,12 @@ pub trait Likelihood
     // visitor.
     // fn visit_factors<F>(&mut self, f : F) where F : Fn(&mut dyn Posterior);
 
-    /// Access this distribution factor at the informed index. An collection of factors
-    /// cannot be returned here because it would violate mutable exclusivity.
-    /// Perhaps rename to prior_factors_mut()?
-    fn factors_mut<'a>(&'a mut self) -> (Option<&'a mut dyn Posterior>, Option<&'a mut dyn Posterior>);
+    // Access this distribution factor at the informed index. An collection of factors
+    // cannot be returned here because it would violate mutable exclusivity.
+    // Perhaps rename to prior_factors_mut()?
+    /*fn factors_mut<'a>(&'a mut self) -> (Option<&'a mut dyn Posterior>, Option<&'a mut dyn Posterior>) {
+        unimplemented!()
+    }*/
     
     // This would be nice if we could have Likelihood as trait objects.
     // fn likelihood_factors_mut<'a>(&'a mut self) -> (Option<&'a mut dyn Posterior>, Option<&'a mut dyn Posterior>);)
@@ -711,13 +802,14 @@ pub trait Likelihood
     // fn search_factor<'a>(&'a self, name : &str) -> Option<&Posterior> {
     // }
     
-    fn iter_factors_mut<'a>(&'a mut self) -> FactorsMut<'a> 
+    // TODO move to conditional<T>
+    /*fn iter_factors_mut<'a>(&'a mut self) -> FactorsMut<'a>
     where
         Self : Sized
     {
         let post_parents = self.factors_mut();
         FactorsMut { curr : post_parents, returned_curr : false }
-    }
+    }*/
     
     /*/// Returns a mutable iterator over this likelihood
     /// distribution factor(s).
@@ -764,6 +856,12 @@ pub trait Likelihood
     // pub fn iter_sisters() -
 }
 
+/// Held by likelihood/predictive implementors.
+pub struct Data<T> {
+    observed : Option<Vec<T>>,
+    predicted : Option<Vec<T>>
+}
+
 /*
 TODO: Perhaps change trait to:
 fn predict(&'a mut self) -> &'a dyn Sample;
@@ -780,6 +878,9 @@ data buffer).
 /// predictions, the posterior object returned by your algorithm can also implement this trait. 
 /// The "prior predictive" is also known as marginal likelihood, and gives the probability of observing
 /// a data value by considering all variability of any priors it is conditioned over.
+/// This trait can simply be implemented by the same distributions that implement Likelihood. If they still have
+/// the prior nodes, it returns None; If they have the typical posterior nodes ImportanceDraw<D> or Trajectory<D>
+/// they return Some(sample).
 pub trait Predictive {
 
     /// Predicts a new data point after marginalizing over parameter values. 
@@ -790,7 +891,7 @@ pub trait Predictive {
     /// predictions will follow the same dimensionality of the input data. A prediction returns always a mean
     /// (expected value) for all variables in the graph that were named (and are thus "likelihood" nodes, although
     /// their role here is as a Predictive distribution) and are not in the cond vector (if informed). 
-    fn predict<'a>(&'a mut self, fixed : Option<&dyn Sample>) -> &'a dyn Sample;
+    fn predict<'a>(&'a mut self, fixed : Option<&dyn Sample>) -> Option<&'a dyn Sample>;
     
     fn view_prediction<'a>(&'a self) -> Option<&'a dyn Sample>;
     
@@ -798,16 +899,16 @@ pub trait Predictive {
 
 /// Used internally to sample all likelihood nodes together. The HashMap is then
 /// Boxed into dyn Sample before being sent to the user. 
-pub(crate) fn predict_from_likelihood<L>(
+pub(crate) fn predict_from_likelihood<L, O>(
     lik : &mut L, 
     fixed : Option<&dyn Sample>
 ) -> HashMap<String, Vec<f64>> 
 where
-    L : Likelihood + ?Sized
+    L : Likelihood<O> + ?Sized
 {
     let names = lik.view_variables().unwrap();
     if let Some(fix) = fixed {
-        lik.observe(fix);
+        lik.observe_sample(fix);
     }
     let mut out : DMatrix<f64> = lik.sample();
     let mut sample : HashMap<String, Vec<f64>> = HashMap::new();
@@ -831,7 +932,6 @@ fn var_mle(y : DMatrixSlice<'_, f64>) -> f64 {
     m * (1. - m)
 }*/
 
-/*
 /// Priors represent a final or non-final generative process node. Their distinguishing characteristic
 /// is that their log-likelihood is evaluated not with respect to a sample (as is the case for
 /// Likelihood implementors) but with respect to a parameter of its immediate Likelihood node.
@@ -860,11 +960,76 @@ fn var_mle(y : DMatrixSlice<'_, f64>) -> f64 {
 /// Some distributions function as both Likelihoods and Priors, which mean they might be both the
 /// first element and non-first element of probabilistic graphs (or in the middle of the graph
 /// for multilevel models).
-pub trait Prior {
-    fn log_prob(&self, lik_param : &[f64]) -> f64;
+///
+/// The distinct characteristic of a prior is that its log-probability can be evaluated with respect
+/// to a constant. Therefore, Distributions that implement prior can be initialized by receiving
+/// constant values:
+///
+/// let g = Gamma::prior(0.1, 1);
+/// let n = Normal::prior(0.5, 0.2);
+///
+/// Which is distinct from likelihood, which are initialized by receiving a sample:
+///
+/// let n = Normal::likelihood(&[1,2,3]);
+/// let b = Bernoulli::likelihood(&[true, false, true]);
+///
+/// Or modified by receiving another sample:
+/// b.observe(&[true, true, false]);
+///
+/// Likelihood<T> means that the distribution can be instantiated by receiving a sample
+/// of type T:
+/// impl Likelihood<f64> for Normal; impl Likelihood<f32> for Normal; impl Likelihood<bool> for Bernoulli.
+/// impl Likelihood<&[f64]> for MultiNormal.
+///
+/// Conditional regression-like distributions are built by conditioning on constants:
+///
+/// let y = [1.0, 2.0];
+/// let x = [4.0, 5.0];
+/// let n = Normal::likelihood(&y).condition(Constant::new(&[x]));
+///
+/// The simplified traits will then be:
+/// pub trait Prior{
+///    fn prior(&[f64]) -> Self;
+///    fn fix(&mut self, &[f64]); /* Receives a constant parameter vector */
+/// }
+///
+/// pub trait Likelihood<T> {
+///     fn likelihood(&impl IntoIterator<T>)->Self;
+///     fn observe(&mut self, &impl IntoIterator<T>);
+/// }
+///
+/// pub trait Sample {
+///     fn bind(&self, prob : &mut impl Index<&str, Output = &mut dyn Likelihood>);
+/// }
+/// fn observe_sample(&mut self, &dyn Sample);
+/// By using IntoIterator, we can pass both closures and slices.
+/*
+To reference distributions in the data table at high-level applications, we can then have:
+pub enum Distribution {
+    Bern(&Bernoulli),
+    Norm(&Norm),
+    Const(&Constant)
+    ...
 }
 
+/// Containts a key-value map of distributions accessible by name.
+pub struct Model {
+    content : HashMap<String, Distribution>
+}
+
+impl Model<D> {
+    fn observe_all(&mut self, HashMap<&str, &Column[f64]);
+}
+
+Then we have that Distributions serialize into simple objects like:
+{ "mean" : 0.2, "var" : 0.1 }
+{ "prob" : 0.1 }
+{ "mean" : 0.1, "var" : 0.1, "obs": [1.0, 2.0, 3.0] }
+
+But Model serialize into key-value maps of name to those objects:
+{ "age" : { mean :  { "date" : { "mean" : 0.1, "var" : 0.2 } }, var : 0.2 }
 */
+
 /// Posterior is a dynamic trait used by generic inference algorithms
 /// to iterate over the probabilistic graph after the method cond_log_prob(.) is called
 /// on its likelihood node. Inference algorithms should concern
@@ -885,8 +1050,11 @@ pub trait Prior {
 /// Algorithms will give back the received graph, but the approximation(.) and/or trajectory(.)
 /// methods, instead of returning None, will return Some(MultiNormal) and/or Some(Trajectory)
 /// users can query information from.
+/// The API of posterior can have just posterior_factors(.), which yield the typical posterior distribution
+/// factors: ImportanceDraw<D> for posterior implementor Importance with prior node D; or Trajectory<D> for
+/// posterior implementor RandomWalk with prior node D.
 pub trait Posterior
-    where Self : Debug + Display + Distribution
+    where Self : Debug + Display + Distribution + Markov
 {
 
     /*fn dyn_factors(&mut self) -> (Option<&dyn Posterior>, Option<&dyn Posterior>) {
@@ -917,14 +1085,10 @@ pub trait Posterior
         factors
     }*/
 
-    fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>);
+    // fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>) {
+    //    unimplemented!()
+    // }
 
-    fn iter_factors_mut<'a>(&'a mut self) -> FactorsMut<'a> 
-        where Self: std::marker::Sized
-    {
-        FactorsMut { curr : (Some(self as &mut dyn Posterior), None), returned_curr : false }
-    }
-    
     /// Builds a predictive distribution from this Posterior by marginalization.
     /// Predictive distributions generate named samples, similar to the "prior predictive"
     /// (the likelihood). 
@@ -953,7 +1117,7 @@ pub trait Posterior
     /// Calls the closure for each distribution that composes the factored
     /// joint distribution, in a depth-first fashion.
     fn visit_post_factors(&mut self, f : &dyn Fn(&mut dyn Posterior)) {
-        let (opt_lhs, opt_rhs) = self.dyn_factors_mut();
+        /*let (opt_lhs, opt_rhs) = self.dyn_factors_mut();
         if let Some(lhs) = opt_lhs {
             f(lhs);
             lhs.visit_post_factors(f);
@@ -961,7 +1125,8 @@ pub trait Posterior
         if let Some(rhs) = opt_rhs {
             f(rhs);
             rhs.visit_post_factors(f);
-        }
+        }*/
+        unimplemented!()
     }
 
     fn approximation_mut(&mut self) -> Option<&mut MultiNormal>;
@@ -1130,6 +1295,121 @@ enum Condition {
     
 }
 
+fn sample_conjugate<D>(distr : &D, n : usize) -> DVector<f64>
+where
+    D : Distribution
+{
+    let theta_draw = distr.sample().row(0).clone_owned().transpose();
+    let theta = DVector::from_element(n, theta_draw[0]);
+    theta
+}
+
+fn sample_cond_expect(x : &DMatrix<f64>, mn : &MultiNormal) -> DVector<f64> {
+    let beta = mn.sample().row(0).clone_owned().transpose();
+    let eta = x.clone_owned() * beta;
+    eta
+}
+
+/// If this distribution has a Conjugate OR CondExpect variant, resolve the sampling
+/// of the parent into a vector. If not, return None. The returned vector is always a
+/// natural parameter.
+pub fn sample_natural_factor<D>(
+    fixed : Option<&DMatrix<f64>>,
+    factor : &UnivariateFactor<D>,
+    n : usize
+) -> Option<DVector<f64>>
+where
+    D : Distribution
+{
+    match (fixed, factor) {
+        (_, UnivariateFactor::Conjugate(d)) => Some(sample_conjugate(d, n)),
+        (Some(x), UnivariateFactor::CondExpect(mn)) => Some(sample_cond_expect(x, mn)),
+        _ => None
+    }
+}
+
+/// Sample from a location factor, multiply by fixed values, and then apply the inverse-link to get
+/// the canonical parameter values.
+pub fn sample_canonical_factor<E, D>(
+    fixed : Option<&DMatrix<f64>>,
+    factor : &UnivariateFactor<D>,
+    n : usize
+) -> Option<DVector<f64>>
+where
+    E : ExponentialFamily<U1>,
+    D : Distribution
+{
+    sample_natural_factor(fixed, factor, n).map(|eta| E::link_inverse(&eta) )
+}
+
+pub fn sample_natural_factor_boxed<D>(
+    fixed : Option<&DMatrix<f64>>,
+    factor : &UnivariateFactor<Box<D>>,
+    n : usize
+) -> Option<DVector<f64>>
+where
+    D : Distribution
+{
+    match (fixed, factor) {
+        (_, UnivariateFactor::Conjugate(boxed_d)) => Some(sample_conjugate(boxed_d.as_ref(), n)),
+        (Some(ref x), UnivariateFactor::CondExpect(ref mn)) => Some(sample_cond_expect(x, mn)),
+        _ => None
+    }
+}
+
+/// Private trait implemented by distributions which yield observations. This allows
+/// generic implementations of the likelihood(.) and observe(.) methods. The private
+/// trait pattern is useful when we have several structures that share some common
+/// fields. This is somewhat like OOP inheritance: We have some generic function
+/// that make use of specific implementations.
+trait Observable {
+
+    fn observations(&mut self) -> &mut Option<DMatrix<f64>>;
+
+    fn sample_size(&mut self) -> &mut usize;
+
+}
+
+fn observe_univariate_generic<'a, T>(lik : &mut impl Observable, obs : impl Iterator<Item=&'a T>)
+where
+    f64 : From<T>,
+    T : Copy + 'a
+{
+    let mut v : Vec<f64> = Vec::new();
+    v.extend(obs.into_iter().map(|el| f64::from(*el) ));
+    let n = v.len();
+    *lik.observations() = Some(DMatrix::from_vec(n, 1, v));
+    *lik.sample_size() = n;
+}
+
+fn observe_multivariate_generic<'a, T>(lik : &mut impl Observable, obs : impl Iterator<Item=&'a [T]>)
+where
+    f64 : From<T>,
+    T : Copy + 'a
+{
+    let mut v : Vec<f64> = Vec::new();
+
+    let mut dim = 0;
+
+    // Create row-wise (wide) observation matrix
+    for (i, row) in obs.into_iter().enumerate() {
+        v.extend(row.into_iter().map(|el| f64::from(*el) ));
+        if i == 0 {
+            dim = v.len();
+        } else {
+            assert!(v.len() == dim);
+        }
+    }
+    let n = v.len() / dim;
+    let mut obs = DMatrix::from_vec(n, dim, v);
+
+    // Transform to tall observation matrix
+    obs.transpose_mut();
+
+    *lik.observations() = Some(obs);
+    *lik.sample_size() = n;
+}
+
 /*fn observe_univariate<'a>(
     name : Option<String>, 
     n : usize,
@@ -1147,7 +1427,26 @@ enum Condition {
     obs
 }*/
 
-fn univariate_factor<'a, D>(factor : &'a mut UnivariateFactor<D>) -> Option<&'a mut dyn Posterior> 
+fn univariate_factor<'a, D>(factor : &'a UnivariateFactor<D>) -> Option<&'a dyn Distribution>
+where
+    D : Distribution + Posterior + ExponentialFamily<Dynamic>
+{
+    match factor {
+        UnivariateFactor::CondExpect(m) => {
+            Some(m as &'a dyn Distribution)
+        },
+        UnivariateFactor::Conjugate(c) => {
+            Some(c as &'a dyn Distribution)
+        },
+        UnivariateFactor::Empty => {
+            // let no_distr = None;
+            // Box::new(no_distr.iter().map(|d| *d))
+            None
+        }
+    }
+}
+
+fn univariate_factor_mut<'a, D>(factor : &'a mut UnivariateFactor<D>) -> Option<&'a mut dyn Distribution>
 where
     D : Distribution + Posterior + ExponentialFamily<Dynamic>
     // D : Conditional<P>,
@@ -1155,10 +1454,10 @@ where
 {
     match factor {
         UnivariateFactor::CondExpect(m) => {
-            Some(m as &'a mut dyn Posterior)
+            Some(m as &'a mut dyn Distribution)
         },
         UnivariateFactor::Conjugate(c) => {
-            Some(c as &'a mut dyn Posterior)
+            Some(c as &'a mut dyn Distribution)
         },
         UnivariateFactor::Empty => {
             // let no_distr = None;
@@ -1170,14 +1469,19 @@ where
 
 fn observe_real_columns(names : &[String], sample : &dyn Sample, opt_obs : &mut Option<DMatrix<f64>>, n : usize) {
     if opt_obs.is_none() {
-        *opt_obs = Some(DMatrix::zeros(n, names.len()));
+        *opt_obs = Some(DMatrix::zeros(n, names.len() + 1));
     }
     let obs = opt_obs.as_mut().unwrap();
+
+    // Add intercept term
+    obs.column_mut(0).iter_mut().for_each(|item| *item = 1.0 );
+
+    // Add data to non-intercept columns
     for (i, name) in names.iter().cloned().enumerate() {
         if let Variable::Real(col) = sample.variable(&name) {
             let mut total = 0;
-            for (tgt, src) in obs.column_mut(i).iter_mut().zip(col) {
-                *tgt = *src;
+            for (tgt, src) in obs.column_mut(i + 1).iter_mut().zip(col) {
+                *tgt = src;
                 total += 1;
             }
             assert!(total == n);
@@ -1185,4 +1489,283 @@ fn observe_real_columns(names : &[String], sample : &dyn Sample, opt_obs : &mut 
     }
 }
 
+/// Verify if no variables are missing
+fn verify_complete(sample : &dyn Sample, var : &str) -> bool {
+    match sample.variable(var) {
+        Variable::Missing => false,
+        _ => true
+    }
+}
 
+/// Guarantee all data columns of sample are present and match valid variables. Note that it is
+/// not possible to verify if sample has any "extra" valid names using just the sample API (which
+/// does not list the available names; just return variables for any requested name).
+fn verify_data_completeness<L, O>(distr : &L, sample : &dyn Sample) -> bool
+where
+    L : Likelihood<O> + Distribution
+{
+    // Fixed is not required to be present
+    let fixed_complete = distr.view_fixed()
+        .map(|vars| vars.iter().all(|var| verify_complete(sample, var)) )
+        .unwrap_or(true);
+
+    // All random variables should be required
+    let rand_complete = distr.view_variables()
+        .map(|vars| vars.iter().all(|var| verify_complete(sample, var )))
+        .unwrap_or(false);
+    fixed_complete && rand_complete
+}
+
+/// Verify if the distribution name is present in the sample. Returning a false
+/// result is important if only the fixed values should be informed for a regression problem.
+fn verify_if_name_in_sample<L, O>(distr : &L, sample : &dyn Sample) -> bool
+where
+    L : Likelihood<O> + Distribution
+{
+    if let Some(vars) = distr.view_variables() {
+        for var in vars.iter() {
+            match sample.variable(var) {
+                Variable::Missing => { },
+                _ => return true
+            }
+        }
+        false
+    } else {
+        false
+    }
+}
+
+/// Verify if this likelihood has fixed values associated with it
+/// (i.e. if it is a likelihood conditioned on constants)
+fn has_fixed<L, O>(distr : &L) -> bool
+where
+    L : Likelihood<O> + Distribution
+{
+    distr.view_fixed_values().is_some() && distr.view_fixed().is_some()
+}
+
+/// Builds a regression prediction matrix, assuming distr has fixed values. The fixed
+/// variables matrix should have p+1 columns, with the 1 standing for the constant intercept,
+/// although the user does not access this value via the Sample implementation. The observations
+/// are appended to the last column.
+fn build_regression_predictions<L, O>(distr : &L) -> (Vec<String>, DMatrix<f64>)
+where
+    L : Likelihood<O> + Distribution
+{
+    let x = distr.view_fixed_values().as_ref().unwrap().clone_owned();
+
+    // Append random observations to last column of fixed values
+    let ncols = x.ncols();
+    let mut data = x.insert_column(ncols, 0.0);
+    distr.sample_into(data.slice_mut((0, data.ncols() - 1), (data.nrows(), 1)));
+
+    // Append names in the same order
+    let mut obs_names : Vec<String> = Vec::new();
+    obs_names.extend(distr.view_fixed().as_ref().unwrap().iter().cloned());
+    obs_names.extend(distr.view_variables().clone().unwrap().iter().cloned());
+
+    assert!(obs_names.len() == data.ncols());
+
+    (obs_names, data)
+}
+
+fn build_generalized_regression_predictions<L, O, F, T>(distr : &L, transf : F) -> HashMap<String, Either<Vec<f64>, Vec<T>>>
+where
+    F : Fn(&f64)->T,
+    L : Likelihood<O> + Distribution
+{
+    let (names, regr_preds) = build_regression_predictions(distr);
+    let ncols = regr_preds.ncols();
+    let mut preds = HashMap::new();
+    for i in 0..(ncols - 1) {
+        let x_col_data : Vec<f64> = regr_preds.column(i).iter().cloned().collect();
+        preds.insert(names[i].clone(), Either::Left(x_col_data));
+    }
+    let y_col_data : Vec<T> = regr_preds.column(ncols - 1).as_slice().iter().map(transf).collect();
+    preds.insert(names[ncols - 1].clone(), Either::Right(y_col_data));
+    preds
+}
+
+/// Builds a prediction 1-column matrix, assuming distr has no conditional fixed values
+/// (i.e. is conditioned on a constant vector).
+fn build_constant_predictions<L, O>(distr : &L) -> (Vec<String>, DMatrix<f64>)
+where
+    L : Likelihood<O> + Distribution
+{
+    let mut obs_names : Vec<String> = Vec::new();
+    obs_names.extend(distr.view_variables().clone().unwrap().iter().cloned());
+    let samples = distr.sample();
+    (obs_names, samples)
+}
+
+fn build_generalized_constant_predictions<L, O, F, T>(distr : &L, transf : F) -> HashMap<String, Either<Vec<f64>, Vec<T>>>
+where
+    F : Fn(&f64)->T,
+    L : Likelihood<O> + Distribution
+{
+    // Collect name
+    let mut obs_names : Vec<String> = Vec::new();
+    obs_names.extend(distr.view_variables().clone().unwrap().iter().cloned());
+
+    // Collect samples
+    let samples = distr.sample();
+    let transf_obs : Vec<T> = samples.as_slice().iter().map(transf).collect();
+
+    assert!(obs_names.len() == samples.ncols() && obs_names.len() == 1);
+
+    let mut obs_hash = HashMap::new();
+    obs_hash.insert(obs_names.remove(0), Either::Right(transf_obs));
+    obs_hash
+}
+
+fn try_build_real_predictions<L, O>(distr : &L) -> Result<(Vec<String>, DMatrix<f64>), String>
+where
+    L : Likelihood<O> + Distribution
+{
+    if has_fixed(distr) {
+        Ok(build_regression_predictions(distr))
+    } else {
+        Ok(build_constant_predictions(distr))
+    }
+}
+
+fn try_build_generalized_predictions<L, O, F, T>(distr : &L, transf : F) -> Result<HashMap<String, Either<Vec<f64>, Vec<T>>> , String>
+where
+    F : Fn(&f64)->T,
+    L : Likelihood<O> + Distribution
+{
+    if has_fixed(distr) {
+        Ok(build_generalized_regression_predictions(distr, transf))
+    } else {
+        Ok(build_generalized_constant_predictions(distr, transf))
+    }
+}
+
+fn collect_fixed_if_required<L,O>(distr : &mut L, informed_fixed : Option<&dyn Sample>) -> Result<(), String>
+where
+    L : Likelihood<O> + Distribution
+{
+    match (has_fixed(distr), informed_fixed) {
+        (true, Some(fixed)) => {
+            if !verify_data_completeness(distr, fixed) {
+                return Err(String::from("Incomplete data"));
+            }
+            if verify_if_name_in_sample(distr, fixed) {
+                return Err(String::from("Variable name cannot be in new informed fixed sample"));
+            }
+            distr.observe_sample(fixed);
+            Ok(())
+        },
+        (false, Some(_)) => {
+            Err(String::from("Informed fixed value for constant-parameter distribution"))
+        },
+        _ => Ok(())
+    }
+}
+
+/// Implemented by distributions whose parameter values can be updated by a Markov increment
+/// step from the current parameter value.
+pub trait Markov
+where
+    Self : Distribution
+{
+
+    fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64>;
+
+    // If this distribution has a non-identity natural-to-canonical transformation,
+    // return a mutable reference to the current state of the canonical transoformation.
+    fn canonical_mut<'a>(&'a mut self) -> Option<DVectorSliceMut<'a, f64>>;
+
+    // Updates current parameter state from a step trajectory
+    /*fn update_from_step<'a>(&'a mut self, eta : &DRowSlice<'a, f64>) {
+        self.natural_mut().tr_copy_from(&eta);
+        //if let Some(canon) = self.canonical_mut {
+
+        //}
+    }*/
+
+}
+
+/// Retrieves a vector of fixed predictors and random observations from a distribution
+pub(crate) fn retrieve_regression_data<L,O>(distr : &L) -> Option<(DMatrix<f64>, DVector<f64>)>
+where
+    L : Likelihood<O> + Distribution + ?Sized
+{
+    let y = distr.view_variable_values()?.column(0).clone_owned();
+    let x = distr.view_fixed_values()?.clone_owned();
+    Some((x, y))
+}
+
+/* A sufficient statistic compresses an iterator over observations O into a statically-known
+vector of type [T; N].
+pub struct Statistic<O, T, N> {
+    sample : Option<Vec<O>>,
+    func : Box<dyn Fn(impl Iterator<Item=&T>)->[T; N]
+    value : Option<[T;N]>
+}
+
+pub trait Sample {
+
+    fn statistic() -> Statistic<O, T, N>;
+}
+
+A un-conditional distribution needs to store only the statistic of dimensionality N.
+A conditional distribution must store the full data set, to re-calculate the statistic
+for every parameter value set at its parent. The statistic might or might not store this full data set
+depending on the conditioning structure of the model.
+
+A statistic compresses the n-dimensional distribution into a 1-dimensional distribution.
+*/
+
+/// Fixed is implemented by distributions whose partial conditionals have a analytic solution.
+/// A multivariate normal, for example, can be held fixed at its non-random entries, leaving
+/// the random entries as linear functions of the fixed values. Instead of being a distribution
+/// over observations (like Likelihoods) or over parameters (like Priors), fixed distributions
+/// have the role of storing the coefficients of the linear transformation required to produce
+/// its conditional factor:
+///
+/// ```
+/// let y = Normal::likelihood(&[1., 1.1, 2.1]);
+/// let x = MultiNormal::fixed(&[&[1.,2.], &[3., 3.]], &[0.1, 0.2]);
+/// y.condition(x);
+/// ```
+///
+/// x will then have mean &[0.1, 0.2] and unit variance. Sampling from x generates coefficients, not observations.
+/// Calcularing the log-probility of x happens with respect to the coefficients, not the observations.
+/// But when we condition x on y, the mean of y will be x*b, not b.
+///
+/// Only MultiNormal implements fixed for now. This trait is the basis to implement maximum likelihood
+/// (fixed implementor has covariance matrix zero) and bayesian regression models (fixed implementor
+/// has non-zero covariance matrix).
+pub trait Fixed<O>
+where
+O : ?Sized
+{
+
+    fn fixed<'a>(values : impl Iterator<Item=&'a O>, coefs : impl Iterator<Item=&'a f64>) -> Self
+    where
+        O : 'a;
+
+    fn observe_fixed<'a>(&mut self, values : impl Iterator<Item=&'a O>)
+    where
+        O : 'a;
+
+    // fn observe_fixed<'a>(values : impl Iterator<Item=&'a Sample>, coefs : impl Iterator<Item=&'a f64>);
+    // Updates an initially random distribution by fixig its values:
+    // let m = MultiNormal::prior(&[0.2, 0.3]).fix(&[&[0.1, 0.2], &[1.2, 1.2]]);
+    // fn fix(&mut self, obs : &[Sample]);
+}
+
+/*/// To move the natural parameter out of a distribution structure, so we can update its canonical
+/// parameter vector by reading from it, the ideal solution would be:
+/// let eta = mem::take(&mut self.eta);
+/// (...compute at &mut self by reading from eta here...)
+/// self.eta = eta;
+/// But DVector<T> does not implement Default for this to work. We do the same computation here
+/// manually, by appealing to the uninitialized constructor of Matrix. Our program will allow UB
+/// if we access self.eta at its current state.
+unsafe fn swap_with_uninitialized(eta : &mut DVector<f64>) -> DVector<f64> {
+    let uninit = DVector::new_uninitialized(1).assume_init();
+    mem::swap(eta, &mut uninit);
+    uninit
+}*/

@@ -2,6 +2,8 @@ use nalgebra::*;
 use std::cmp::{Eq, PartialEq, Ordering};
 use std::collections::HashMap;
 
+// TODO perhaps make it Cluster<T> where T stores the indices and a a &[T] to a parent
+// clustering algorithm strategy that also stores the distance matrix.
 #[derive(Debug, Clone)]
 pub struct Cluster {
     // Observations are assumed to have a natural order corresponding to their entry in the
@@ -46,9 +48,12 @@ pub enum Neighbor {
 /// chooses the second strategy, a partial execution will end with all elements classified at
 /// clusters of the same size (although not necessarily the "best" ones). If the mixed
 /// strategy is chosen, the algorithm starts with a divisive strategy, then applies an agglomerative
-/// strategy to the output of the first step.
+/// strategy to the output of the first step. In the threshold strategy, we order the full distance
+/// matrix. Assign to current cluster as long as the current distance is smaller than some threhsold;
+/// or innaugurate a new cluster when this distance is greater than the threshold.
 pub enum Strategy {
     Divisive(StopCondition),
+    Threshold(f64),
     Agglomerative(Neighbor, StopCondition),
     Mixed(StopCondition, (Neighbor, StopCondition))
 }
@@ -99,10 +104,36 @@ where
     DMatrix::from_columns(&vecs[..])
 }
 
+/// Builds a generic distance matrix from a arbitrary metric defined for a given structure.
+pub fn generic_distance_matrix<T, F>(obs : &[T], metric : F) -> DMatrix<f64>
+where
+    F : Fn(&T, &T)->f64
+{
+    let n = obs.len();
+    let mut dist = DMatrix::zeros(n, n);
+
+    // Store measure entry results in upper-triangular portion
+    for i in 0..n {
+        for j in i..n {
+            dist[(i, j)] = metric(&obs[i], &obs[j]);
+        }
+    }
+
+    // Copy entries to lower-triangular portion
+    for j in 0..n {
+        for i in 0..j {
+            dist[(j, i)] = dist[(i, j)]
+        }
+    }
+    dist
+}
+
 /// Builds a square euclidian distance matrix from a sequence
 /// of observations, each assumed to have the same dimension. Requires that
 /// the data is in "tall" form (observations are rows). Passing a wide 
-/// matrix saves up one transposition operation.
+/// matrix saves up one transposition operation. The crate strsim-rs
+/// can be used to build custom text metrics. The user can write any
+/// Fn(&T, &T)->f64 to serve as a custom object metric.
 pub fn distance_matrix(tall : DMatrix<f64>, opt_wide : Option<DMatrix<f64>>) -> DMatrix<f64> {
     let wide = opt_wide.unwrap_or(tall.transpose());
     
@@ -240,6 +271,46 @@ pub fn agglomerate(dist : &DMatrix<f64>, clusters : &[Cluster], neighbor : Neigh
     agg_clusters
 }
 
+/// Background cluster is cluster zero.
+fn build_cluster_vector(cluster_hash : HashMap<usize, usize>, n_clusters : usize) -> Vec<Cluster> {
+    let mut clusters : Vec<Cluster> = Vec::with_capacity(n_clusters);
+    clusters.extend((0..n_clusters).map(|_| Cluster { items : Vec::new() }));
+    for (obs, cluster_ix) in cluster_hash.iter() {
+        clusters[cluster_ix-1].items.push(*obs);
+    }
+    clusters
+}
+
+/// Walk one iteration of the divisive clustering strategy.
+fn cluster_next_divisive(
+    cluster_hash : &mut HashMap<usize, usize>,
+    row_ix : usize,
+    col_ix : usize,
+    n_clusters : &mut usize,
+    n_assigned : &mut usize
+) {
+    match (cluster_hash.get(&row_ix), cluster_hash.get(&col_ix)) {
+        (Some(row_cluster), None) => {
+            *n_assigned += 1;
+            cluster_hash.insert(col_ix, *row_cluster);
+        },
+        (None, Some(col_cluster)) => {
+            *n_assigned += 1;
+            cluster_hash.insert(row_ix, *col_cluster);
+        },
+        (None, None) => {
+            *n_clusters += 1;
+            *n_assigned += 2;
+            cluster_hash.insert(row_ix, *n_clusters);
+            cluster_hash.insert(col_ix, *n_clusters);
+        },
+        (Some(_), Some(_)) => {
+            /*If both are assigned, ignore this distance, since one of the observations
+            can be attributed to a smallest distance, since ord_dist is ordered */
+        }
+    }
+}
+
 impl Dendrogram {
 
     // Build sparse representation of upper triangular portion of the matrix as a Vec of (row, col, value),
@@ -255,6 +326,39 @@ impl Dendrogram {
         ord_dist
     }
     
+    fn build_threshold(dist : &DMatrix<f64>, threshold : f64) -> Vec<Cluster> {
+        let ord_dist = Self::build_ordered_distances(&dist);
+
+        // Observation indices are keys; cluster indices are columns
+        let mut cluster_hash = HashMap::<usize, usize>::new();
+        let (mut n_clusters, mut n_assigned) = (0, 0);
+
+        for (row_ix, col_ix, dist) in ord_dist {
+            if dist < threshold {
+                // If distance is smaller than threshold, aggregate to the closest cluster, or
+                // innaugurate a new one only if neither elements are assigned. This will create
+                // new clusters sparingly, only when neither elements are aggregated.
+                cluster_next_divisive(&mut cluster_hash, row_ix, col_ix, &mut n_clusters, &mut n_assigned);
+            } else {
+                // If distance is largest than threshold, innaugurate a new cluster with
+                // the unassigned element (or both unassigned elements if neither are assigned).
+                // This branch will create several single-element clusters, because n_clusters is
+                // incremented irrespective of whether elements are assigned or not.
+                // Since element distance is below threhsold, insert them separately.
+                if cluster_hash.get(&row_ix).is_none() {
+                    n_clusters += 1;
+                    cluster_hash.insert(row_ix, n_clusters);
+                }
+
+                if cluster_hash.get(&col_ix).is_none() {
+                    n_clusters += 1;
+                    cluster_hash.insert(col_ix, n_clusters);
+                }
+            }
+        }
+        build_cluster_vector(cluster_hash, n_clusters)
+    }
+
     fn build_agglomerative(
         opt_clusters : Option<Vec<Cluster>>,
         dist : &DMatrix<f64>, 
@@ -295,37 +399,14 @@ impl Dendrogram {
     /// The returned vector contains the indices of the observations at each cluster (each
     /// inner vector represents a different cluster).
     fn build_divisive(dist : &DMatrix<f64>, stop : StopCondition) -> Vec<Cluster> {
-    
         let ord_dist = Self::build_ordered_distances(&dist);
-        println!("Ordered distance: {:?}", ord_dist);
-        let mut n_assigned = 0;
+        
+        // Observation indices are keys; cluster indices (1..k) are columns
         let mut cluster_hash = HashMap::<usize, usize>::new();
+        let (mut n_clusters, mut n_assigned) = (0, 0);
         
-        // 0th cluster is the background one. Assigned clusters will be associted with
-        // indices 1..k
-        let mut n_clusters = 0; 
-        
-        for d in ord_dist {
-            match (cluster_hash.get(&d.0), cluster_hash.get(&d.1)) {
-                (Some(row_cluster), None) => {
-                    n_assigned += 1;
-                    cluster_hash.insert(d.1, *row_cluster);
-                },
-                (None, Some(col_cluster)) => {
-                    n_assigned += 1;
-                    cluster_hash.insert(d.0, *col_cluster);
-                },
-                (None, None) => {
-                    n_clusters += 1;
-                    n_assigned += 2;
-                    cluster_hash.insert(d.0, n_clusters);
-                    cluster_hash.insert(d.1, n_clusters);
-                },
-                (Some(_), Some(_)) => { 
-                    /*If both are assigned, ignore this distance, since one of the observations
-                    can be attributed to a smallest distance, since ord_dist is ordered */
-                }
-            }
+        for (row_ix, col_ix, _) in ord_dist {
+            cluster_next_divisive(&mut cluster_hash, row_ix, col_ix, &mut n_clusters, &mut n_assigned);
             match &stop {
                 StopCondition::Clusters(n_clust) => if n_clusters == *n_clust {
                     break;
@@ -340,14 +421,7 @@ impl Dendrogram {
         assert!(n_assigned == dist.nrows());
         
         // Ignore potentially unclassified background observations
-        let mut clusters : Vec<Cluster> = Vec::with_capacity(n_clusters);
-        for i in 0..(n_clusters) {
-            clusters.push(Cluster { items : Vec::new() });
-        }
-        for (obs, cluster_ix) in cluster_hash.iter() {
-            clusters[cluster_ix-1].items.push(*obs);
-        }
-        clusters
+        build_cluster_vector(cluster_hash, n_clusters)
     }
     
     /*/// Reproduce the dendrogram up to level n_cluster.
@@ -381,6 +455,14 @@ impl Dendrogram {
         Self::build_from_eucl(eucl, strat)
     }
     
+    pub fn build_generic<T, F>(obs : &[T], metric : F, strat : Strategy) -> Self
+    where
+        F : Fn(&T, &T)->f64
+    {
+        let dist = generic_distance_matrix(obs, metric);
+        Self::build_from_eucl(dist, strat)
+    }
+
     /// Run clustering algorithm from a prebuilt euclidian distance matrix
     pub fn build_from_eucl(eucl : DMatrix<f64>, strat : Strategy) -> Self {
         println!("Distance matrix shape: {:?}", eucl.shape());
@@ -405,6 +487,9 @@ impl Dendrogram {
                     agg_stop, 
                     neighbor
                 )
+            },
+            Strategy::Threshold(thresh) => {
+                Self::build_threshold(&eucl, thresh)
             }
         };
         Self { clusters }
@@ -436,8 +521,8 @@ impl Dendrogram {
 fn cluster() {
 
     use nalgebra::*;
-    use bayes::feature::cluster::*;
-    use bayes::prob::*;
+    use crate::feature::cluster::*;
+    use crate::prob::*;
 
     let mut clust_gen = Vec::new();
     let mut data = DMatrix::zeros(40, 2);
@@ -478,4 +563,126 @@ pub fn centroid_mut(m : &DMatrix<f64>, cluster : &Cluster, centroid : &mut DVect
     }
 }
 
+/*
+/// A metric is a scalar value that captures the distance or dissimilarity between
+/// a pair of n-dimensional observations. If those observations are arranged into
+/// a Sample implementor, within(.) returns the square matrix of pair-wise metrics
+/// of all observations within the sample. Metrics can also be calculated as the
+/// pair-wise comparison of all elements of a pair of sample implementors via the between(.)
+/// method.
+///
+/// Metrics are an important general-purpose dimensionality reduction algorithm, which
+/// always reduce the dimension from n to 1. The dissimilarity between an observation and
+/// a series of prototypes can be used for classification; the dissimilarity between the cartesian
+/// product of a pair of sets of observations can be used for matching and clustering. Clustering
+/// and Matching algorihtms are generic over the metric they use. Clustering algorithms take only
+/// the metric and output the clusters or interst; Matching algoritms take the metric and an optimizer
+/// (function of the observation match) and output the state of the optimizer that best satisfies
+/// all the pair-wise dissimilarities.
+pub trait Metric
+where Self : Sized
+{
 
+    fn dim(&self) -> usize;
+
+    fn within<S>(a : S) -> Self
+    where S : Into<DMatrix<f64>> + Clone
+    {
+        Self::between(a.clone(), a)
+    }
+
+    // TODO use set here.
+    fn between<S>(a : S, b : S) -> Self
+    where S : Into<DMatrix<f64>>;
+
+    /// Returns the full distance matrix. For within-sample comparisons,
+    /// (Self::within), the diagonal values will always be zero, since the
+    /// elements are being compared to themselves at the i==j entries.
+    fn full(&self) -> DMatrix<f64>;
+
+    /// Return a matrix with the n distances closest to the informed point.
+    /// The row index correspond to the observation index at left set;
+    /// the column index correspond to the observation index at the
+    /// right set. The implementor should guarantee that if a pair-wise
+    /// comparison is being made (Self::within), the comparison of an
+    /// element with itself is not returned (the sparse matrix will never
+    /// have an element in the diagonal).
+    fn closest_to(&self, pt : &[f64], n : usize) -> CsMatrix<f64>;
+
+    /// Return a sparse matrix containing the n-smallest distances.
+    fn smallest(&self, n : usize) -> CsMatrix<f64> {
+        let mut pt : Vec<f64> = Vec::new();
+        pt.extend((0..self.dim()).map(|_| 0.0 ));
+        self.closest_to(&pt[..], n)
+    }
+
+    // TODO add provided method for histogram.
+}
+
+/// Represents an upper triangular matrix of euclidian distances
+pub struct Euclidian {
+    dim : usize,
+    dst : DMatrix<f64>
+}
+
+/// Represents an upper triangular matrix of Manhattan distances
+pub struct Manhattan {
+
+}
+
+impl Metric for Manhattan {
+
+    fn between<S>(a : S, b : S) -> Self
+        where S : Into<DMatrix<f64>>
+    {
+        unimplemented!()
+    }
+
+    fn full(&self) -> DMatrix<f64> {
+        unimplemented!()
+    }
+
+    fn dim(&self) -> usize {
+        unimplemented!()
+    }
+
+    fn closest_to(&self, pt : &[f64], n : usize) -> CsMatrix<f64> {
+        unimplemented!()
+    }
+
+}
+
+impl Metric for Euclidian {
+
+    fn dim(&self) -> usize {
+        self.dim
+    }
+
+    fn between<S>(a : S, b : S) -> Self
+        where S : Into<DMatrix<f64>>
+    {
+        let a : DMatrix<f64> = a.into();
+        let b : DMatrix<f64> = b.into();
+        assert!(a.ncols() == b.ncols());
+        let mut dst = DMatrix::zeros(a.nrows(), b.ncols());
+        for (i, row_a) in a.row_iter().enumerate() {
+            for (j, row_b) in b.row_iter().enumerate() {
+                dst[(i, j)] = row_a.iter()
+                    .zip(row_b.iter())
+                    .fold(0.0, |sum, p| sum + (p.0.powf(2.) - p.1.powf(2.)).abs() as f64)
+                    .sqrt();
+            }
+        }
+        Self{ dst, dim : a.ncols() }
+    }
+
+    fn full(&self) -> DMatrix<f64> {
+        self.dst.clone()
+    }
+
+    fn closest_to(&self, pt : &[f64], n : usize) -> CsMatrix<f64> {
+        unimplemented!()
+    }
+
+}
+*/
