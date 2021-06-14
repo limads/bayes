@@ -15,6 +15,12 @@ type NormalFactor = UnivariateFactor<Box<Normal>>;
 /// for the location parameter for such outcomes. Each realization is parametrized
 /// by a location parameter μ and a common scale factor σ.
 ///
+/// Normals works both in the role of priors or likelihoods:
+///
+/// To represent n(mu,sigma) use: Normal::prior(0.2, 0.1);
+/// to represent n(x|mu,sigma) use Normal::likelihood(&x[..]);
+///
+///
 /// # Example
 ///
 /// ```
@@ -49,6 +55,10 @@ pub struct Normal {
 
     scale_factor : Option<Gamma>,
 
+    // See the documentation for the mix field of MultiNormal, which explains the rationale of
+    // holding mixing factors in this way.
+    mix : Option<Vec<Box<Normal>>>,
+
     log_part : DVector<f64>,
 
     eta_traj : Option<Trajectory>,
@@ -70,9 +80,11 @@ pub struct Normal {
     
     obs : Option<DMatrix<f64>>,
     
-    fixed_obs : Option<DMatrix<f64>>,
+    // fixed_obs : Option<DMatrix<f64>>,
     
     n : usize,
+
+    var : f64,
 
     sample : Option<(Vec<String>, DMatrix<f64>)>
 
@@ -115,12 +127,14 @@ impl Normal {
             name : None,
             fixed_names : None,
             obs : None,
-            fixed_obs : None,
+            // fixed_obs : None,
             n,
-            sample : None
+            sample : None,
+            var,
+            mix : None
         };
         norm.set_var(var);
-        norm.set_parameter(mu.rows(0, mu.nrows()), false);
+        norm.set_parameter(mu.rows(0, mu.nrows()), true);
         norm
     }
 
@@ -129,13 +143,24 @@ impl Normal {
         val - self.mu[0] / self.stddev()
     }
 
+    /// Evaluates the log-probability of each data sample individually, assuming
+    /// this element does not have any factors.
+    pub fn cond_log_prob(&self) -> Option<DVector<f64>> {
+        assert!(self.loc_factor.is_empty());
+        let y = self.obs.as_ref()?;
+        let y_sq = y.column(0).map(|y| y.powf(2.0) );
+        Some(self.scaled_mu.component_mul(&y) + self.minus_half_prec*y_sq - &self.log_part)
+    }
+
     // Will not work for heteroscedastic distributions.
     pub fn stddev(&self) -> f64 {
-        let v = 1. / self.prec_suff[1];
-        v.sqrt()
+        //let v = 1. / self.prec_suff[1];
+        //v.sqrt()
+        self.var.sqrt()
     }
 
     pub fn set_var(&mut self, var : f64) {
+        self.var = var;
         let prec = 1. / var;
         self.prec_suff[0] = prec.ln();
         self.prec_suff[1] = prec;
@@ -294,8 +319,9 @@ impl Distribution for Normal
     }
 
     fn var(&self) -> DVector<f64> {
-        let v = 1. / self.prec_suff[1];
-        DVector::from_element(1, v)
+        // let v = 1. / self.prec_suff[1];
+        // DVector::from_element(1, v)
+        DVector::from_element(1, self.var)
     }
 
     fn cov(&self) -> Option<DMatrix<f64>> {
@@ -306,14 +332,14 @@ impl Distribution for Normal
         None
     }
 
-    fn log_prob(&self /*, y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>*/ ) -> Option<f64> {
+    fn joint_log_prob(&self /*, y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>*/ ) -> Option<f64> {
         /*let eta = match self.current() {
             Some(eta) => eta,
             None => self.mu.rows(0, self.mu.nrows())
         };*/
         let loc_lp = match self.loc_factor {
             NormalFactor::Conjugate(ref loc) => loc.suf_log_prob(self.mu.slice((0, 0), (self.mu.nrows(), 1))),
-            NormalFactor::CondExpect(ref mn) => mn.suf_log_prob(self.mu.slice((0, 0), (self.mu.nrows(), 1))),
+            NormalFactor::Fixed(ref mn) => mn.suf_log_prob(self.mu.slice((0, 0), (self.mu.nrows(), 1))),
             NormalFactor::Empty => 0.
         };
         let scale_lp = match self.scale_factor {
@@ -322,8 +348,7 @@ impl Distribution for Normal
         };
         let y = self.obs.as_ref()?;
         let t = Self::sufficient_stat(y.slice((0, 0), (y.nrows(), 1)));
-        let y_sq = y.column(0).map(|y| y.powf(2.0));
-        let lp = (self.scaled_mu.component_mul(&y) + (self.minus_half_prec*y_sq) - &self.log_part).sum() + loc_lp + scale_lp;
+        let lp = self.cond_log_prob()?.sum() + loc_lp + scale_lp;
         Some(lp)
     }
 
@@ -348,7 +373,7 @@ impl Distribution for Normal
     fn dyn_factors(&self) -> (Option<&dyn Distribution>, Option<&dyn Distribution>) {
         let loc = match self.loc_factor {
             NormalFactor::Conjugate(ref n) => Some(n.as_ref() as &dyn Distribution),
-            NormalFactor::CondExpect(ref mn) => Some(mn as &dyn Distribution),
+            NormalFactor::Fixed(ref mn) => Some(mn as &dyn Distribution),
             NormalFactor::Empty => None
         };
         let scale = self.scale_factor.as_ref().map(|sf| sf as &dyn Distribution);
@@ -358,7 +383,7 @@ impl Distribution for Normal
     fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Distribution>, Option<&mut dyn Distribution>) {
         let loc = match self.loc_factor {
             NormalFactor::Conjugate(ref mut n) => Some(n.as_mut() as &mut dyn Distribution),
-            NormalFactor::CondExpect(ref mut mn) => Some(mn as &mut dyn Distribution),
+            NormalFactor::Fixed(ref mut mn) => Some(mn as &mut dyn Distribution),
             NormalFactor::Empty => None
         };
         let scale = self.scale_factor.as_mut().map(|sf| sf as &mut dyn Distribution);
@@ -450,9 +475,9 @@ impl Likelihood<f64> for Normal {
         self.obs.as_ref()
     }
 
-    fn view_fixed_values(&self) -> Option<&DMatrix<f64>> {
-        self.fixed_obs.as_ref()
-    }
+    // fn view_fixed_values(&self) -> Option<&DMatrix<f64>> {
+    //    self.fixed_obs.as_ref()
+    // }
 
     fn observe_sample(&mut self, sample : &dyn Sample, vars : &[&str]) {
         //self.obs = Some(super::observe_univariate(self.name.clone(), self.mu.len(), self.obs.take(), sample));
@@ -555,28 +580,28 @@ impl Conditional<MultiNormal> for Normal {
 
     fn condition(mut self, mn : MultiNormal) -> Normal {
         // assert!(mn.n == 1);
-        self.loc_factor = NormalFactor::CondExpect(mn);
+        self.loc_factor = NormalFactor::Fixed(mn);
         // TODO update sampler vector
         self
     }
 
     fn view_factor(&self) -> Option<&MultiNormal> {
         match &self.loc_factor {
-            NormalFactor::CondExpect(ref mn) => Some(mn),
+            NormalFactor::Fixed(ref mn) => Some(mn),
             _ => None
         }
     }
 
     fn take_factor(self) -> Option<MultiNormal> {
         match self.loc_factor {
-            NormalFactor::CondExpect(mn) => Some(mn),
+            NormalFactor::Fixed(mn) => Some(mn),
             _ => None
         }
     }
 
     fn factor_mut(&mut self) -> Option<&mut MultiNormal> {
         match &mut self.loc_factor {
-            NormalFactor::CondExpect(ref mut mn) => Some(mn),
+            NormalFactor::Fixed(ref mut mn) => Some(mn),
             _ => None
         }
     }
@@ -614,6 +639,17 @@ impl Conditional<Gamma> for Normal {
 
 }
 
+impl Mixture for Normal {
+
+    fn mixture<const K : usize>(distrs : [Self; K], probs : [f64; K]) -> Self {
+        let mix : Vec<_> = distrs[1..].iter().map(|distr| Box::new(distr.clone()) ).collect();
+        let mut base = distrs[0].clone();
+        base.mix = Some(mix);
+        base
+    }
+
+}
+
 impl<'a> Estimator<'a, &'a Normal> for Normal {
 
     type Algorithm = ();
@@ -635,6 +671,7 @@ impl<'a> Estimator<'a, &'a Normal> for Normal {
     fn fit(&'a mut self, algorithm : Option<Self::Algorithm>) -> Result<&'a Normal, &'static str> {
         // self.observe_sample(sample);
         let prec1 = 1. / self.var()[0];
+
         match (&mut self.loc_factor, &mut self.scale_factor) {
             (NormalFactor::Conjugate(ref mut norm), Some(ref mut gamma)) => {
                 unimplemented!()
@@ -646,9 +683,12 @@ impl<'a> Estimator<'a, &'a Normal> for Normal {
                 let ys = y.column(0).sum();
                 let mu0 = norm.mean()[0];
                 let prec0 = 1. / norm.var()[0];
+
+                // B = sigma_a^2 / (sigma_a^2 + sigma_b^2) is called the shrinkage factor,
+                // since the posterior average is a weighted sum: B*\mu + (1. - B)*y
                 let var_out = 1. / (prec0 + n*prec1);
                 let mu_out =  var_out*(mu0*prec0 + ys*prec1);
-                norm.set_parameter((&DVector::from_element(1, mu_out)).into(), false);
+                norm.set_parameter((&DVector::from_element(1, mu_out)).into(), true);
                 norm.set_var(var_out);
                 Ok(&(*norm))
             },
@@ -737,4 +777,7 @@ impl Display for Normal {
     }
 
 }
+
+// TODO implement Into<MultiNormal> (useful for EM algorithm).
+
 

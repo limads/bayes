@@ -160,16 +160,16 @@ impl Trajectory {
     }
     
     /// Builds a Histogram over a single parameter value in this trajectory.
-    pub fn histogram(&self, ix : usize) -> Option<Histogram> {
-        if ix < self.traj.nrows() {
+    pub fn histogram(&self, ix : usize, n_bins : usize) -> Option<Histogram> {
+        /*if ix < self.traj.nrows() {
             let samples = self.traj.row(ix)
                 .columns(0, self.pos)
-                .clone_owned()
-                .transpose();
-            Some(Histogram::build(&samples))
+                .iter()
+            Some(Histogram::calculate(samples, n_bins))
         } else {
             None
-        }
+        }*/
+        unimplemented!()
     }
 
 }

@@ -9,6 +9,10 @@ use bayes::model::Model;
 use bayes::sample::Sample;
 use bayes::inference;
 use std::convert::TryInto;
+use indicatif;
+use std::thread;
+use std::time::Duration;
+
 // use warp::Filter;
 
 /// Fit and compare probabilistic models from the command line
@@ -110,6 +114,7 @@ fn main() -> Result<(), String> {
             serve(&host)
         },*/
         Bayes::Fit{ model, data, method, output, traj  } => {
+            indicatif::ProgressIterator::progress((0..100).for_each(|v| { thread::sleep(Duration::from_millis(500)); v } )).msg("el");
             match (model, data) {
                 (Some(model_path), Some(data_path)) => {
                     let tbl = open_table(data_path)?;

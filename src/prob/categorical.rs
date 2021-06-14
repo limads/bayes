@@ -1,37 +1,48 @@
 use nalgebra::*;
 use super::*;
 use super::dirichlet::*;
-// use std::fmt::{self, Display};
 use serde::{Serialize, Deserialize};
 use std::fmt::{self, Display};
 
 /// Any discrete joint distribution graph with factors linked by conditional probability tables
 /// resolves to a graph of categorical distributions, parametrized by a CPD.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct Categorical {
+
     theta : DVector<f64>,
+
     log_theta : DVector<f64>,
+
     eta : DVector<f64>,
 
-    /// Unlike the univariate distributions, that hold a log-partition vector with same dimensionality
-    /// as the parameter vector, the categorical holds a parameter vector with a single value, representing
-    /// the state of the theta vector.
+    // Unlike the univariate distributions, that hold a log-partition vector with same dimensionality
+    // as the parameter vector, the categorical holds a parameter vector with a single value, representing
+    // the state of the theta vector.
     log_part : DVector<f64>,
 
-    factor : Option<Dirichlet>
+    // factor : Option<Dirichlet>,
+
+    obs : Option<DMatrix<f64>>,
+
+    n : usize
 }
 
 impl Categorical {
 
-    pub fn new(n : usize, param : Option<&[f64]>) -> Self {
+    pub fn new(k : usize, param : Option<&[f64]>) -> Self {
         //println!("{}", param);
         //println!("{}", param.sum() + (1. - param.sum()) );
         let param = match param {
             Some(p) => {
-                assert!(p.len() == n);
+                assert!(p.len() == k);
                 DVector::from_column_slice(p)
             },
-            None => DVector::from_element(n, 1. / ((n + 1) as f64))
+
+            // One-against-k parametrization
+            // None => DVector::from_element(k, 1. / ((n + 1) as f64))
+
+            // One-in-k parametrization
+            None => DVector::from_element(k, 1. / k as f64)
         };
         assert!(param.sum() + (1. - param.sum()) - 1. < 10E-8);
         let eta = Self::link(&param);
@@ -40,10 +51,31 @@ impl Categorical {
             theta : param,
             eta : eta.clone(),
             log_part : DVector::from_element(1,1.),
-            factor : None
+            // factor : None,
+            n : 1,
+            obs : None
         };
-        cat.update_log_partition( /*eta.rows(0,eta.nrows())*/ );
+        cat.update_log_partition();
         cat
+    }
+
+    /*// Resolves the conditional log-probability for each realization, assuming
+    // the one-in-k parametrization.
+    fn cond_log_prob(&self) -> Option<DVector<f64>> {
+
+        if let Some(obs) = self.obs.as_ref() {
+            let n = obs.nrows();
+            let mut probs = DVector::zeros(n);
+            for row in obs.row_iter() {
+                probs[i] = if row[]
+            }
+        } else {
+            None
+        }
+    }*/
+
+    fn prob_for_class(&self, class : usize) -> f64 {
+        self.theta[class]
     }
 
 }
@@ -87,7 +119,7 @@ impl Distribution for Categorical {
         self.theta.map(|theta| theta * (1. - theta))
     }
 
-    fn log_prob(&self, /*y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>*/ ) -> Option<f64> {
+    fn joint_log_prob(&self, /*y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>*/ ) -> Option<f64> {
         /*let t  = Self::sufficient_stat(y.rows(0, y.nrows()));
         let factor_lp = match &self.factor {
             Some(dir) => {
@@ -116,7 +148,96 @@ impl Distribution for Categorical {
 
 }
 
-impl Markov for Categorical {
+impl Observable for Categorical {
+
+    fn observations(&mut self) -> &mut Option<DMatrix<f64>> {
+        &mut self.obs
+    }
+
+    fn sample_size(&mut self) -> &mut usize {
+        &mut self.n
+    }
+
+}
+
+#[test]
+fn categorical() {
+
+}
+
+/*pub struct Category<N> {
+
+}
+
+impl<N> Category<N> {
+
+}*/
+
+/*impl Likelihood<usize> for Categorical {
+
+    fn observe<'a>(&mut self, obs : impl IntoIterator<Item=&'a usize>) {
+        let cvt_obs : Vec<f64> = obs.into_iter().map(|val| *val as f64 ).collect();
+        observe_univariate_generic(self, cvt_obs.iter());
+    }
+
+    fn likelihood<'a>(obs : impl IntoIterator<Item=&'a usize>) -> Self {
+        let mut poiss = Poisson::new(1, None);
+        poiss.observe(obs);
+        poiss
+    }
+
+    fn view_variables(&self) -> Option<Vec<String>> {
+        self.name.as_ref().map(|name| vec![name.clone()] )
+    }
+
+    fn with_variables(&mut self, vars : &[&str]) -> &mut Self {
+        assert!(vars.len() == 1);
+        self.name = Some(vars[0].to_string());
+        self
+    }
+
+    fn view_fixed(&self) -> Option<Vec<String>> {
+        self.fixed_names.clone()
+    }
+
+    fn with_fixed(&mut self, fixed : &[&str]) -> &mut Self {
+        self.fixed_names = Some(fixed.iter().map(|s| s.to_string()).collect());
+        self
+    }
+
+    fn view_variable_values(&self) -> Option<&DMatrix<f64>> {
+        self.obs.as_ref()
+    }
+
+    // fn view_fixed_values(&self) -> Option<&DMatrix<f64>> {
+    //    self.fixed_obs.as_ref()
+    //}
+
+    fn observe_sample(&mut self, sample : &dyn Sample, vars : &[&str]) {
+        //self.obs = Some(super::observe_univariate(self.name.clone(), self.lambda.len(), self.obs.take(), sample));
+        // self.n = 0;
+        let mut obs = self.obs.take().unwrap_or(DMatrix::zeros(self.lambda.nrows(), 1));
+        if let Some(name) = vars.get(0) {
+            if let Variable::Count(col) = sample.variable(&name) {
+                for (tgt, src) in obs.iter_mut().zip(col) {
+                    *tgt = src as f64;
+                    // self.n += 1;
+                }
+            }
+        }
+        self.obs = Some(obs);
+
+        /*if let Some(fixed_names) = &self.fixed_names {
+            let fix_names = fixed_names.clone();
+            super::observe_real_columns(&fix_names[..], sample, &mut self.fixed_obs, self.n);
+        }*/
+
+        // self
+    }
+
+}*/
+
+/*impl Markov for Categorical {
 
     fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
         self.eta.column_mut(0)
@@ -126,7 +247,7 @@ impl Markov for Categorical {
         Some(self.theta.column_mut(0))
     }
 
-}
+}*/
 
 impl ExponentialFamily<Dynamic> for Categorical
     where
@@ -181,7 +302,7 @@ impl ExponentialFamily<Dynamic> for Categorical
 
 }
 
-impl Conditional<Dirichlet> for Categorical {
+/*impl Conditional<Dirichlet> for Categorical {
 
     fn condition(self, _d : Dirichlet) -> Self {
         unimplemented!()
@@ -199,7 +320,7 @@ impl Conditional<Dirichlet> for Categorical {
         unimplemented!()
     }
 
-}
+}*/
 
 impl Display for Categorical {
 

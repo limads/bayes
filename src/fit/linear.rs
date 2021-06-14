@@ -16,121 +16,188 @@ use std::default::Default;
 #[derive(Debug)]
 pub struct OLS {
     pub beta : DVector<f64>,
-    pub err : Option<DVector<f64>>,
-    // y : &'a DVector<f64>,
-    // x : &'a DVector<f64>,
-    // y_pred : Option<DVector<f64>>
+
+    // Inverse matrix of squares and cross-products, (X^T X)^-1. This is the (unnormalized)
+    // covariance for OLS; or the CRLB for WLS problems.
+    pub sigma_b : DMatrix<f64>,
+
+    pub err : Option<DVector<f64>>
 }
 
 impl OLS {
     
+    pub fn predict(&self, x : &DMatrix<f64>) -> DVector<f64> {
+        assert!(x.ncols() == self.beta.nrows());
+        x.clone() * &self.beta
+    }
+
     /// Carry estimation based on a prediction by solving the linear system of cross-product
     /// matrices (X^T X) and the fixed predictor x observation vector (X^T y). This gives
-    /// the least squares solution b = (X^T X)^{-1} X^T y via QR decomposition.
-    pub fn estimate_from_cp(xy : &DVector<f64>, xx : &DMatrix<f64>) -> Self {
+    /// the least squares solution b = (X^T X)^{-1} X^T y via QR decomposition. This instantiates
+    /// self with only a beta vector, without the error vector.
+    pub fn estimate_from_cp(xx : &DMatrix<f64>, xy : &DVector<f64>) -> Self {
         let xx_qr = xx.clone().qr();
         let beta = xx_qr.solve(&xy).unwrap();
-        Self { beta, err : None }
+        let sigma_b = xx_qr.try_inverse().unwrap();
+        Self { beta, sigma_b, err : None }
     }
 
     pub fn estimate(y : &DVector<f64>, x : &DMatrix<f64>) -> Self {
         let xx = x.clone().transpose() * x;
         let xy = x.clone().transpose() * y;
-        let mut est = Self::estimate_from_cp(&xy, &xx);
-        let err = (x.clone() * &est.beta) - y;
-        est.err = Some(err);
-        est
-    }
-
-    /*pub fn with_residuals(mut self) -> Self {
-        let y_pred = self.x.clone() * self.beta;
-        self.err = self.y_pred - self.y
-    }*/
-
-    pub fn error(&self) -> Option<DVector<f64>> {
-        unimplemented!()
+        let mut ols = Self::estimate_from_cp(&xx, &xy);
+        ols.err = Some(ols.predict(&x) - y);
+        ols
     }
 
 }
 
 /// Weighted Least squares algorithm, which estimates
 /// the minimum squared error estimate weighting each
-/// sample by its corresponding entry in the inverse-diagonal
+/// sample by its corresponding entry from a inverse-diagonal
 /// covariance (diagonal precision). This algorithm just the OLS estimator
-/// applied to the transformed variables X* = X^T W X and y* = X^T W y, so it is
-/// useful if you have heteroscedastic observations conditional on a set of linear
-/// predictors, and you don't have informaiton to guide inference.
+/// applied to the transformed variables X* = W^{1/2} X and y* = W y, which resolves into
+/// (X^T W X)^-1 X^T W y, so it is useful if you have heteroscedastic observations
+/// conditional on a set of linear predictors, and you don't have informaiton to guide inferencerive
 #[derive(Debug)]
 pub struct WLS {
 
     pub ols: OLS,
 
-    // prec_diag : DVector<f64>,
-
     // Precision matrix: Inverse covariance of the individual observations
-    prec : Option<DMatrix<f64>>
+    sigma_inv : Option<DMatrix<f64>>
 
-    //err : DVector<f64>
 }
 
 impl WLS {
 
     pub fn estimate_from_cov_diag<S>(
         y : &Matrix<f64, Dynamic, U1, S>,
-        cov_diag : &DVector<f64>,
+        sigma_diag : &DVector<f64>,
         x : &DMatrix<f64>
     ) -> Self
     where
         S : Storage<f64, Dynamic, U1>
     {
-        let prec_diag = cov_diag.map(|c| 1. / c );
-        Self::estimate_from_prec_diag(&y, &prec_diag, &x)
+        let sigma_inv_diag = sigma_diag.map(|c| 1. / c );
+        Self::estimate_from_prec_diag(&y, &sigma_inv_diag, &x)
     }
 
     /// Solves the weighted least squares problem by informing the
     /// precision (inverse observation variance) matrix (assumed diagonal).
     pub fn estimate_from_prec<S>(
         y : &Matrix<f64, Dynamic, U1, S>,
-        prec : &DMatrix<f64>,
+        sigma_inv : &DMatrix<f64>,
         x : &DMatrix<f64>
     ) -> Self
     where
         S : Storage<f64, Dynamic, U1>
     {
-        let xwx = x.clone().transpose() * prec * x;
-        let xwy = x.clone().transpose() * prec * y;
-        let ols = OLS::estimate_from_cp(&xwy, &xwx);
-        Self{ ols, prec : Some(prec.clone_owned()) }
+        debug_assert!(is_approx_diagonal(&sigma_inv));
+        let xwx = x.clone().transpose() * sigma_inv * x;
+        let xwy = x.clone().transpose() * sigma_inv * y;
+        let mut ols = OLS::estimate_from_cp(&xwx, &xwy);
+        ols.err = Some(ols.predict(&x) - y);
+        Self{ ols, sigma_inv : Some(sigma_inv.clone_owned()) }
     }
 
+    /// Solves the weighted least squares problem from a vector of diagonal precision values
+    /// in a vector.
     pub fn estimate_from_prec_diag<S>(
         y : &Matrix<f64, Dynamic, U1, S>,
-        prec_diag : &DVector<f64>,
+        sigma_inv_diag : &DVector<f64>,
         x : &DMatrix<f64>
     ) -> Self
     where
         S : Storage<f64, Dynamic, U1>
     {
-        let prec = DMatrix::<f64>::from_diagonal(&prec_diag);
-        Self::estimate_from_prec(&y, &prec, &x)
+        let sigma_inv = DMatrix::<f64>::from_diagonal(&sigma_inv_diag);
+        Self::estimate_from_prec(&y, &sigma_inv, &x)
     }
 
     pub fn update_from_prec<S>(
         &mut self,
         y : &Matrix<f64, Dynamic, U1, S>,
-        prec_diag : &DVector<f64>,
+        sigma_inv_diag : &DVector<f64>,
         x : &DMatrix<f64>
-    ) {
-        // self.prec.set_diagonal(prec_diag);
+    )
+    where
+        S : Storage<f64, Dynamic, U1>
+    {
+        let k = self.sigma_inv.as_ref().unwrap().nrows();
+        assert!(sigma_inv_diag.nrows() == k);
+        for i in 0..k {
+            self.sigma_inv.as_mut().unwrap()[(i, i)] = sigma_inv_diag[i];
+        }
+        *self = Self::estimate_from_prec(&y, self.sigma_inv.as_ref().unwrap(), &x);
     }
 
     pub fn update_from_cov<S>(
         &mut self,
         y : &Matrix<f64, Dynamic, U1, S>,
-        prec_diag : &DVector<f64>,
+        sigma_diag : &DVector<f64>,
         x : &DMatrix<f64>
-    ) {
+    ) where
+        S : Storage<f64, Dynamic, U1>
+    {
+        let sigma_inv_diag = sigma_diag.map(|c| 1. / c );
+        self.update_from_prec(y, &sigma_inv_diag, x);
+    }
 
+}
+
+/// Checks that the matrix does not differ sigificantly from a zero (diagonal) matrix.
+fn is_approx_diagonal(m : &DMatrix<f64>) -> bool {
+    if m.is_square() {
+        let n = m.nrows();
+        for i in 0..n {
+            for j in 0..n {
+                if i != j {
+                    if m[(i, j)].abs() > f64::EPSILON {
+                        return false;
+                    }
+                }
+            }
+        }
+        true
+    } else {
+        false
+    }
+}
+
+/// Solves the Bayesian least squares problem, when we have a prior (b0, Sb0) for the
+/// beta coefficient and the sigma covariance matrix of the regression coefficients.
+/// Ridge regression arises as a special case when b_0 = 0 and Sb0 = sigma_b0 I
+/// (homoscedastic regression coefficient vector) and Sy = sigma_y (homoscedastic error vector)
+/// where lambda = sigma_y / sigma_b0; \lambda \in [0, 1] as (lambda I + X^T X)^-1 X^T y.
+/// In either case, this gives a MAP estimate of regression coefficients.
+pub struct BLS {
+    b_prior : DVector<f64>,
+    sigma_b_prior : DMatrix<f64>,
+
+    // ols.beta will carry the mean of the posterior;
+    // ols.sigma_b will carry the covariance of the posterior.
+    ols : OLS,
+
+}
+
+impl BLS {
+
+    /// sigma_inv : obsevation precision (n x n)
+    /// b_prior : Coefficient mean prior (p)
+    /// sigma_b_prior : Coefficient covariance prior (p x p)
+    pub fn estimate(
+        y : &DVector<f64>,
+        sigma_inv : &DMatrix<f64>,
+        x : &DMatrix<f64>,
+        b_prior : &DVector<f64>,
+        sigma_b_prior : &DMatrix<f64>
+    ) -> Self {
+        let xy_b = sigma_inv * (y.clone() - x.clone() * b_prior);
+        let xx_b = sigma_b_prior + x.clone().transpose() * sigma_inv * x;
+        let mut ols = OLS::estimate_from_cp(&xx_b, &xy_b);
+        ols.err = Some(ols.predict(&x) - y);
+        Self { b_prior : b_prior.clone(), sigma_b_prior : sigma_b_prior.clone(), ols }
     }
 
 }
@@ -297,6 +364,66 @@ pub struct IRLSConfig {
 impl Default for IRLSConfig {
     fn default() -> Self {
         IRLSConfig{ max_iter : 1000, tol : 1E-6 }
+    }
+}
+
+fn update_weights(w : &mut DMatrix<f64>, err : &DVector<f64>) {
+    let n = w.nrows();
+    for i in 0..n {
+        w[(i, i)] = 1. / err[i].max(1E-6);
+    }
+}
+
+pub fn irls<D>(distr : &mut D, tol : f64, max_iter : usize) -> Result<(), String>
+    where
+        D : FixedConditional + Observable + ExponentialFamily<U1>
+{
+    let obs = distr.observations().clone().unwrap();
+    let y = obs.column(0).clone_owned();
+    println!("{}", y.nrows());
+    let mn = distr.fixed_factor().unwrap();
+    let x = mn.fixed_observations().unwrap().clone_owned();
+    println!("{}", x.nrows());
+    let (n, p) = (x.nrows(), x.ncols());
+    assert!(x.nrows() == y.nrows());
+    let mut w = DMatrix::zeros(n, n);
+    let mut coefs = mn.view_parameter(true).clone_owned();
+    assert!(x.ncols() == coefs.nrows());
+    let mut diff_coefs = DVector::from_iterator(p, (0..p).map(|_| f64::INFINITY ));
+    let mut n_iter = 0;
+
+    while (diff_coefs.norm() > tol) && (n_iter <= max_iter) {
+        let eta = x.clone_owned() * &coefs;
+        // println!("{}", eta);
+        let y_pred = D::link(&eta);
+        let err = (y.clone() - y_pred).abs();
+        // println!("{}", err);
+        update_weights(&mut w, &err);
+
+        // println!("{}", w);
+
+        // Calculate (X^T W X)^{-1}
+        let squared_prod = (x.clone().transpose() * w.clone() * &x);
+        let qr_s = QR::new(squared_prod);
+        if let Some(inv_squared_prod) = qr_s.try_inverse() {
+            // Calculate (X^T W y)
+            let cross_prod = x.clone().transpose() * &w * &y;
+
+            let new_coefs = inv_squared_prod * cross_prod;
+            diff_coefs = new_coefs.clone() - &coefs;
+            coefs = new_coefs;
+            n_iter += 1;
+        } else {
+            return Err(String::from("Unable to invert square-product matrix"));
+        }
+    }
+
+    if n_iter <= max_iter {
+        mn.set_parameter(coefs.rows(0, p), true);
+        println!("IRLS completed (done in {} iterations)", n_iter);
+        Ok(())
+    } else {
+        Err(String::from("Algorithm did not converge"))
     }
 }
 

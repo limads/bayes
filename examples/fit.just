@@ -6,3 +6,5 @@ fit : data/data/csv, model.json
 
 summary.csv : posterior.json
 	bayes summary -m posterior.json -o summary.csv
+
+

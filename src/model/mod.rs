@@ -234,10 +234,10 @@ impl Distribution for Model
         }
     }
 
-    fn log_prob(&self, /*y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>*/ ) -> Option<f64> {
+    fn joint_log_prob(&self, /*y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>*/ ) -> Option<f64> {
         match self {
-            Model::MN(m) => m.log_prob(),
-            Model::Bern(b) => b.log_prob(),
+            Model::MN(m) => m.joint_log_prob(),
+            Model::Bern(b) => b.joint_log_prob(),
             _ => unimplemented!()
         }
     }

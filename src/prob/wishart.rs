@@ -210,7 +210,7 @@ impl Distribution for Wishart {
     /// Does not really use y because the value against which
     /// log_prob(.) is evaluated is a constant set at the same
     /// time the multivariate normal is updated (this is gamma_suf).
-    fn log_prob(&self, /*_y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>*/ ) -> Option<f64> {
+    fn joint_log_prob(&self, /*_y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>*/ ) -> Option<f64> {
         /*let rot_lp = if let Some(ref r) = self.rot_fact {
             match self.corr {
                 Correlation::Homogeneous(ref rho) | Correlation::Autoregressive(ref rho, _) |

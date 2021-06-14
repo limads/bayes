@@ -9,6 +9,7 @@ use std::fmt::{self, Display};
 use anyhow;
 use crate::fit::Estimator;
 use crate::calc::Variate;
+use std::iter::FromIterator;
 
 pub type PoissonFactor = UnivariateFactor<Gamma>;
 
@@ -58,7 +59,7 @@ pub struct Poisson {
     
     obs : Option<DMatrix<f64>>,
     
-    fixed_obs : Option<DMatrix<f64>>,
+    // fixed_obs : Option<DMatrix<f64>>,
     
     n : usize,
 
@@ -172,8 +173,10 @@ impl Distribution for Poisson
 
     fn set_natural<'a>(&'a mut self, new_eta : &'a mut dyn Iterator<Item=&'a f64>) {
         let (eta, lambda) = (&mut self.eta, &mut self.lambda);
-        eta.iter_mut().zip(new_eta).for_each(|(old, new)| *old = *new );
-        lambda.iter_mut().zip(eta.iter()).for_each(|(old, new)| *old = new.sigmoid() );
+
+        // eta.iter_mut().zip(new_eta).for_each(|(old, new)| *old = *new );
+        *eta = DVector::from(Vec::from_iter(new_eta.cloned()));
+        *lambda = DVector::from(Vec::from_iter(new_eta.map(|e| e.ln() )));
         self.update_log_partition();
         if let Some(ref mut suf) = self.suf_lambda {
             *suf = Gamma::sufficient_stat(self.lambda.slice((0,0), (self.lambda.nrows(),1)));
@@ -203,7 +206,7 @@ impl Distribution for Poisson
         self.lambda.clone()
     }
 
-    fn log_prob(&self, /*y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>*/ ) -> Option<f64> {
+    fn joint_log_prob(&self, /*y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>*/ ) -> Option<f64> {
         /*// assert!(y.ncols() == 1);
         let eta = self.eta.rows(0, self.eta.nrows());
         let factor_lp = match &self.factor {
@@ -212,15 +215,15 @@ impl Distribution for Poisson
                 assert!(x.is_none());
                 g.log_prob(self.suf_lambda.as_ref().unwrap().slice((0,0), (1,2)), None)
             },
-            PoissonFactor::CondExpect(m) => {
+            PoissonFactor::Fixed(m) => {
                 m.log_prob(eta.slice((0,1), (eta.nrows(), eta.ncols() - 1)), x)
             },
             PoissonFactor::Empty => 0.
         };
         eta.dot(&y.slice((0, 0), (y.nrows(), 1))) - self.log_part[0] + factor_lp*/
-        super::univariate_log_prob(
+        super::univariate_joint_log_prob(
             self.obs.as_ref(),
-            self.fixed_obs.as_ref(),
+            self.factor.fixed_obs(),
             &self.factor,
             &self.view_parameter(true),
             &self.log_part,
@@ -261,7 +264,7 @@ impl Distribution for Poisson
     fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>) {
         match &mut self.factor {
             PoissonFactor::Conjugate(ref mut b) => (Some(b as &mut dyn Posterior), None),
-            PoissonFactor::CondExpect(ref mut m) => (Some(m as &mut dyn Posterior), None),
+            PoissonFactor::Fixed(ref mut m) => (Some(m as &mut dyn Posterior), None),
             _ => (None, None)
         }
     }
@@ -356,9 +359,9 @@ impl Likelihood<usize> for Poisson {
         self.obs.as_ref()
     }
 
-    fn view_fixed_values(&self) -> Option<&DMatrix<f64>> {
-        self.fixed_obs.as_ref()
-    }
+    // fn view_fixed_values(&self) -> Option<&DMatrix<f64>> {
+    //    self.fixed_obs.as_ref()
+    //}
 
     fn observe_sample(&mut self, sample : &dyn Sample, vars : &[&str]) {
         //self.obs = Some(super::observe_univariate(self.name.clone(), self.lambda.len(), self.obs.take(), sample));
@@ -403,7 +406,7 @@ impl Likelihood<usize> for Poisson {
                 f(b);
                 b.visit_post_factors(&f as &dyn Fn(&mut dyn Posterior));
             },
-            PoissonFactor::CondExpect(ref mut m) => {
+            PoissonFactor::Fixed(ref mut m) => {
                 f(m);
                 m.visit_post_factors(&f as &dyn Fn(&mut dyn Posterior));
             },
@@ -414,7 +417,7 @@ impl Likelihood<usize> for Poisson {
     /*fn factors_mut(&mut self) -> Factors {
         match self.factor {
             BernoulliFactor::Conjugate(b) => b.aggregate_factors(Factors::new_empty()),
-            BernoulliFactor::CondExpect(m) => m.aggregate_factors(Factors::new_empty()),
+            BernoulliFactor::Fixed(m) => m.aggregate_factors(Factors::new_empty()),
             _ => Factors::new_empty()
         }
     }*/
@@ -529,7 +532,7 @@ impl Default for Poisson {
             suf_lambda : None,
             log_part : DVector::from_element(1, (2.).ln()),
             obs : None,
-            fixed_obs : None,
+            // fixed_obs : None,
             fixed_names : None,
             name : None,
             n : 0,

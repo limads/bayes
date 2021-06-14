@@ -52,3 +52,17 @@ impl Drop for Spline {
 impl Basis<DVector<f64>,C> for Spline {
 
 }
+
+/*/// Represents the polynomial expansion of each variance in sample up to a given degree.
+/// There is a unique mapping of (variable, degree) to a vector with the respective expansion
+pub struct PolyExpansion {
+    sample : Box<dyn Sample>
+    expansion : HashMap<(String, usize), Vec<f64>>
+}
+
+pub struct SplineExpansion {
+    sample : Box<dyn Sample>
+    expansion : HashMap<(String, usize), Vec<f64>>
+}*/
+
+

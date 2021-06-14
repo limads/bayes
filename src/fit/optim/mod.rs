@@ -7,10 +7,10 @@ use std::error::Error;
 /// Optimization routines, via bindings to GNU GSL.
 mod gsl;
 
-/// Expectation-maximization algorithm (Work in progress).
-pub mod em;
+// Expectation-maximization algorithm (Work in progress).
+// pub mod em;
 
-pub use em::*;
+// pub use em::*;
 
 mod approx;
 

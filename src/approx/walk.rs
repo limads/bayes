@@ -130,7 +130,7 @@ impl Distribution for RandomWalk
         unimplemented!()
     }
 
-    fn log_prob(&self, /*_y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>*/ ) -> Option<f64> {
+    fn joint_log_prob(&self, /*_y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>*/ ) -> Option<f64> {
         unimplemented!()
     }
 

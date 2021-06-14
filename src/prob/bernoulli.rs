@@ -14,6 +14,7 @@ use either::Either;
 use crate::fit::Estimator;
 use crate::calc::Variate;
 use std::mem;
+use std::iter::FromIterator;
 
 pub type BernoulliFactor = UnivariateFactor<Beta>;
 
@@ -67,6 +68,8 @@ pub type BernoulliFactor = UnivariateFactor<Beta>;
 /// </semantics>
 /// </math>
 ///
+/// The sums of n realizations of a Bernoulli with probability θ is called a Binomial distribution
+/// and approaches a Poison with lambda = nθ as n increases indefinitely.
 /// # Example
 ///
 /// ```
@@ -110,7 +113,7 @@ pub struct Bernoulli {
 
     obs : Option<DMatrix<f64>>,
     
-    fixed_obs : Option<DMatrix<f64>>,
+    // fixed_obs : Option<DMatrix<f64>>,
     
     name : Option<String>,
     
@@ -199,7 +202,7 @@ impl Conditional<Beta> for Bernoulli {
 impl Conditional<MultiNormal> for Bernoulli {
 
     fn condition(mut self, m : MultiNormal) -> Bernoulli {
-        self.factor = BernoulliFactor::CondExpect(m);
+        self.factor = BernoulliFactor::Fixed(m);
         // TODO Update samplers
         // TODO Update eta, mean, etc.
         self.suf_theta = None;
@@ -208,21 +211,21 @@ impl Conditional<MultiNormal> for Bernoulli {
 
     fn view_factor(&self) -> Option<&MultiNormal> {
         match &self.factor {
-            BernoulliFactor::CondExpect(m) => Some(m),
+            BernoulliFactor::Fixed(m) => Some(m),
             _ => None
         }
     }
 
     fn take_factor(self) -> Option<MultiNormal> {
         match self.factor {
-            BernoulliFactor::CondExpect(m) => Some(m),
+            BernoulliFactor::Fixed(m) => Some(m),
             _ => None
         }
     }
 
     fn factor_mut(&mut self) -> Option<&mut MultiNormal> {
         match &mut self.factor {
-            BernoulliFactor::CondExpect(m) => Some(m),
+            BernoulliFactor::Fixed(m) => Some(m),
             _ => None
         }
     }
@@ -325,9 +328,9 @@ impl Likelihood<bool> for Bernoulli {
         self.obs.as_ref()
     }
 
-    fn view_fixed_values(&self) -> Option<&DMatrix<f64>> {
-        self.fixed_obs.as_ref()
-    }
+    // fn view_fixed_values(&self) -> Option<&DMatrix<f64>> {
+    //     self.fixed_obs.as_ref()
+    // }
 
     fn observe_sample(&mut self, sample : &dyn Sample, vars : &[&str]) {
         //self.obs = Some(super::observe_univariate(self.name.clone(), self.theta.len(), self.obs.take(), sample));
@@ -379,7 +382,7 @@ impl Likelihood<bool> for Bernoulli {
                 f(b);
                 b.visit_post_factors(&f as &dyn Fn(&mut dyn Posterior));
             },
-            BernoulliFactor::CondExpect(ref mut m) => {
+            BernoulliFactor::Fixed(ref mut m) => {
                 f(m);
                 m.visit_post_factors(&f as &dyn Fn(&mut dyn Posterior));
             },
@@ -400,7 +403,7 @@ impl Likelihood<bool> for Bernoulli {
                 //    factors
                 //}
             },
-            BernoulliFactor::CondExpect(m) => {
+            BernoulliFactor::Fixed(m) => {
                 unimplemented!()
             },
             _ => Factors::new_empty()
@@ -424,7 +427,7 @@ impl Likelihood<bool> for Bernoulli {
             BernoulliFactor::Conjugate(b) => {
                 b.aggregate_factors(factors)
             },
-            BernoulliFactor::CondExpect(m) => {
+            BernoulliFactor::Fixed(m) => {
                 m.aggregate_factors(factors)
             },
             _ => Factors::new_empty()
@@ -493,8 +496,9 @@ impl Distribution for Bernoulli
 
     fn set_natural<'a>(&'a mut self, new_eta : &'a mut dyn Iterator<Item=&'a f64>) {
         let (eta, theta) = (&mut self.eta, &mut self.theta);
-        eta.iter_mut().zip(new_eta).for_each(|(old, new)| *old = *new );
-        theta.iter_mut().zip(eta.iter()).for_each(|(old, new)| *old = new.sigmoid() );
+        *eta = DVector::from(Vec::from_iter(new_eta.cloned()));
+        *theta = DVector::from(Vec::from_iter(new_eta.map(|e| e.sigmoid() )));
+        // theta.iter_mut().zip(eta.iter()).for_each(|(old, new)| *old = new.sigmoid() );
         self.update_log_partition();
         if let Some(ref mut suf) = self.suf_theta {
             *suf = Beta::sufficient_stat(self.theta.slice((0,0), (self.theta.nrows(),1)));
@@ -505,6 +509,17 @@ impl Distribution for Bernoulli
         }
 
     }
+
+    /*fn grad(&self, y : DMatrixSlice<'_, f64>, x : Option<DMatrix<f64>>) -> DVector<f64> {
+        match &self.factor {
+            BernoulliFactor::Fixed(mn) => {
+                mn.grad(y, None)
+            },
+            _ => {
+                unimplemented!()
+            }
+        }
+    }*/
 
     fn set_parameter(&mut self, p : DVectorSlice<'_, f64>, natural : bool) {
         let eta = if natural {
@@ -546,10 +561,10 @@ impl Distribution for Bernoulli
         None
     }
 
-    fn log_prob(&self /*, y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>*/ ) -> Option<f64> {
-        super::univariate_log_prob(
+    fn joint_log_prob(&self /*, y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>*/ ) -> Option<f64> {
+        super::univariate_joint_log_prob(
             self.obs.as_ref(),
-            self.fixed_obs.as_ref(),
+            self.factor.fixed_obs(),
             &self.factor,
             &self.view_parameter(true),
             &self.log_part,
@@ -638,6 +653,23 @@ impl Observable for Bernoulli {
 
 }
 
+impl FixedConditional for Bernoulli {
+
+    fn fixed_factor<'a>(&'a mut self) -> Option<&'a mut MultiNormal> {
+        match &mut self.factor {
+            UnivariateFactor::Fixed(ref mut mn) => {
+                if mn.is_fixed() {
+                    Some(mn)
+                } else {
+                    None
+                }
+            },
+            _ => None
+        }
+    }
+
+}
+
 impl Into<serde_json::Value> for Bernoulli {
 
     fn into(mut self) -> serde_json::Value {
@@ -647,7 +679,7 @@ impl Into<serde_json::Value> for Bernoulli {
             let obs_value : Value = obs_vec.into();
             child.insert(String::from("obs"), obs_value);
         }
-        if let BernoulliFactor::CondExpect(mn) = self.factor {
+        if let BernoulliFactor::Fixed(mn) = self.factor {
             let fv : Value = mn.into();
             child.insert(String::from("prop"), fv);
         } else {
@@ -687,12 +719,22 @@ impl Predictive for Bernoulli {
 
 }
 
+/*let linesearch = MoreThuenteLineSearch::new().c(1e-4, 0.9)?;
+    let solver = LBFGS::new(linesearch, 7);
+
+    let init_param = DVector::zeros(100);
+    let res = Executor::new(model, solver, init_param)
+        .add_observer(ArgminSlogLogger::term(), ObserverMode::Always)
+        .max_iters(100)
+        .run()
+        .map_err(|e| format!("{}", e) )?;*/
+
 /*impl Posterior for Bernoulli {
 
     fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>) {
         match &mut self.factor {
             BernoulliFactor::Conjugate(ref mut b) => (Some(b as &mut dyn Posterior), None),
-            BernoulliFactor::CondExpect(ref mut m) => (Some(m as &mut dyn Posterior), None),
+            BernoulliFactor::Fixed(ref mut m) => (Some(m as &mut dyn Posterior), None),
             _ => (None, None)
         }
     }
@@ -753,7 +795,7 @@ impl Default for Bernoulli {
             log_part : DVector::from_element(1, (2.).ln()),
             suf_theta : None,
             obs : None,
-            fixed_obs : None,
+            // fixed_obs : None,
             name : None,
             fixed_names : None,
             n : 0,
@@ -807,7 +849,9 @@ impl argmin::core::ArgminOp for Bernoulli {
     type Float = f64;
 
     fn apply(&self, p: &Self::Param) -> Result<Self::Output, argmin::core::Error> {
-        Ok(self.log_prob().unwrap())
+        // TODO Set parameter value p into the MultiNormal factor. The factor should be a RefCell
+        // for that to be valid.
+        Ok(self.joint_log_prob().unwrap())
     }
 
     fn jacobian(&self, p: &Self::Param) -> Result<Self::Jacobian, argmin::core::Error> {

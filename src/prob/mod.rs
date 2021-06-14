@@ -60,6 +60,8 @@ mod vonmises;
 
 pub use vonmises::*;
 
+// pub mod mixture;
+
 /// Trait shared by all parametric distributions in the exponential
 /// family. The Distribution immediate state is defined by a parameter vector
 /// (stored  both on a natural and canonical parameter scale) which can
@@ -134,7 +136,7 @@ pub trait Distribution
     }
 
     // Returns a symmetric interval around the mean if this distribution is univariate and symmetric
-    fn interval(&self) -> Option<Interval> {
+    fn zscore(&self, val : f64) -> Option<ZScore> {
         None
     }
 
@@ -157,8 +159,8 @@ pub trait Distribution
     /// of the implementor. The samples at matrix y are assumed to be independent over rows (or at least
     /// conditionally-independent given the current factor graph). Univariate factors require that
     /// y has a single column; Multivariate factors require y has a number of columns equal to the
-    /// distribution parameter vector.
-    fn log_prob(&self /*, y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>*/ ) -> Option<f64>;
+    /// distribution parameter vector. TODO move to Likelihood
+    fn joint_log_prob(&self /*, y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>*/ ) -> Option<f64>;
 
     /// Sample from the current distribution; If the sampling unit has multiple dimensions,
     /// they are represented over columns; If multiple units are sampled (if there are multiple
@@ -245,6 +247,10 @@ pub trait Conditional<D>
     /// until the full graph is visited. TODO rename to modify_factor(.)
     fn factor_mut(&mut self) -> Option<&mut D>;
     
+    //fn map_factor(&self, f : impl Fn(&D)) {
+    //    self.view_factor().map(|factor| f(factor) )
+    //}
+
     // Searches the given factor by variable name, returning it if successful.
     // fn search_factor(&self, name : &str) -> Option<&D>;
 
@@ -294,7 +300,7 @@ pub enum Condition<D> {
 /// Conjugate factors express stochastic relationships between a prior (
 /// which might be an observed group label, unobserved prior assumtion
 /// or marginal ML prior estimate) and the factor, i.e. sampling the factor
-/// is conditional on sampling the conjugate parameter; CondExpect factors
+/// is conditional on sampling the conjugate parameter; Fixed factors
 /// express a deterministic relationship (the factor parameter IS the realization
 /// of the linear combination of the factors).
 #[derive(Debug, Clone)]
@@ -325,13 +331,45 @@ where
     /// the prior, but otherwise only the log-likelihood of the likelihood node is evaluated.
     /// Perhaps rename variant to Deterministic? (Deterministic links do not add a LL term: We only
     /// create a distribution that serves as a "proxy" for the parameter of the actual likelihood.
-    CondExpect(MultiNormal),
+    Fixed(MultiNormal),
 
     /// Represents a conjugate pair (stochastic link).
     /// The joint distribution p(y) factors as
     /// p(y|theta)p(theta). Perhaps rename variant to Stochastic?
     Conjugate(D)
 }
+
+impl<D> UnivariateFactor<D> {
+
+    pub fn fixed_obs(&self) -> Option<&DMatrix<f64>> {
+        match &self {
+            Self::Fixed(mn) => mn.fixed_observations(),
+            _ => None
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        match &self {
+            UnivariateFactor::Empty => true,
+            _ => false
+        }
+    }
+
+}
+
+/*pub enum MultivariateFactor {
+
+    Empty,
+
+    Conjugate(Box<MultiNormal>),
+
+    Mixture(Categorical, Box<MultiNormal>),
+
+    ScaledConjugate(Box<MultiNormal>, Wishart),
+
+    ScaledMixture(Categorical, Box<MultiNormal>, Wishart)
+
+}*/
 
 /*impl<D> UnivariateFactor<D> {
 
@@ -344,7 +382,7 @@ where
     }
 }*/
 
-fn univariate_log_prob<D>(
+fn univariate_joint_log_prob<D>(
     y : Option<&DMatrix<f64>>,
     x : Option<&DMatrix<f64>>,
     factor : &UnivariateFactor<D>,
@@ -374,7 +412,7 @@ where
             // of the current likelihood node.
             d.suf_log_prob(sf.slice((0,0), sf.shape()))
         },
-        UnivariateFactor::CondExpect(m) => {
+        UnivariateFactor::Fixed(m) => {
             // If we are considering a conditional expectation factor, we consider not the
             // column sample vector, but a single row realization of a multivariate normal.
             // Assume here distribution is already scaled by the x argument we receive
@@ -511,7 +549,7 @@ where
 
         /*let mut unn_p = DVector::zeros(y.nrows());
         for (i, _) in y.row_iter().enumerate() {
-            unn_p[i] = self.log_prob().unwrap().exp();
+            unn_p[i] = self.joint_log_prob().unwrap().exp();
             //println!("lp = {}", unn_p[i]);
         }
 
@@ -521,7 +559,7 @@ where
         //let p = unn_p;
 
         let joint_p = p.iter().fold(1., |jp, p| jp * p);
-        joint_p*/
+        Some(joint_p)*/
         unimplemented!()
     }
 
@@ -610,6 +648,16 @@ impl<'a> Iterator for Factors<'a> {
         unimplemented!()
     }
     
+}
+
+/// Implemented by distributions which are non-final graph nodes. Prior distributions
+/// have a dimensionality of one, and only receive parameter values.
+pub trait Prior {
+
+    type Parameter;
+
+    fn prior(param : Self::Parameter) -> Self;
+
 }
 
 /*
@@ -709,13 +757,19 @@ pub trait Likelihood<O>
         unimplemented!()
     }
 
+    fn observe_owned(&mut self, obs: impl IntoIterator<Item=O>) {
+        unimplemented!()
+    }
+
     fn view_variables(&self) -> Option<Vec<String>>;
     
     fn view_fixed(&self) -> Option<Vec<String>>;
     
     fn view_variable_values(&self) -> Option<&DMatrix<f64>>;
 
-    fn view_fixed_values(&self) -> Option<&DMatrix<f64>>;
+    fn view_fixed_values(&self) -> Option<&DMatrix<f64>> {
+        unimplemented!()
+    }
 
     /// Bind a sequence of variable names to this distribution. This causes calls to
     /// Likelihood::observe to bind to the respective variable names for any Sample implementor.
@@ -734,6 +788,18 @@ pub trait Likelihood<O>
     /// kth level, corresponding to multilevel models, where observations are conditioned on other observations.
     /// After the k+1 level, there cannot be distributions which receive data (only non-named prior distributions).
     fn observe_sample(&mut self, sample : &dyn Sample, vars : &[&str]);
+
+    /* pub trait Process<I> {
+
+        fn initialize(&self) -> Option<I>;
+        fn innovation(&self) -> Option<I>;
+    }
+
+    impl Iterator<Item=f64> for MyType { }
+    impl markov::Process for MyType { }
+
+    fn observe_process(&mut self, process : &dyn Process);
+    */
 
     // where
     //    R : IntoIterator<Item=&'a f64>,
@@ -854,6 +920,15 @@ pub trait Likelihood<O>
     // Iterate over sister nodes if Factor; or returns a single distribution if
     // not a factor.
     // pub fn iter_sisters() -
+
+    /*Need to figure out a way to update the data of a likelihood that satisfies the Markov
+    property (only need to keep the last state to calculate the current log-prob).
+
+    Perhaps
+    distr::markov(1) creates an order-1 markov process (any calls to observe will overwrite
+    a single data point). distr::markov(n > 1) will store elements in a VecDequeue (ringbuffer)
+    which is made contiguous whenever the log-probability needs to be calculated and erases any
+    last old element whenever a new element is observed, preserving n elements at all times.*/
 }
 
 /// Held by likelihood/predictive implementors.
@@ -1310,7 +1385,7 @@ fn sample_cond_expect(x : &DMatrix<f64>, mn : &MultiNormal) -> DVector<f64> {
     eta
 }
 
-/// If this distribution has a Conjugate OR CondExpect variant, resolve the sampling
+/// If this distribution has a Conjugate OR Fixed variant, resolve the sampling
 /// of the parent into a vector. If not, return None. The returned vector is always a
 /// natural parameter.
 pub fn sample_natural_factor<D>(
@@ -1323,7 +1398,7 @@ where
 {
     match (fixed, factor) {
         (_, UnivariateFactor::Conjugate(d)) => Some(sample_conjugate(d, n)),
-        (Some(x), UnivariateFactor::CondExpect(mn)) => Some(sample_cond_expect(x, mn)),
+        (Some(x), UnivariateFactor::Fixed(mn)) => Some(sample_cond_expect(x, mn)),
         _ => None
     }
 }
@@ -1352,9 +1427,17 @@ where
 {
     match (fixed, factor) {
         (_, UnivariateFactor::Conjugate(boxed_d)) => Some(sample_conjugate(boxed_d.as_ref(), n)),
-        (Some(ref x), UnivariateFactor::CondExpect(ref mn)) => Some(sample_cond_expect(x, mn)),
+        (Some(ref x), UnivariateFactor::Fixed(ref mn)) => Some(sample_cond_expect(x, mn)),
         _ => None
     }
+}
+
+/// Trait implemented by distributions which can be conditioned on a fixed
+/// multinormal.
+pub trait FixedConditional {
+
+    fn fixed_factor<'a>(&'a mut self) -> Option<&'a mut MultiNormal>;
+
 }
 
 /// Private trait implemented by distributions which yield observations. This allows
@@ -1362,7 +1445,7 @@ where
 /// trait pattern is useful when we have several structures that share some common
 /// fields. This is somewhat like OOP inheritance: We have some generic function
 /// that make use of specific implementations.
-trait Observable {
+pub trait Observable {
 
     fn observations(&mut self) -> &mut Option<DMatrix<f64>>;
 
@@ -1394,17 +1477,19 @@ where
     // Create row-wise (wide) observation matrix
     for (i, row) in obs.into_iter().enumerate() {
         v.extend(row.into_iter().map(|el| f64::from(*el) ));
+
+        // Guarantees slices at 1..n have the same size as slice[0]
         if i == 0 {
             dim = v.len();
         } else {
-            assert!(v.len() == dim);
+            assert!(row.len() == dim);
         }
     }
     let n = v.len() / dim;
     let mut obs = DMatrix::from_vec(n, dim, v);
 
     // Transform to tall observation matrix
-    obs.transpose_mut();
+    // obs = obs.transpose();
 
     *lik.observations() = Some(obs);
     *lik.sample_size() = n;
@@ -1432,7 +1517,7 @@ where
     D : Distribution + Posterior + ExponentialFamily<Dynamic>
 {
     match factor {
-        UnivariateFactor::CondExpect(m) => {
+        UnivariateFactor::Fixed(m) => {
             Some(m as &'a dyn Distribution)
         },
         UnivariateFactor::Conjugate(c) => {
@@ -1453,7 +1538,7 @@ where
     // P : Distribution
 {
     match factor {
-        UnivariateFactor::CondExpect(m) => {
+        UnivariateFactor::Fixed(m) => {
             Some(m as &'a mut dyn Distribution)
         },
         UnivariateFactor::Conjugate(c) => {
@@ -1737,9 +1822,15 @@ A statistic compresses the n-dimensional distribution into a 1-dimensional distr
 /// Only MultiNormal implements fixed for now. This trait is the basis to implement maximum likelihood
 /// (fixed implementor has covariance matrix zero) and bayesian regression models (fixed implementor
 /// has non-zero covariance matrix).
+///
+/// The Fixed trait allow us to represent any model in the generalized linear family by a convergent graph
+/// or random nodes. The parent variables are all held in a "fixed MultiNormal" where each element is the
+/// (w * variate) expression; where w is a fixed weight and variate is a fixed realization. The marginal
+/// correlations between those individual linear predictors and a converged-to dependent variable (y) define a full
+/// generalized regression problem when we invert the precision matrix where the correlations are a single row (column).
 pub trait Fixed<O>
 where
-O : ?Sized
+    O : ?Sized
 {
 
     fn fixed<'a>(values : impl Iterator<Item=&'a O>, coefs : impl Iterator<Item=&'a f64>) -> Self
@@ -1754,6 +1845,42 @@ O : ?Sized
     // Updates an initially random distribution by fixig its values:
     // let m = MultiNormal::prior(&[0.2, 0.3]).fix(&[&[0.1, 0.2], &[1.2, 1.2]]);
     // fn fix(&mut self, obs : &[Sample]);
+}
+
+/// A mixture is defined by a linear combination of normal probability
+/// distributions whose weights result from a categorical distribution draw,
+/// which is a natural way to model a discrete
+/// mutually-exclusive process affecting an independent continuous outcome:
+/// p(y) = prod( p_i p(y_i)  )
+/// This is essentially a marginalized distribution, where the p_i
+/// are the discrete marginalization factors. The marginal is what is observed
+/// at a random process (suppose we have k clusters, but we do not know
+/// their centroids or dispersion); in this situation this representation essentially lets
+/// us evaluate the log-probabilities of a proposed centroid vector and dispersion matrices
+/// at all alternative outcomes, which are marginalied at the fixed values of the latent discrete
+/// variable.
+/// Since the inner probability does not factor with the rest of the log-
+/// probabilities in the graph, the received outcome should be compared against
+/// all possible combinations of the discrete outcome before being propagated
+/// back into the graph.
+/// This operation can be expressed as a product between a categorical
+/// and a multivariate normal outcome: The dot-product between the categorical output
+/// and the mean vector propagate a univariate normal distribution in the forward pass;
+/// and the products of all potential realizations with the fixed values of the rhs define
+/// a parameter vector to be propagated in the backward pass to both branches.
+/// If we use this mixture and take the product again, the categorical can be interpreted
+/// as being the LHS of the dot product with the row-stacked multivariate means, in which
+/// case the mixture is selecting one of k possible multivariate realizations.
+pub trait Mixture
+    where Self : Sized
+{
+
+    fn mix(self, other : Self, prob : f64) -> Self {
+        Self::mixture([self, other], [1. - prob, prob])
+    }
+
+    fn mixture<const K : usize>(distrs : [Self; K], probs : [f64; K]) -> Self;
+
 }
 
 /*/// To move the natural parameter out of a distribution structure, so we can update its canonical

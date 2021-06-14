@@ -6,10 +6,12 @@ use crate::sample::Sample;
 /// Utilities to build inference algorithms.
 pub(crate) mod utils;
 
-/// Algorithm for approximating posteriors with multivariate normals
-/// (Expectation Maximization; work in progress).
-#[cfg(feature="gsl")]
-pub mod optim;
+pub mod em;
+
+// Algorithm for approximating posteriors with multivariate normals
+// (Expectation Maximization; work in progress).
+// #[cfg(feature="gsl")]
+// pub mod optim;
 
 /// Full posterior estimation via random walk simulation (Metropolis-Hastings algorithm).
 pub mod markov;
@@ -50,9 +52,11 @@ pub trait Estimator<'a, P>
 
     type Algorithm;
 
-    /// Runs the inference algorithm for the informed sample matrix,
-    /// returning a reference to the modified model (from which
-    /// the posterior information of interest can be retrieved).
+    /// Runs the inference algorithm. On successful completion, returns the posterior
+    /// distribution Ok(Self::P). After calling fit(.) successfully, the Likelihood distribution
+    /// implementor becomes the posterior predictive. Estimators usually mutate the state of
+    /// the likelihood factors or substitute those factors with a representation resulting
+    /// from the algorithm output.
     fn fit(&'a mut self, algorithm : Option<Self::Algorithm>) -> Result<P, Self::Error>;
     
     /*/// If fit(.) has been called successfully at least once, returns the current state

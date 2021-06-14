@@ -81,9 +81,9 @@ fn gamma() {
             }
         }
     }
-}
+}*/
 
-fn gsl_multinormal_pdf(x : &DVector<f64>, mu : &DVector<f64>, sigma : &DMatrix<f64>) -> f64 {
+/*fn gsl_multinormal_pdf(x : &DVector<f64>, mu : &DVector<f64>, sigma : &DMatrix<f64>) -> f64 {
     let mut gsl_prob : f64 = 0.0;
     let lu = Cholesky::new(sigma.clone()).unwrap();
     let lower = lu.l();
@@ -105,9 +105,9 @@ fn gsl_multinormal_pdf(x : &DVector<f64>, mu : &DVector<f64>, sigma : &DMatrix<f
         }
     }
     gsl_prob
-}
+}*/
 
-#[test]
+/*#[test]
 fn multinormal() {
 
     // We pass samples organized row-by-row to bayes; but as a vector to gsl (as long as we
@@ -128,9 +128,9 @@ fn multinormal() {
     println!("GSL Prob: {}", gsl_prob);
     println!("Bayes Prob: {}", bayes_prob);
     assert!((gsl_prob - bayes_prob).abs() < EPS);
-}
+}*/
 
-#[test]
+/*#[test]
 fn normal() {
     let mu = unit_interval_seq(100);
     let values = mu.clone();

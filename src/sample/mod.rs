@@ -52,7 +52,7 @@ pub type Count<'a> = Box<dyn Iterator<Item=usize> + 'a>;
 
 pub type Binary<'a> = Box<dyn Iterator<Item=bool> + 'a>;
 
-pub type Categorical<'a> = Box<dyn Iterator<Item=&'a str>>;
+pub type Discrete<'a> = Box<dyn Iterator<Item=&'a str>>;
 
 /// Represents an incomplete and not necessarily contiguous region of data.
 pub type Missing<T> = Box<dyn Iterator<Item=Option<T>>>;
@@ -90,7 +90,7 @@ pub trait VariateTrait<'a> {
 
     fn binary(&'a self, var : &str) -> Variate<Binary<'a>>;
 
-    fn categorical(&'a self, var : &'a str) -> Variate<Categorical<'a>>;
+    fn discrete(&'a self, var : &'a str) -> Variate<Discrete<'a>>;
 
 }
 

@@ -154,7 +154,7 @@ impl<'a, D,E> BayesFactor<'a, D, E>
 {
 
     pub fn log_diff(&self /*, y : DMatrixSlice<'_, f64>, x : Option<DMatrixSlice<'_, f64>>*/ ) -> f64 {
-        self.a.log_prob().unwrap() - self.b.log_prob().unwrap()
+        self.a.joint_log_prob().unwrap() - self.b.joint_log_prob().unwrap()
     }
 
     /// Decision boundary accepts Default::default() for a standard

@@ -10,31 +10,37 @@ use std::path::Path;
 // git clone https://github.com/kthohr/mcmc
 
 fn compile_mcmclib() {
+    let mcmclib_path = env::var("MCMCLIB_PATH")
+        .expect("Missing MCMCLIB_PATH environment variable. Clone https://github.com/kthohr/gcem and point the variable to this path");
     cc::Build::new()
         .cpp(true)
         .warnings(false)
         .extra_warnings(false)
-        .includes(&["/usr/include", "target/mcmc/include"])
+        .includes(&["/usr/include", &format!("{}{}", mcmclib_path, "/include") ])
         .flag("-O3")
         .flag("-march=native") 
         .flag("-ffp-contract=fast")
-        .file("target/mcmc/src/aees.cpp")
-        .file("target/mcmc/src/de.cpp")
-        .file("target/mcmc/src/hmc.cpp")
-        .file("target/mcmc/src/mala.cpp")
-        .file("target/mcmc/src/rmhmc.cpp")
-        .file("target/mcmc/src/rwmh.cpp")
+        .file(&format!("{}{}", mcmclib_path, "/src/aees.cpp"))
+        .file(&format!("{}{}", mcmclib_path, "/src/de.cpp"))
+        .file(&format!("{}{}", mcmclib_path, "/src/hmc.cpp"))
+        .file(&format!("{}{}", mcmclib_path, "/src/mala.cpp"))
+        .file(&format!("{}{}", mcmclib_path, "/src/rmhmc.cpp"))
+        .file(&format!("{}{}", mcmclib_path, "/src/rwmh.cpp"))
         .file("src/foreign/mcmc/mcmc.cpp")
         .cpp_link_stdlib("stdc++")
         .compile("libmcmc.a");
 }
 
 fn compile_gcem() {
+
+    let gcem_path = env::var("GCEM_PATH")
+        .expect("Missing GCEM_PATH environment variable. Clone https://github.com/kthohr/mcmc and point the variable to this path");
+
     cc::Build::new()
         .cpp(true)
         .warnings(false)
         .extra_warnings(false)
-        .includes(&["/usr/include", "target/gcem/include"])
+        .includes(&["/usr/include", &format!("{}{}", gcem_path, "/include") ] )
         .flag("-O3")
         .flag("-march=native") 
         .flag("-ffp-contract=fast")
@@ -78,10 +84,14 @@ fn try_link_gsl() {
     }
 }
 
-fn main() {
+fn set_rerun_build_if_mcmc_changed() {
     println!("cargo:rerun-if-changed=src/foreign/gcem/gcem.cpp");
     println!("cargo:rerun-if-changed=src/foreign/mcmc/mcmc.cpp");
     println!("cargo:rerun-if-changed=src/foreign/stats/stats.cpp");
+}
+
+fn main() {
+    set_rerun_build_if_mcmc_changed();
     try_link_gsl();
     compile_mcmclib();
     compile_gcem();

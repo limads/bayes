@@ -7,6 +7,7 @@ use serde::ser::{Serializer};
 use serde::de::Deserializer;
 use std::fmt::{self, Display};
 use crate::fit::markov::Trajectory;
+use mathru::special;
 
 #[cfg(feature="gsl")]
 use crate::foreign::gsl::gamma::*;
@@ -21,6 +22,7 @@ use crate::foreign::gsl::gamma::*;
 /// For a fixed alpha=1, Gamma behaves as an exponential distribution, taking the sum of interval samples as its sufficient statistic.
 /// A Gamma distribution can be seen as a closed-form, finite-sample, slightly biased distribution
 /// for the estimate of an inverse shape (or rate) parameter, where the bias is given by the size of the pseudo-sample considered.
+/// When a is fixed at any positive integer, we have the Erlang distribution.
 #[derive(Debug, Clone)]
 pub struct Gamma {
 
@@ -60,14 +62,14 @@ impl Gamma {
         #[cfg(feature="gsl")]
         return unsafe{ gsl_sf_gamma(y) };
         
-        panic!("Use of the gamma/beta prior require gsl feature");
+        special::gamma::gamma(y)
     }
 
     pub fn ln_gamma(y : f64) -> f64 {
         #[cfg(feature="gsl")]
         return unsafe{ gsl_sf_lngamma(y) };
         
-        panic!("Use of the gamma/beta prior require gsl feature");
+        special::gamma::ln_gamma(y)
     }
 
     pub fn gamma_inv(y : f64) -> f64 {
@@ -205,7 +207,7 @@ impl Distribution for Gamma
         DVector::from_element(1, self.ab[0] / self.ab[1].powf(2.))
     }
 
-    fn log_prob(&self /*, y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>*/ ) -> Option<f64> {
+    fn joint_log_prob(&self /*, y : DMatrixSlice<f64>, x : Option<DMatrixSlice<f64>>*/ ) -> Option<f64> {
         /*assert!(y.ncols() == 1, "Gamma sample should have single column");
         let suf = Self::sufficient_stat(y);
         self.suf_log_prob(suf.rows(0,suf.nrows()))*/

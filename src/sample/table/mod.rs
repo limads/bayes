@@ -1,15 +1,11 @@
 use postgres::{self, /*row::Row,*/ Client, /*types::FromSql, types::ToSql*/ };
-// use std::ops::Index;
-// use std::ops::Range;
 use std::fs::{File};
 use std::path::Path;
 use std::convert::AsRef;
-// use sqlparser::dialect::PostgreSqlDialect;
 use sqlparser::parser::Parser;
 use sqlparser::ast::Statement;
 use nalgebra::*;
 use nalgebra::storage::*;
-// use rust_decimal::Decimal;
 use std::str::FromStr;
 use std::io::Read;
 use std::fmt::{self, Display};
