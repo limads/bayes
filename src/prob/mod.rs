@@ -1896,3 +1896,26 @@ unsafe fn swap_with_uninitialized(eta : &mut DVector<f64>) -> DVector<f64> {
     mem::swap(eta, &mut uninit);
     uninit
 }*/
+
+/// Implemented by distributions that can represent time-ordered random processes.
+/// Creating a distribution with D::stochastic(k) creates a distribution that uses
+/// information from the k-past samples to determine its current state.
+pub trait Stochastic {
+
+    fn stochastic(order : usize, init : Option<&[f64]>) -> Self;
+
+    fn evolve(&mut self, obs : &[f64]);
+
+    fn state<'a>(&'a self) -> &'a [f64];
+
+}
+
+/*fn evolve_and_fit(distr : &mut D, alg : A, sample : &[f64])
+where
+    D : Stochastic + Estimator<A>
+{
+    distr.evolve(sample);
+    distr.fit();
+}*/
+
+

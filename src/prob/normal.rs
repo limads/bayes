@@ -710,6 +710,30 @@ impl Observable for Normal {
 
 }
 
+impl Stochastic for Normal {
+
+    fn stochastic(order : usize, init : Option<&[f64]>) -> Self {
+        if let Some(obs) = init {
+            Normal::likelihood(obs.iter())
+        } else {
+            Normal::likelihood((0..order).map(|_| &0.0 ))
+        }
+    }
+
+    fn evolve(&mut self, new : &[f64]) {
+        assert!(new.len() == 1);
+        let obs = self.obs.as_mut().unwrap().as_mut_slice();
+        obs.copy_within(1.., 0);
+        *obs.last_mut().unwrap() = new[0]
+    }
+
+    fn state(&self) -> &[f64] {
+        let s = self.obs.as_ref().unwrap().as_slice();
+        &s[s.len()-1..]
+    }
+
+}
+
 impl Predictive for Normal {
 
     fn predict<'a>(&'a mut self, fixed : Option<&dyn Sample>) -> Option<&'a dyn Sample> {

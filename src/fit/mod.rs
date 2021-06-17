@@ -24,6 +24,8 @@ pub mod state;
 /// or be used as building block for more complex optimization or sampling strategies. 
 pub mod linear;
 
+pub mod filter;
+
 // Online filtering algorithms - Kalman and Particle
 // pub mod filter;
 
