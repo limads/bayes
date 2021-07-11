@@ -3,9 +3,9 @@ use std::iter::FromIterator;
 use std::collections::HashMap;
 use std::cmp::Eq;
 use std::hash::Hash;
-use ::csv::{Reader, StringRecord};
+// use ::csv::{Reader, StringRecord};
 pub mod csv;
-use postgres;
+// use postgres;
 use either::Either;
 use std::iter::{self, Iterator};
 use std::ops::Index;
@@ -615,7 +615,7 @@ impl Sample for (Vec<String>, DMatrix<f64>) {
     }
 }
 
-impl Sample for Vec<postgres::Row> {
+/*impl Sample for Vec<postgres::Row> {
 
     fn variable<'a>(&'a self, name : &'a str) -> Variable<'a> {
         let cols = self[0].columns();
@@ -675,7 +675,7 @@ impl Sample for Vec<postgres::Row> {
         }
     }
 
-}
+}*/
 
 impl Sample for serde_json::Value {
 

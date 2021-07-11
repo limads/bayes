@@ -188,7 +188,10 @@ pub struct MultiNormal {
     // the k-dimensional data matrix and the discrete factor); and the other continuous sister factors
     // as "appended" to this one. When sampling and calculating log-probabilities, if the discrete
     // factor yields its default value, we sample from this distribution as usual; if not, we dispatch
-    // the call to one of the "sister" mixing factors held in this field.
+    // the call to one of the "sister" mixing factors held in this field. The probability of samping
+    // from any one of the sister factors is given by the entry of the categorical field (which uses
+    // the one-against-k parametrization); the probability of sampling from the default field is
+    // 1 - sum(prob_sisters).
     mix : Option<Vec<Box<MultiNormal>>>,
 
     // Mixture is treated as a factor instead of a likelihood; because what alternates

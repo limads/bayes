@@ -114,7 +114,9 @@ fn main() -> Result<(), String> {
             serve(&host)
         },*/
         Bayes::Fit{ model, data, method, output, traj  } => {
-            indicatif::ProgressIterator::progress((0..100).for_each(|v| { thread::sleep(Duration::from_millis(500)); v } )).msg("el");
+
+            // indicatif::ProgressIterator::progress((0..100).for_each(|v| { thread::sleep(Duration::from_millis(500)); v } )).msg("el");
+
             match (model, data) {
                 (Some(model_path), Some(data_path)) => {
                     let tbl = open_table(data_path)?;

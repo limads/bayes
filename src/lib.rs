@@ -28,7 +28,7 @@ pub mod prob;
 // Auto-generated bindings to Intel MKL (mostly for basis transformation).
 // mod mkl;
 
-/// Data structures and generic traits to load and save data into/from dynamically-allocated matrices.
+// Data structures and generic traits to load and save data into/from dynamically-allocated matrices.
 pub mod sample;
 
 /// Feature extraction traits, structures and algorithms.
@@ -48,3 +48,112 @@ pub mod calc;
 
 /// Non-parametric distribution representations
 pub mod approx;
+
+// C API to be used from other environments.
+// cbindgen src/lib.rs -o include/bayes.h
+mod export {
+
+    use crate::prob::*;
+    use std::ffi;
+    use std::mem;
+
+    // type DynDistr = *const (dyn Distribution + Predictive);
+    // type DynDistrMut = *mut (dyn Distribution + Predictive);
+
+    #[no_mangle]
+    pub extern "C" fn normal_prior(mean : f64, var : f64) -> *mut Box<dyn Predictive<f64>> {
+        // let ptr = Box::into_raw(Box::new(Normal::prior((mean, var))));
+        // println!("Exported pointer : {:?}", ptr);
+        // ptr
+        // Box::into_raw(box_twice(Normal::prior((mean, var))))
+        // Box::into_raw(Box::new(Box::new(Normal::prior((mean, var)))))
+        Normal::prior((mean, var)).export()
+    }
+
+    // TODO build crate exports and import with "use exports::Export;"
+    pub trait Export<D : ?Sized>
+    where
+        Self : Sized
+    {
+
+        /*fn thin(self) -> Box<Box<D>>
+        where
+            Box<D> : From<Box<Self>>
+        {
+            Box::new(Box::new(self).into())
+        }*/
+
+        fn export(self) -> *mut Box<D> {
+            Box::into_raw(Box::new(Self::pack(self)))
+        }
+
+        // User-defined function used to pack a type into Box<T>. Must
+        // be implemented as Box::new(self) by the user always.
+        fn pack(self) -> Box<D>;
+
+        /*fn receive(ptr : *mut Box<D>) -> Box<D> {
+            unsafe { *Box::from_raw(ptr) }
+        }*/
+
+    }
+
+    pub unsafe trait Receive<D>
+    where
+        D : ?Sized
+    {
+
+        fn assume_ref<'a>(self) -> &'a D;
+
+        fn receive(self) -> Box<D>;
+
+    }
+
+    unsafe impl<D> Receive<D> for *mut Box<D>
+    where
+        D : ?Sized
+    {
+
+        /// Panics if pointer is null.
+        fn assume_ref<'a>(self) -> &'a D {
+            unsafe { self.as_ref().unwrap() }
+        }
+
+        // To be called from data at the FFI. Unwraps a *mut Box<D> into
+        // a Box<D> to be dropped at the end of the current call.
+        fn receive(self) -> Box<D> {
+            unsafe { *Box::from_raw(self) }
+        }
+    }
+
+    impl Export<dyn Distribution> for Normal {
+        fn pack(self) -> Box<dyn Distribution> {
+            Box::new(self)
+        }
+    }
+
+    impl Export<dyn Predictive<f64>> for Normal {
+        fn pack(self) -> Box<dyn Predictive<f64>> {
+            Box::new(self)
+        }
+    }
+
+    #[no_mangle]
+    pub extern "C" fn export_slice() -> Box<[f64]> {
+        vec![1.0, 2.0, 3.0].into()
+    }
+
+    // None, integers, bytes objects and (unicode) strings are the only native Python objects
+    // that can directly be used as parameters in function calls
+    // If pointer is to be de-allocated, use Option<Box<dyn Trait>> as argument.
+
+    // *mut ffi::c_void*/
+    #[no_mangle]
+    pub extern "C" fn predict(distr : *mut Box<dyn Predictive<f64>>) -> f64 {
+        unsafe { distr.assume_ref().predict() }
+    }
+
+    /* To deallocate, when receiving distr : *mut dyn [Something] : drop(Box::from_raw(distr)); */
+
+}
+
+

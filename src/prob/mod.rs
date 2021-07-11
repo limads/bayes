@@ -62,6 +62,28 @@ pub use vonmises::*;
 
 // pub mod mixture;
 
+/*pub trait Univariate {
+
+    fn mean(&self) -> f64;
+
+    fn sample(&self) -> f64;
+
+}
+
+pub trait Multivariate {
+
+    // Returns mean (column) vector.
+    fn mean(&self) -> &[f64];
+
+    // Index diagonal (ix, ix) of covariance matrix.
+    fn var(&self, ix : usize) -> f64;
+
+    // Returns covariance of the variable at the given informed index with all
+    // others (index column of covariance matrxi).
+    fn cov(&self, ix : usize) -> &[f64];
+
+}*/
+
 /// Trait shared by all parametric distributions in the exponential
 /// family. The Distribution immediate state is defined by a parameter vector
 /// (stored  both on a natural and canonical parameter scale) which can
@@ -264,6 +286,9 @@ pub trait Conditional<D>
 /// tables (CPTs). This distribution is the basis to parse joint probabilistic models from JSON:
 /// if two variable names are field names of a same JSON object, those names are assumed part of a 
 /// joint distribution; the correlation or CPT argument define how those two elements will be linked.
+/// TODO implement joint(normal, normal, type Corr=f64) to build bivariate relationships;
+/// and also joint(normal, &[normal] type Corr=&[f64]) to build a convergent probabilistic dependency graph
+/// RHS nodes to the LHS node.
 pub trait Joint<D>
 where
     Self : Distribution + Sized,
@@ -937,7 +962,7 @@ pub struct Data<T> {
     predicted : Option<Vec<T>>
 }
 
-/*
+/*/*
 TODO: Perhaps change trait to:
 fn predict(&'a mut self) -> &'a dyn Sample;
 fn view_predictions(&'a self) -> Option<&'a dyn Sample>;
@@ -970,6 +995,12 @@ pub trait Predictive {
     
     fn view_prediction<'a>(&'a self) -> Option<&'a dyn Sample>;
     
+}*/
+
+pub trait Predictive<O> {
+
+    fn predict(&self) -> O;
+
 }
 
 /*/// Used internally to sample all likelihood nodes together. The HashMap is then
@@ -1164,12 +1195,12 @@ pub trait Posterior
     //    unimplemented!()
     // }
 
-    /// Builds a predictive distribution from this Posterior by marginalization.
+    /*/// Builds a predictive distribution from this Posterior by marginalization.
     /// Predictive distributions generate named samples, similar to the "prior predictive"
     /// (the likelihood). 
     fn predictive(&self) -> Box<dyn Predictive> {
         unimplemented!()
-    }
+    }*/
     
     // fn iter_factors<'a>(&'a self) -> 
     

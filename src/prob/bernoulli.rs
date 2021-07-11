@@ -697,7 +697,7 @@ impl Into<serde_json::Value> for Bernoulli {
 
 }
 
-impl Predictive for Bernoulli {
+/*impl Predictive for Bernoulli {
 
     fn predict<'a>(&'a mut self, fixed : Option<&dyn Sample>) -> Option<&'a dyn Sample> {
         /*super::collect_fixed_if_required(self, fixed);
@@ -717,7 +717,7 @@ impl Predictive for Bernoulli {
         }
     }
 
-}
+}*/
 
 /*let linesearch = MoreThuenteLineSearch::new().c(1e-4, 0.9)?;
     let solver = LBFGS::new(linesearch, 7);

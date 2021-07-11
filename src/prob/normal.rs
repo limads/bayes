@@ -360,13 +360,10 @@ impl Distribution for Normal
 
         let opt_mu = sample_natural_factor_boxed(self.view_fixed_values(), &self.loc_factor, self.n);
         let mu = opt_mu.as_ref().unwrap_or(&self.mu);
-
-        use rand::prelude::*;
         let var = self.var()[0];
         let sd = var.sqrt();
         for (i, m) in mu.iter().enumerate() {
-            let n : f64 = rand::thread_rng().sample(rand_distr::StandardNormal);
-            dst[(i,0)] = sd * (n + m);
+            dst[(i, 0)] = normal_sample(*m, sd);
         }
     }
 
@@ -392,6 +389,13 @@ impl Distribution for Normal
 
 }
 
+/// Predicts normal sample with given mean and standard deviation
+fn normal_sample(m : f64, sd : f64) -> f64 {
+    use rand::prelude::*;
+    let z : f64 = rand::thread_rng().sample(rand_distr::StandardNormal);
+    sd * (z + m)
+}
+
 impl Markov for Normal {
 
     fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
@@ -400,6 +404,16 @@ impl Markov for Normal {
 
     fn canonical_mut<'a>(&'a mut self) -> Option<DVectorSliceMut<'a, f64>> {
         None
+    }
+
+}
+
+impl Prior for Normal {
+
+    type Parameter = (f64, f64);
+
+    fn prior(param : Self::Parameter) -> Self {
+        Normal::new(1, Some(param.0), Some(param.1))
     }
 
 }
@@ -734,7 +748,16 @@ impl Stochastic for Normal {
 
 }
 
-impl Predictive for Normal {
+impl Predictive<f64> for Normal {
+
+    fn predict(&self) -> f64 {
+        assert!(self.n == 1);
+        normal_sample(self.mu[0], self.var.sqrt())
+    }
+
+}
+
+/*impl Predictive for Normal {
 
     fn predict<'a>(&'a mut self, fixed : Option<&dyn Sample>) -> Option<&'a dyn Sample> {
         /*super::collect_fixed_if_required(self, fixed);
@@ -748,7 +771,7 @@ impl Predictive for Normal {
         self.sample.as_ref().map(|s| s as &dyn Sample )
     }
 
-}
+}*/
 
 /*impl Trajectory for Normal {
 

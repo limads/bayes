@@ -428,7 +428,7 @@ impl Likelihood<usize> for Poisson {
 
 }
 
-impl Predictive for Poisson {
+/*impl Predictive for Poisson {
 
     fn predict<'a>(&'a mut self, fixed : Option<&dyn Sample>) -> Option<&'a dyn Sample> {
         /*super::collect_fixed_if_required(self, fixed);
@@ -448,7 +448,7 @@ impl Predictive for Poisson {
         }
     }
 
-}
+}*/
 
 impl<'a> Estimator<'a, &'a Gamma> for Poisson {
 
