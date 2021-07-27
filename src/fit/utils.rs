@@ -107,9 +107,9 @@ fn collect_names(distr : &mut impl Likelihood) -> Vec<String> {
     unimplemented!()
 }*/
 
-/// Assuming samples carry the result of natural parameter iterations,
+/*/// Assuming samples carry the result of natural parameter iterations,
 /// distribute the samples over RandomWalk structures maintained by
 /// each posterior node.
 pub fn set_rw(distr : &mut dyn Posterior, samples : &DMatrix<f64>) -> Result<(), Error> {
     unimplemented!()
-}
+}*/

@@ -494,6 +494,15 @@ impl Distribution for Bernoulli
     where Self : Sized
 {
 
+    fn sample(&self, dst : &mut [f64]) {
+        use rand_distr::{Distribution};
+        let opt_theta = sample_canonical_factor::<Bernoulli,_>(self.view_fixed_values(), &self.factor, self.n);
+        let theta = opt_theta.as_ref().unwrap_or(&self.theta);
+        for (i, _) in theta.iter().enumerate() {
+            dst[i] = (self.sampler[i].sample(&mut rand::thread_rng()) as i32) as f64;
+        }
+    }
+
     fn set_natural<'a>(&'a mut self, new_eta : &'a mut dyn Iterator<Item=&'a f64>) {
         let (eta, theta) = (&mut self.eta, &mut self.theta);
         *eta = DVector::from(Vec::from_iter(new_eta.cloned()));

@@ -6,9 +6,12 @@ use std::fmt::{self, Display};
 
 /// Any discrete joint distribution graph with factors linked by conditional probability tables
 /// resolves to a graph of categorical distributions, parametrized by a CPD.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Categorical {
 
+    // Categorical uses the one-against-k parametrization. In this case, there is a "default"
+    // class that receive probability 1 - sum(theta); the remaining classes receive probabilities
+    // according to their entries at theta.
     theta : DVector<f64>,
 
     log_theta : DVector<f64>,
@@ -29,20 +32,20 @@ pub struct Categorical {
 
 impl Categorical {
 
-    pub fn new(k : usize, param : Option<&[f64]>) -> Self {
+    pub fn new(n : usize, k : usize, param : Option<&[f64]>) -> Self {
         //println!("{}", param);
         //println!("{}", param.sum() + (1. - param.sum()) );
         let param = match param {
             Some(p) => {
-                assert!(p.len() == k);
+                assert!(p.len() == k - 1);
                 DVector::from_column_slice(p)
             },
 
-            // One-against-k parametrization
-            // None => DVector::from_element(k, 1. / ((n + 1) as f64))
+            // Attribute same probability at one-against-k parametrization
+            None => DVector::from_element(k, 1. / ((k + 1) as f64))
 
             // One-in-k parametrization
-            None => DVector::from_element(k, 1. / k as f64)
+            // None => DVector::from_element(k, 1. / k as f64)
         };
         assert!(param.sum() + (1. - param.sum()) - 1. < 10E-8);
         let eta = Self::link(&param);
@@ -52,7 +55,7 @@ impl Categorical {
             eta : eta.clone(),
             log_part : DVector::from_element(1,1.),
             // factor : None,
-            n : 1,
+            n,
             obs : None
         };
         cat.update_log_partition();
@@ -81,6 +84,10 @@ impl Categorical {
 }
 
 impl Distribution for Categorical {
+
+    fn sample(&self, dst : &mut [f64]) {
+        unimplemented!()
+    }
 
     fn view_parameter(&self, natural : bool) -> &DVector<f64> {
         match natural {
@@ -267,6 +274,7 @@ impl ExponentialFamily<Dynamic> for Categorical
         self.eta.dot(&t.column(0)) - self.log_part[0]
     }
 
+    // Log-partition as a function of eta
     fn update_log_partition<'a>(&'a mut self) {
         let e_sum = self.eta.iter().fold(0.0, |acc, e| acc + e.exp() );
         self.log_part[0] = (1. + e_sum).ln();
@@ -293,6 +301,8 @@ impl ExponentialFamily<Dynamic> for Categorical
         exp_sum_inv.component_mul(&exp_eta)
     }
 
+    // The categorical link is the log-odds of each non-default outcome against
+    // the default outcome.
     fn link<S>(theta : &Matrix<f64, Dynamic, U1, S>) -> DVector<f64>
         where S : Storage<f64, Dynamic, U1>
     {
@@ -302,6 +312,23 @@ impl ExponentialFamily<Dynamic> for Categorical
 
 }
 
+#[test]
+fn cat_test() {
+    let theta = DVector::from_vec(vec![0.25, 0.25, 0.25]);
+    let eta = Categorical::link(&theta);
+    let theta = Categorical::link_inverse(&eta);
+    println!("{}; {}", eta, theta);
+}
+
+impl Latent for Categorical {
+
+    fn latent(n : usize) -> Self {
+        // When implementing Condition<Categorical> for multinormal, resize
+        // the inner vector to accomodate how many distinct conditionals there are.
+        Categorical::new(n, 1, None)
+    }
+
+}
 /*impl Conditional<Dirichlet> for Categorical {
 
     fn condition(self, _d : Dirichlet) -> Self {

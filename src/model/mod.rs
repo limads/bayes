@@ -168,7 +168,7 @@ impl Model {
 
 }
 
-/// Model implements Distribution by dispatching the calls to its variant
+/*/// Model implements Distribution by dispatching the calls to its variant
 /// TODO Make this AsRef<dyn Distribution>
 impl Distribution for Model
     where Self : Sized
@@ -250,7 +250,7 @@ impl Distribution for Model
         }
     }
 
-}
+}*/
 
 /*/// Model implements Likelihood by dispatching the calls to its variant
 impl Likelihood for Model {
@@ -302,7 +302,7 @@ impl<'a> From<&'a mut Model> for &'a mut dyn Distribution {
 
 }
 
-impl<'a> TryFrom<&'a mut Model> for &'a mut dyn Posterior {
+/*impl<'a> TryFrom<&'a mut Model> for &'a mut dyn Posterior {
 
     type Error = ();
 
@@ -314,9 +314,9 @@ impl<'a> TryFrom<&'a mut Model> for &'a mut dyn Posterior {
         }
     }
 
-}
+}*/
 
-impl<'a> TryFrom<&'a Model> for &'a dyn Posterior {
+/*impl<'a> TryFrom<&'a Model> for &'a dyn Posterior {
 
     type Error = ();
 
@@ -328,7 +328,7 @@ impl<'a> TryFrom<&'a Model> for &'a dyn Posterior {
         }
     }
 
-}
+}*/
 
 impl<'a> From<&'a Model> for &'a dyn Distribution {
 

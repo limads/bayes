@@ -188,12 +188,14 @@ pub trait Distribution
     /// they are represented over columns; If multiple units are sampled (if there are multiple
     /// entries for the parameter vector), a variable number of rows is emitted. Samples should
     /// follow the same structure as the argument to log_prob(.).
-    fn sample(&self) -> DMatrix<f64> {
+    /*fn sample(&self) -> DMatrix<f64> {
         let n = self.mean().nrows();
         let mut m : DMatrix<f64> = DMatrix::zeros(n, 1);
         self.sample_into((&mut m).into());
         m
-    }
+    }*/
+
+    fn sample(&self, dst : &mut [f64]);
 
     fn sample_into(&self, dst : DMatrixSliceMut<'_,f64>);
     
@@ -278,7 +280,7 @@ pub trait Conditional<D>
 
 }
 
-// Maybe move to bayes::model, since this is related to model building.
+/// Maybe move to bayes::model, since this is related to model building.
 /// Implemented by distributions which compose together to yield multivariate
 /// joint distributions. Implementors are Normal(Normal)->MultiNormal and
 /// MultiNormal(Normal)->MultiNormal for continuous variables; and Bernoulli->Bernoulli or
@@ -289,6 +291,40 @@ pub trait Conditional<D>
 /// TODO implement joint(normal, normal, type Corr=f64) to build bivariate relationships;
 /// and also joint(normal, &[normal] type Corr=&[f64]) to build a convergent probabilistic dependency graph
 /// RHS nodes to the LHS node.
+/// Perhaps define Type Association. The association for a MultiNormal is a correlation slice holding correlation
+/// of child with their parents; the association for a Markov is a conditional probability table
+/// (slice of slices) of realization k to realization p.
+/// The method association(&self) -> &[f64] retrieves the
+/// association parameters from a child to their parents. Therefore, the user would access the covariance
+/// matrix by either calling MultiNormal::cov or doing:
+///
+/// ```
+/// let [n1, n2, n3] = (0..3).map(|_| Normal::new(1.0, 2.0)).collect();
+///
+/// // Build convergent dependency:
+/// let m = { n1.joint((n2, n3), &[0.2, 0.3]);
+///
+/// // Build serial dependency:
+/// let m = n1.joint(n2.joint(n3, &[0.2]), &[0.1]);
+///
+/// Build divergent dependency:
+/// let m = (n2, n3).joint(n1, &[0.2, 0.3]); n3.joint(m) }
+///
+/// Default "canonical" bivariate convergent graph order is
+/// established if MultiNormal is built in this way
+/// let m = MultiNormal::new(&[1.0, 2.0, 3.0], cov);
+///
+/// By convention, the mean vector (and as a consequence the covariance matrix) are
+/// ordered following the depth-first ordering of the network graph built.
+///
+/// // Retrieve correlations
+/// m.depth_iter().skip(1).association();
+///
+/// // At a higher-level interface, we might keep a map of variable names to
+/// // depth-first index; and a map of variable names to breadth-first index.
+/// // To access a variable, the user might do m.depth_iter().nth(depth_vars["varname"])
+/// ```
+
 pub trait Joint<D>
 where
     Self : Distribution + Sized,
@@ -299,6 +335,8 @@ where
 
     type Output;
 
+    // To build a contingency table, the corr parameter should be replaced by
+    // a probability mapping of the k-th child class to the i-th parent class.
     /// Changes self by assuming joint normality with another
     /// independent distribution (extends self to have a block-diagonal
     /// covariance composed of the covariance of self (top-left block)
@@ -566,7 +604,9 @@ where
     /// distribution has any factors, only log_prob(.) (The unnormalized log-probability)
     /// can be evaluated. What we can do is calculate the KL divergence between a factor-free
     /// distribution A wrt. a factored distribution B by calling prob(.) over A and log_prob(.)
-    /// over B, which is useful for variational inference.
+    /// over B, which is useful for variational inference. TODO must have distribution-specific
+    /// implementation, since this is just a element access for discrete distributions Bernoulli
+    /// and categorical; or a call to erf(x) for Normal/MultiNormal.
     fn prob(&self) -> Option<f64> {
         // TODO assert self does not have factors.
         // (Assume self does not have any factor,
@@ -766,6 +806,10 @@ pub trait Likelihood<O>
         O : ?Sized
         // C : Dim
 {
+
+    fn sample_size(&self) -> usize {
+        self.view_variable_values().map(|vars| vars.nrows() ).unwrap_or(0)
+    }
 
     fn likelihood<'a>(obs : impl IntoIterator<Item=&'a O>) -> Self
     where
@@ -997,6 +1041,13 @@ pub trait Predictive {
     
 }*/
 
+/// Predictive is implemented by all distributions which support ancestral sampling.
+/// While distr.sample() will generate samples only using information local to the distribution
+/// (its immediate location and scale parameters), the distr.predict(.) will evolve the RNG for
+/// each node in the factor graph and re-sample the value using the currently-set parameter
+/// values. Predict can also be used for fixed distributions, since predicting a value for
+/// original fixed predictors is done by calling observe_fixed(.) over the fixed factors and then
+/// calling predict(.) on the child node.
 pub trait Predictive<O> {
 
     fn predict(&self) -> O;
@@ -1136,7 +1187,7 @@ But Model serialize into key-value maps of name to those objects:
 { "age" : { mean :  { "date" : { "mean" : 0.1, "var" : 0.2 } }, var : 0.2 }
 */
 
-/// Posterior is a dynamic trait used by generic inference algorithms
+/*/// Posterior is a dynamic trait used by generic inference algorithms
 /// to iterate over the probabilistic graph after the method cond_log_prob(.) is called
 /// on its likelihood node. Inference algorithms should concern
 /// only with whether the current distribution has either none, one or two factors
@@ -1254,13 +1305,20 @@ pub trait Posterior
     // Verify if this variable has been fixed by calling self.fix() at a previous iteration.
     // fn fixed(&self)
 
-}
+}*/
 
 /// This trait represents an integration over remaining variables of the a probabilistic graph to
 /// calculate the probability distribution of the variables identified by the names. 
-pub trait Marginal<M> {
+pub trait Posterior<M> {
 
-    fn marginal(&self, names : &[&str]) -> Option<M>;
+    // marginal is not really an operation to be performed on posteriors only; it just
+    // happens that the implementors (normal/multinormal/randomwalk) all serve as posteriors
+    // at some point. A more "exclusive" operation for analytical posteriors would be to yield a
+    // pseudo-data count (Gamma and Beta); or the sample size count that was used to fit the distribution.
+    // It would return None if the distribution is a prior; and Some(count) if the distribution was
+    // built by sampling n values. Same as Likelihood::sample_size(.). Perhaps move marginal(.) to a
+    // separate Marginal trait.
+    fn marginal(&self, ix : usize) -> Option<M>;
     
 }
 
@@ -1405,15 +1463,17 @@ fn sample_conjugate<D>(distr : &D, n : usize) -> DVector<f64>
 where
     D : Distribution
 {
-    let theta_draw = distr.sample().row(0).clone_owned().transpose();
+    /*let theta_draw = distr.sample().row(0).clone_owned().transpose();
     let theta = DVector::from_element(n, theta_draw[0]);
-    theta
+    theta*/
+    unimplemented!()
 }
 
 fn sample_cond_expect(x : &DMatrix<f64>, mn : &MultiNormal) -> DVector<f64> {
-    let beta = mn.sample().row(0).clone_owned().transpose();
+    /*let beta = mn.sample().row(0).clone_owned().transpose();
     let eta = x.clone_owned() * beta;
-    eta
+    eta*/
+    unimplemented!()
 }
 
 /// If this distribution has a Conjugate OR Fixed variant, resolve the sampling
@@ -1545,7 +1605,7 @@ where
 
 fn univariate_factor<'a, D>(factor : &'a UnivariateFactor<D>) -> Option<&'a dyn Distribution>
 where
-    D : Distribution + Posterior + ExponentialFamily<Dynamic>
+    D : Distribution + /*Posterior +*/ ExponentialFamily<Dynamic>
 {
     match factor {
         UnivariateFactor::Fixed(m) => {
@@ -1564,7 +1624,7 @@ where
 
 fn univariate_factor_mut<'a, D>(factor : &'a mut UnivariateFactor<D>) -> Option<&'a mut dyn Distribution>
 where
-    D : Distribution + Posterior + ExponentialFamily<Dynamic>
+    D : Distribution /*+ Posterior*/ + ExponentialFamily<Dynamic>
     // D : Conditional<P>,
     // P : Distribution
 {
@@ -1708,10 +1768,11 @@ fn build_constant_predictions<L, O>(distr : &L) -> (Vec<String>, DMatrix<f64>)
 where
     L : Likelihood<O> + Distribution
 {
-    let mut obs_names : Vec<String> = Vec::new();
+    /*let mut obs_names : Vec<String> = Vec::new();
     obs_names.extend(distr.view_variables().clone().unwrap().iter().cloned());
     let samples = distr.sample();
-    (obs_names, samples)
+    (obs_names, samples)*/
+    unimplemented!()
 }
 
 fn build_generalized_constant_predictions<L, O, F, T>(distr : &L, transf : F) -> HashMap<String, Either<Vec<f64>, Vec<T>>>
@@ -1719,7 +1780,7 @@ where
     F : Fn(&f64)->T,
     L : Likelihood<O> + Distribution
 {
-    // Collect name
+    /*// Collect name
     let mut obs_names : Vec<String> = Vec::new();
     obs_names.extend(distr.view_variables().clone().unwrap().iter().cloned());
 
@@ -1731,7 +1792,8 @@ where
 
     let mut obs_hash = HashMap::new();
     obs_hash.insert(obs_names.remove(0), Either::Right(transf_obs));
-    obs_hash
+    obs_hash*/
+    unimplemented!()
 }
 
 fn try_build_real_predictions<L, O>(distr : &L) -> Result<(Vec<String>, DMatrix<f64>), String>
@@ -1878,6 +1940,19 @@ where
     // fn fix(&mut self, obs : &[Sample]);
 }
 
+/// Latent is implement by distributions which could potentially hold n observations,
+/// but do not. They have a single parameter n holding the expected sample size. This
+/// value should be informed, because n == 1 means a prior distribution; n > 1 means
+/// a latent variable in a factor graph. Moreover, when generating predictions, the distribution will
+/// allocate n data points at its point in the factor graph. While Fixed is implemented by
+/// multinormal to model conditional linear models, latent is implemented by normal and
+/// multinormal to model latent linear models.
+pub trait Latent {
+
+    fn latent(n : usize) -> Self;
+
+}
+
 /// A mixture is defined by a linear combination of normal probability
 /// distributions whose weights result from a categorical distribution draw,
 /// which is a natural way to model a discrete
@@ -1901,16 +1976,26 @@ where
 /// a parameter vector to be propagated in the backward pass to both branches.
 /// If we use this mixture and take the product again, the categorical can be interpreted
 /// as being the LHS of the dot product with the row-stacked multivariate means, in which
-/// case the mixture is selecting one of k possible multivariate realizations.
+/// case the mixture is selecting one of k possible multivariate realizations. By default, a
+/// mixture will yield each element with the same probability. To change mixing probabilities, condition
+/// the mixture on a Categorical distribution with the desired probabilities. Mixtures always have a
+/// "default" element that the user has direct access, and a set of "remaining" elements owned by this
+/// default element and accessed by mixture_factors and mixture_factors_mut. The probability vector
+/// received by Categorical should contain only the remainig element probabilities; The probability
+/// of the default element is 1.0 - sum(non_default).
 pub trait Mixture
     where Self : Sized
 {
 
-    fn mix(self, other : Self, prob : f64) -> Self {
-        Self::mixture([self, other], [1. - prob, prob])
+    fn mix(self, other : Self) -> Self {
+        Self::mixture([self, other])
     }
 
-    fn mixture<const K : usize>(distrs : [Self; K], probs : [f64; K]) -> Self;
+    fn mixture<const K : usize>(distrs : [Self; K]) -> Self;
+
+    fn mixture_factors(&self) -> &[Box<Self>];
+
+    fn mixture_factors_mut(&mut self) -> &mut Vec<Box<Self>>;
 
 }
 
@@ -1948,5 +2033,39 @@ where
     distr.evolve(sample);
     distr.fit();
 }*/
+
+/*
+
+// Implemented only for univariate distributions. May also be called Univariate.
+// If Distribution does not have a scale parameter, scale(&self) always return 1.0.
+pub trait Exponential {
+
+    type Location;
+
+    type Scale;
+
+    fn location(&self) -> Self::Location;
+
+    fn scale(&self) -> Option<Self::Scale>;
+
+}
+
+// Multivariate is a composition of univariate distributions.
+pub trait Multivariate
+where
+    Self::Node : Univariate
+{
+
+    type Node = NormalNode;
+
+    // Depth-first iteration over the network. Normal node is like a normal (has mean and variance)
+    // but also has an association(.) method that returns associations with parent nodes.
+    fn depth_iter(&'a self) -> impl Iterator<Item=NormalNode<'a>>;
+
+    // Breadth-first iteration over the network
+    fn breadth_iter(&'a self) -> impl Iterator<Item=NormalNode<'a>>;
+
+}
+*/
 
 

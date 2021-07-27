@@ -18,6 +18,10 @@ impl Distribution for VonMises
     where Self : Sized
 {
 
+    fn sample(&self, dst : &mut [f64]) {
+        unimplemented!()
+    }
+
     fn set_parameter(&mut self, _p : DVectorSlice<'_, f64>, _natural : bool) {
         unimplemented!()
     }
@@ -72,7 +76,7 @@ impl Markov for VonMises {
 
 }
 
-impl Posterior for VonMises {
+/*impl Posterior for VonMises {
 
     /*fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>) {
         unimplemented!()
@@ -103,7 +107,7 @@ impl Posterior for VonMises {
         self.traj.as_mut().unwrap().closed = true;
     }
 
-}
+}*/
 
 impl ExponentialFamily<U1> for VonMises
     where

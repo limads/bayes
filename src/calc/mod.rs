@@ -30,15 +30,19 @@ impl Variate for f64 {
         *self / (1. - *self)
     }
 
+    // The logit or log-odds of a probability p \in [0,1]
+    // is the natural log of the ratio p/(1-p)
     fn logit(&self) -> Self {
-        let val = if *self == 0.0 {
+        let p = if *self == 0.0 {
             f64::EPSILON
         } else {
             *self
         };
-        (val / (1. - val)).ln()
+        (p / (1. - p)).ln()
     }
 
+    // The sigmoid is the inverse of the logit (or log-odds function).
+    // and is given by 1 / (1 + exp(-logit))
     fn sigmoid(&self) -> Self {
         1. / (1. + (-1. * (*self)).exp() )
     }

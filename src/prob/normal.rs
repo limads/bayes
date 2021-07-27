@@ -7,6 +7,9 @@ use crate::fit::markov::*;
 use std::fmt::{self, Display};
 use anyhow;
 use crate::fit::Estimator;
+// use rand::distributions::DistIter;
+// use rand::distributions::DistMap;
+use rand::Rng;
 
 type NormalFactor = UnivariateFactor<Box<Normal>>;
 
@@ -53,11 +56,13 @@ pub struct Normal {
 
     loc_factor : NormalFactor,
 
+    cat_factor : Option<Categorical>,
+
     scale_factor : Option<Gamma>,
 
     // See the documentation for the mix field of MultiNormal, which explains the rationale of
     // holding mixing factors in this way.
-    mix : Option<Vec<Box<Normal>>>,
+    mix : Vec<Box<Normal>>,
 
     log_part : DVector<f64>,
 
@@ -131,7 +136,8 @@ impl Normal {
             n,
             sample : None,
             var,
-            mix : None
+            mix : Vec::new(),
+            cat_factor : None
         };
         norm.set_var(var);
         norm.set_parameter(mu.rows(0, mu.nrows()), true);
@@ -291,6 +297,10 @@ impl Distribution for Normal
     where Self : Sized
 {
 
+    fn sample(&self, dst : &mut [f64]) {
+        unimplemented!()
+    }
+
     fn set_natural<'a>(&'a mut self, eta : &'a mut dyn Iterator<Item=&'a f64>) {
         self.mu.iter_mut().zip(eta).for_each(|(old, new)| *old = *new );
         self.scaled_mu = self.prec_suff[1] * self.mu.clone();
@@ -311,6 +321,7 @@ impl Distribution for Normal
     }
 
     fn mean<'a>(&'a self) -> &'a DVector<f64> {
+        // TODO average over mixing means if any
         &self.mu
     }
 
@@ -418,7 +429,7 @@ impl Prior for Normal {
 
 }
 
-impl Posterior for Normal {
+/*impl Posterior for Normal {
 
     fn approximation_mut(&mut self) -> Option<&mut MultiNormal> {
         //Some(self)
@@ -447,7 +458,7 @@ impl Posterior for Normal {
         self.traj.as_mut().unwrap().closed = true;
     }
 
-}
+}*/
 
 impl Likelihood<f64> for Normal {
 
@@ -653,13 +664,31 @@ impl Conditional<Gamma> for Normal {
 
 }
 
+pub(crate) fn set_mixture<M, O, const K : usize>(distrs : [M; K]) -> M
+where
+    M : Likelihood<O> + Mixture + Clone,
+    O : ?Sized
+{
+        let n = distrs[0].sample_size();
+        distrs.iter().for_each(|d| assert!(d.sample_size() == n) );
+        let remaining : Vec<_> = distrs.iter().skip(1).map(|distr| Box::new(distr.clone()) ).collect();
+        let mut base = distrs[0].clone();
+        *base.mixture_factors_mut() = remaining;
+        base
+}
+
 impl Mixture for Normal {
 
-    fn mixture<const K : usize>(distrs : [Self; K], probs : [f64; K]) -> Self {
-        let mix : Vec<_> = distrs[1..].iter().map(|distr| Box::new(distr.clone()) ).collect();
-        let mut base = distrs[0].clone();
-        base.mix = Some(mix);
-        base
+    fn mixture<const K : usize>(distrs : [Self; K]) -> Self {
+        set_mixture(distrs)
+    }
+
+    fn mixture_factors(&self) -> &[Box<Self>] {
+        &self.mix
+    }
+
+    fn mixture_factors_mut(&mut self) -> &mut Vec<Box<Self>> {
+        &mut self.mix
     }
 
 }
@@ -821,6 +850,15 @@ impl Display for Normal {
 
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Norm({}, {})", self.mean()[0], self.var()[0] )
+    }
+
+}
+
+impl rand::distributions::Distribution<f64> for Normal {
+
+    // Can accept ThreadRng::default()
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> f64 {
+        unimplemented!()
     }
 
 }

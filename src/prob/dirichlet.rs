@@ -15,6 +15,10 @@ pub struct Dirichlet {
 
 impl Distribution for Dirichlet {
 
+    fn sample(&self, dst : &mut [f64]) {
+        unimplemented!()
+    }
+
     fn set_parameter(&mut self, _p : DVectorSlice<'_, f64>, _natural : bool) {
         unimplemented!()
     }
@@ -72,7 +76,7 @@ impl Markov for Dirichlet {
 
 }
 
-impl Posterior for Dirichlet {
+/*impl Posterior for Dirichlet {
 
     /*fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>) {
         unimplemented!()
@@ -103,7 +107,7 @@ impl Posterior for Dirichlet {
         self.traj.as_mut().unwrap().closed = true;
     }
 
-}
+}*/
 
 impl ExponentialFamily<Dynamic> for Dirichlet
     where

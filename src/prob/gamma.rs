@@ -148,6 +148,14 @@ impl Distribution for Gamma
     where Self : Sized
 {
 
+    fn sample(&self, dst : &mut [f64]) {
+        use rand_distr::Distribution;
+        for i in 0..dst.len() {
+            let g = self.sampler.sample(&mut rand::thread_rng());
+            dst[i] = g;
+        }
+    }
+
     fn set_parameter(&mut self, p : DVectorSlice<'_, f64>, natural : bool) {
         let eta = match natural {
             true => p.clone_owned(),
@@ -222,7 +230,7 @@ impl Distribution for Gamma
 
 }
 
-impl Posterior for Gamma {
+/*impl Posterior for Gamma {
 
     fn approximation_mut(&mut self) -> Option<&mut MultiNormal> {
         self.approx.as_mut()
@@ -249,7 +257,7 @@ impl Posterior for Gamma {
         self.traj.as_mut().unwrap().closed = true;
     }
 
-}
+}*/
 
 impl Markov for Gamma {
 

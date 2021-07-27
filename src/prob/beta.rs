@@ -141,6 +141,14 @@ impl Distribution for Beta
     where Self : Sized
 {
 
+    fn sample(&self, dst : &mut [f64]) {
+        use rand_distr::Distribution;
+        for i in 0..dst.len() {
+            let b = self.sampler.sample(&mut rand::thread_rng());
+            dst[i] = b;
+        }
+    }
+
     fn set_parameter(&mut self, p : DVectorSlice<'_, f64>, natural : bool) {
         assert!(natural);
         self.set_natural(&mut p.iter());
@@ -253,7 +261,7 @@ impl Markov for Beta {
 
 }
 
-impl Posterior for Beta {
+/*impl Posterior for Beta {
 
     fn approximation_mut(&mut self) -> Option<&mut MultiNormal> {
         self.approx.as_mut()
@@ -280,7 +288,7 @@ impl Posterior for Beta {
         self.traj.as_mut()
     }
 
-}
+}*/
 
 impl Default for Beta {
 

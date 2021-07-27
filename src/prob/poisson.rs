@@ -162,6 +162,10 @@ impl Distribution for Poisson
     where Self : Sized
 {
 
+    fn sample(&self, dst : &mut [f64]) {
+        unimplemented!()
+    }
+
     fn set_parameter(&mut self, p : DVectorSlice<'_, f64>, natural : bool) {
         let eta = if natural {
             p.clone_owned()

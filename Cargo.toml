@@ -80,5 +80,8 @@ path = "examples/logistic.rs"
 name="multinormal"
 path = "examples/multinormal.rs"
 
+[[example]]
+name="mixture"
+path="examples/mixture.rs"
 
 

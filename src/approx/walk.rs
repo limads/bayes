@@ -61,12 +61,12 @@ impl RandomWalk {
 
 }
 
-impl Marginal<Histogram> for RandomWalk {
+impl Posterior<Histogram> for RandomWalk {
 
     /// Returns a non-parametric representation of this distribution
     /// marginal parameter value at index ix.
-    fn marginal(&self, names : &[&str]) -> Option<Histogram> {
-        assert!(names.len() == 1);
+    fn marginal(&self, ix : usize) -> Option<Histogram> {
+        // assert!(names.len() == 1);
         // let traj = self.trajectory()?;
         // traj.histogram(ix)
         unimplemented!()
@@ -105,6 +105,10 @@ impl Display for RandomWalk {
 impl Distribution for RandomWalk
     where Self : Sized
 {
+
+    fn sample(&self, dst : &mut [f64]) {
+
+    }
 
     fn set_parameter(&mut self, _p : DVectorSlice<'_, f64>, _natural : bool) {
         unimplemented!()

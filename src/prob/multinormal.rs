@@ -192,13 +192,15 @@ pub struct MultiNormal {
     // from any one of the sister factors is given by the entry of the categorical field (which uses
     // the one-against-k parametrization); the probability of sampling from the default field is
     // 1 - sum(prob_sisters).
-    mix : Option<Vec<Box<MultiNormal>>>,
+    mix : Vec<Box<MultiNormal>>,
 
     // Mixture is treated as a factor instead of a likelihood; because what alternates
     // is the mean parameter of the likelihood, not the likelihood itself.
     // mixture : Option<Mixture>,
 
     scale_factor : Option<Wishart>,
+
+    cat_factor : Option<Categorical>,
 
     /// This is a single-element vector. Unlike the univariate distributions (Poisson, Bernoulli)
     /// that hold conditional expectations and thus have a log-partition with the same size as eta,
@@ -368,7 +370,8 @@ impl MultiNormal {
             fixed_names : None,
             fixed : false,
             fixed_obs : None,
-            mix : None
+            mix : Vec::new(),
+            cat_factor : None
             // mixture : None
         };
         norm.set_parameter(mu.rows(0, mu.nrows()), true);
@@ -886,6 +889,11 @@ fn suff_stat() {
 
 impl Distribution for MultiNormal {
 
+    // maybe take &impl Iterator<Item=&mut [f64]>, which allows for non-contiguous storage destination.
+    fn sample(&self, dst : &mut [f64]) {
+        unimplemented!()
+    }
+
     fn view_parameter(&self, natural : bool) -> &DVector<f64> {
         match natural {
             true => &self.scaled_mu,
@@ -1050,7 +1058,7 @@ impl Markov for MultiNormal {
 
 }
 
-impl Posterior for MultiNormal {
+/*impl Posterior for MultiNormal {
 
     /*fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>) {
         let loc = self.loc_factor.as_mut().map(|lf| lf.as_mut() as &mut dyn Posterior);
@@ -1083,7 +1091,7 @@ impl Posterior for MultiNormal {
         self.traj.as_mut().unwrap().closed = true;
     }
 
-}
+}*/
 
 /*impl Prior for MultiNormal {
 
@@ -1469,11 +1477,16 @@ impl Fixed<[f64]> for MultiNormal {
 
 impl Mixture for MultiNormal {
 
-    fn mixture<const K : usize>(distrs : [Self; K], probs : [f64; K]) -> Self {
-        let mix : Vec<_> = distrs[1..].iter().map(|distr| Box::new(distr.clone()) ).collect();
-        let mut base = distrs[0].clone();
-        base.mix = Some(mix);
-        base
+    fn mixture<const K : usize>(distrs : [Self; K]) -> Self {
+        crate::prob::normal::set_mixture(distrs)
+    }
+
+    fn mixture_factors(&self) -> &[Box<Self>] {
+        &self.mix
+    }
+
+    fn mixture_factors_mut(&mut self) -> &mut Vec<Box<Self>> {
+        &mut self.mix
     }
 
 }

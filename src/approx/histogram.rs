@@ -376,7 +376,7 @@ impl MarginalHistogram {
 fn histogram() {
     let incr = 1.0;
     let data : Vec<_> = (0..10).map(|s| s as f64 * incr).collect();
-    let hist = Histogram::calculate(data.iter());
-    println!("{}", hist);
-    println!("{}", hist.subsample(10));
+    // let hist = Histogram::calculate(data.iter());
+    // println!("{}", hist);
+    // println!("{}", hist.subsample(10));
 }

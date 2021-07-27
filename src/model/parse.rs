@@ -92,7 +92,7 @@ where
     D : Distribution + Default + Conditional<P> + Conditional<MultiNormal>,
     P : Distribution + TryFrom<serde_json::Value>
 {
-    let mut d : D = Default::default();
+    /*let mut d : D = Default::default();
     let loc_val = val.get(loc_name).ok_or(format!("Missing {} parameter", loc_name))?;
     match MultiNormal::try_from(loc_val.clone()) {
         Ok(mn) => {
@@ -112,7 +112,8 @@ where
                 Err(_) => reset_numeric_parameter(&mut d, &val, loc_name)
             }
         }
-    }
+    }*/
+    unimplemented!()
 }
 
 pub fn parse_univariate<D, P>(val : &Value, loc_name : &str) -> Result<D,String>
@@ -132,11 +133,12 @@ where
 }
 
 pub fn sample_to_string(distr : &str) -> String {
-    let model : Model = distr.parse().unwrap();
+    /*let model : Model = distr.parse().unwrap();
     let distr : &Distribution = (&model).into();
     let sample = distr.sample();
     let mat_v = crate::model::matrix_to_value(&sample);
     let mat_string = mat_v.to_string();
-    mat_string
+    mat_string*/
+    unimplemented!()
 }
 

@@ -176,6 +176,10 @@ impl Wishart {
 
 impl Distribution for Wishart {
 
+    fn sample(&self, dst : &mut [f64]) {
+        unimplemented!()
+    }
+
     fn set_parameter(&mut self, _p : DVectorSlice<'_, f64>, _natural : bool) {
         // Use p to calculate a 2-column matrix of sufficient statistics for the gamma
         // priors to each entry of the diagonal of the covariance. Received p in the
@@ -257,7 +261,7 @@ impl Markov for Wishart {
 
 }
 
-impl Posterior for Wishart {
+/*impl Posterior for Wishart {
 
     /*fn dyn_factors_mut(&mut self) -> (Option<&mut dyn Posterior>, Option<&mut dyn Posterior>) {
         match &mut self.rot_fact {
@@ -293,7 +297,7 @@ impl Posterior for Wishart {
         self.traj.as_mut().unwrap().closed = true;
     }
 
-}
+}*/
 
 impl ExponentialFamily<U1> for Wishart
     where
