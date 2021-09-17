@@ -283,7 +283,7 @@ impl Distribution for Poisson
 
 }*/
 
-impl Markov for Poisson {
+/*impl Markov for Poisson {
 
     fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
         self.eta.column_mut(0)
@@ -293,7 +293,7 @@ impl Markov for Poisson {
         Some(self.lambda.column_mut(0))
     }
 
-}
+}*/
 
 impl Conditional<Gamma> for Poisson {
 

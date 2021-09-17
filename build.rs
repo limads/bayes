@@ -91,10 +91,11 @@ fn set_rerun_build_if_mcmc_changed() {
 }
 
 fn main() {
-    set_rerun_build_if_mcmc_changed();
-    try_link_gsl();
-    compile_mcmclib();
-    compile_gcem();
+
+    // set_rerun_build_if_mcmc_changed();
+    // try_link_gsl();
+    // compile_mcmclib();
+    // compile_gcem();
     
     /*let dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     let build_folder = Path::new(&dir).join("target").join("debug").join("build");

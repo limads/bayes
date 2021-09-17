@@ -249,7 +249,7 @@ impl Distribution for Wishart {
 
 }
 
-impl Markov for Wishart {
+/*impl Markov for Wishart {
 
     fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
         unimplemented!()
@@ -259,7 +259,7 @@ impl Markov for Wishart {
         unimplemented!()
     }
 
-}
+}*/
 
 /*impl Posterior for Wishart {
 

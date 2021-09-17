@@ -64,7 +64,7 @@ impl Distribution for Dirichlet {
 
 }
 
-impl Markov for Dirichlet {
+/*impl Markov for Dirichlet {
 
     fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
         unimplemented!()
@@ -74,7 +74,7 @@ impl Markov for Dirichlet {
         unimplemented!()
     }
 
-}
+}*/
 
 /*impl Posterior for Dirichlet {
 

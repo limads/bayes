@@ -1,240 +1,225 @@
-use nalgebra::*;
-use crate::prob::*;
-use super::*;
-use crate::sample::Sample;
+use std::borrow::Borrow;
+use std::iter::{IntoIterator, FromIterator};
+use crate::prob::MultiNormal;
+use crate::prob::Categorical;
+use rand::seq::IteratorRandom;
+use std::collections::HashMap;
+use nalgebra::{DVector, DVectorSlice};
+use std::fmt::{self, Display, Formatter};
 
-/// Utilities to build inference algorithms.
-pub(crate) mod utils;
-
-pub mod em;
-
-// Algorithm for approximating posteriors with multivariate normals
-// (Expectation Maximization; work in progress).
-// #[cfg(feature="gsl")]
-// pub mod optim;
-
-/// Full posterior estimation via random walk simulation (Metropolis-Hastings algorithm).
-pub mod markov;
-
-/// Dynamic state estimation (Kalman and Particle filters).
-pub mod state;
-
-/// Linear estimation methods (Least squares and iteratively-reweighted least squares).
-/// Those algorithms can be either treated as estimator in themselves
-/// or be used as building block for more complex optimization or sampling strategies. 
 pub mod linear;
 
-pub mod filter;
+// KMeans, KNearest, ExpectMax
+pub mod cluster;
 
-// Online filtering algorithms - Kalman and Particle
-// pub mod filter;
+// VE, BP
+pub mod graph;
 
-// Approximate inference methods - Laplace
-// pub mod approx;
+// OLS, WLS, BLS, IRLS
+// pub mod linear;
 
-/// Trait shared by all inference algorithms, parametrized by the resulting posterior distribution. 
-/// You might wish to implement special-purpose estimators that return an exact type of distribution
-/// (for example, conjugate inference is implemented as Estimator<Beta>, Estimator<Gamma>, and so on)
-/// or you might build a general purpose algorithm that return a non-parametric representation
-/// (for example, Metropolis-Hastings is implemented as Estimator<Marginal>. Estimator does not care
-/// how you instantiate your object. If you are building a general-purpose estimator, it is recommended
-/// that your builder method is a generic function receiving Into<Model> as argument, which allows
-/// your method to work both for methods built in the source code or specified as JSON files. You can then
-/// match on the received model to decide the model admissibility for your algorithm. Implementing
-/// Estimator<P> for L where L implements likelihood reads: The posterior P can be estimated from
-/// the generative model L, which is a top-level likelihood node L plus any prior factors.
-pub trait Estimator<'a, P>
+// Metropolis
+// pub mod markov;
+
+// LMS, RLS, Kalman
+// pub mod stochastic;
+
+// We "read" data into the distributions using the most generic possible iterator over borrowable
+// values. This allows the user to pass iterators by value or by reference. This is done to avoid
+// "double copies" situations. For example, were we requiring iterators over vectors, the user
+// would need to do a first copy to the vector then a second copy to the distribution. Using the
+// current generic implementation, the user can pass, for example, a map over rows of CSV files,
+// or a map over rows returned by a database driver, in such that the first occurence that the
+// data is contiguous in memory is already the data buffer of the distribution, and can be accessed
+// by distribution.values().
+
+// TODO perhaps add ancestral trait Fit(.) which is implemented by all "Likelihood" sub-traits.
+
+// Although any pair that implements Conditional will form a valid probabilistic graph,
+// implementors of the fit(.)
+// A distribution that serves the role of an independent sample conditioned on a parameter value.
+// p(y|\theta), conditional or not on a prior parameter value. This serves to instantiate observable
+// distributions in a graph.
+pub trait Likelihood {
+
+    type Observation;
+
+    fn likelihood<S, O>(sample : S) -> Self
     where
-    P : 'a
-        // Self : ?Sized,
-    //    P : Distribution //+ ?Sized + Posterior
+        S : IntoIterator<Item=O>,
+        O : Borrow<Self::Observation>;
+
+    // Just modifies the distribution, by consuming self.values() and setting
+    // the location (and possibly scale) paraments to the MLE estimates.
+    fn fit(&mut self) {
+        unimplemented!()
+    }
+
+}
+
+// The user can now implement his estimation method by building a direct or indirect
+// subtrait of Likelihood.
+pub struct ConjugateError;
+
+// Perhaps rename to JointLikelihood.
+pub trait ConjugateLikelihood<O>
+where
+    Self : Likelihood<Observation=O>
 {
+
+    type Posterior;
+
+    fn fit(&mut self) -> Result<&Self::Posterior, ConjugateError> {
+        unimplemented!()
+    }
+
+}
+
+/// A distribution whose conditional expectation is function of a linear
+/// combination of non-random (fixed) values. This is the same as assuming
+/// the (random, fixed) joint is multivariate normal, and y was fixed at y|x.
+/// Use the builder pattern to "fix" the likelihood y at the x value. FixedLikelihoods
+/// store not only the random and fixed data, but also a ref-counted common coefficient
+/// vector. Perhaps rename to ConditionalLikelihood. Instead of estimating p(y|\theta),
+/// fixed likelihoods work instead with estimating the transformation p(y - g(w0+x_iw_i)|(w_0,w_i)), where
+/// w is the object of inference and g is a fixed function for each family of p (depending exclusively on
+/// the type of variable y is).
+pub trait FixedLikelihood<const N : usize> {
+
+    // Fix this distribution at the given informed values.
+    fn fix<'a, S, O>(&'a mut self, values : &[f64; N]) -> &'a mut Self;
+
+    // Returns regression coefficients of linearized expected value
+    fn coefficients<'a>(&'a self) -> &'a [f64; N];
+
+    // Returns values at which distribution was fixed
+    fn fixed<'a>(&'a self) -> &'a [f64; N];
+
+    // TODO return MultiNormal<N>, where if the user did not inform a prior,
+    // a new distribution is allocated.
+    fn fit(&mut self) -> Result<&MultiNormal, ConjugateError> {
+        unimplemented!()
+    }
+
+    // Returs the intercept.
+    // self.bias()
+
+    // Returns the coefficients.
+    // self.coefficients()
+
+}
+
+/// Marginal likelihoods hold not only its random data, but a common ref-counted
+/// allocation probability vector and a specific allocation index, corresponding to the
+/// distribution index in the user-supplied vector.
+/// Example:
+/// let mut ms = [Normal::likelihood([y1, y2, y3]), Normal::likelihood([y1, y2, y3])]
+/// ms.condition(Categorical::likelihood([0, 1]).map(|ix| Bounded::try_from(ix).unwrap() ))
+/// This trait can be considered the discrete counterpart to StochasticLikelihood.
+pub trait MarginalLikelihood<const N : usize> {
+
+    fn marginal_probability<'a, S, O>(&'a mut self, prob : f64) -> &'a mut Self;
+
+    fn view_marginal_probability(&self) -> f64;
+
+    // TODO return Categorical<N>, where if the user did not inform a prior,
+    // a new distribution is allocated.
+    fn fit(&mut self) -> Result<&Categorical<N>, ConjugateError> {
+        unimplemented!()
+    }
+
+}
+
+/*/// A distribution that represents the (probabilistic) weights of a linear combination of constant values.
+/// self.fixed caches the informed values; although the distribution really is a 1-D distribution over
+/// a model weight vector. It can be shown those coefficients are distributed as a multinormal in the limit,
+/// which is why MultiNormal implements Fixed. Normal also represents fixed for the case of a single fixed/coefficient pair.
+/// Regression problems with N dependent variables are
+/// represented with coefficients stored at [MultiNormal; N], where N is the number of dependent variables, which also implement Fixed.
+/// Fixed multinormals may have a random location parameter; But their covariance is always fixed, therefore
+/// instantiating a fixed multinormal means that only the left-hand side of the graph might be
+pub trait Fixed {
+
+    type Observation;
+
+    type Posterior;
+
+    fn fixed<S, F, O>(sample : S, fixed : &[impl IntoIterator<Item=F>]) -> Self
+    where
+        S : IntoIterator<Item=O>,
+        O : Borrow<Self::Observation>,
+        F : Borrow<f64>;
+
+    fn set_fixed(&mut self, fixed : &[impl Borrow<f64>]);
+
+    fn fit(&mut self) -> Result<&Self::Posterior, String> {
+        unimplemented!()
+    }
+
+}*/
+
+/*/// A distribution that serves the role of a marginalized likelihood function,
+/// p(y) = \sum_i p(y|z_i)p(z_i), necessarily conditional on a binary or categorical discrete factor z_i.
+pub trait Marginal {
+
+    type Observation;
+
+    type Posterior;
+
+    fn marginal<S, O>(sample : S, clusters : usize) -> Self
+    where
+        S : IntoIterator<Item=O>,
+        O : Borrow<Self::Observation>;
+
+    fn set_marginal(&mut self, cluster : usize);
+
+    fn fit(&mut self) -> Result<&Self::Posterior, String> {
+        unimplemented!()
+    }
+}*/
+
+/// A distribution in which its prior can be interpreted as a continuous latent state. Might also be called StochasticLikelihood
+/// or StateLikelihood.
+/// Markov dependencies can either be directed (chains) or undirected (fields)
+/// The method self.evolve automatically forgets any values, simply updating its latent state instead.
+/// This trait can be considered the continous counterpart to MarginalLikelihood. This is
+/// useful to perform inference on Markov-like processes; Where knowledge of a transition
+/// model and a prior makes posterior inference on a hidden state possible by conditioning
+/// the current variate on the previous process realization.
+pub trait MarkovLikelihood {
+
+    type Observation;
+
+    type State;
+
+    type Posterior;
+
+    fn stochastic<S, O>(order : usize) -> Self
+    where
+        S : IntoIterator<Item=O>,
+        O : Borrow<Self::Observation>;
+
+
+    // Just call this fit(.) as well.
+    // fn evolve(&mut self, obs : &Self::Observation);
+
+    fn state(&self) -> &Self::State;
+
+}
+
+/// General-purpose trait implemented by actual estimation algorithms.
+pub trait Estimator
+where Self : Sized {
+
+    type Settings;
 
     type Error;
 
-    type Algorithm;
+    fn estimate(
+        sample : impl Iterator<Item=impl Borrow<[f64]>> + Clone,
+        settings : Self::Settings
+    ) -> Result<Self, Self::Error>;
 
-    /// Runs the inference algorithm. On successful completion, returns the posterior
-    /// distribution Ok(Self::P). After calling fit(.) successfully, the Likelihood distribution
-    /// implementor becomes the posterior predictive. Estimators usually mutate the state of
-    /// the likelihood factors or substitute those factors with a representation resulting
-    /// from the algorithm output.
-    fn fit(&'a mut self, algorithm : Option<Self::Algorithm>) -> Result<P, Self::Error>;
-    
-    /*/// If fit(.) has been called successfully at least once, returns the current state
-    /// of the posterior distribution, whithout changing the algorithm state.
-    fn view_posterior<'a>(&'a self) -> Option<&'a P>;
-    
-    fn take_posterior(self) -> Option<P>;*/
-    
 }
-
-/*// Call the iteratively re-weighted least squares algorithm over random y (data).
-// Assume x is already constant for the multinormal.
-/// The formula for the IRLS solution is:
-///
-/// b_{t+1} = arg_min_b (X^T W_t X)^{-1} X^T W_t y [1]
-/// Where W is calculated iteratively from the variance of the distribution predictions.
-///
-/// We interpret WX as the argument to scale_by to the parameter MultiNormal,
-/// and require to use W y as our new observation at each iteration.
-/// If b ~ MN(b,S) then WXb ~ MN(WXb, WX S (WX)^T); when we evaluate the
-/// log-probability of linear op wrt Wy, we will have:
-///
-/// (Wy - WXb)^T (WX S (WX)^T)^-1 (Wy - WXb)^T [2]
-/// which simplifies to [1]. The score becomes the difference
-/// between the previous and current iteration.
-pub struct IRLS<D>
-where
-    D : Distribution + Clone + Conditional<MultiNormal>
-{
-    distr : D
-}
-
-impl Estimator for IRLS<D>
-where
-    D : Distribution + Clone + Conditional<MultiNormal>
-{
-
-}*/
-
-/*pub fn irls<D>(mut distr : D, y : DMatrix<f64>, x : DMatrix<f64>) -> Result<D, String>
-where
-    D : Distribution + Clone + Conditional<MultiNormal>
-{
-    println!("y = {}", y);
-    println!("x = {}", x);
-    assert!(y.nrows() == x.nrows());
-    let mn_init : &MultiNormal = distr.view_factor().unwrap();
-    let eta_init = mn_init.view_parameter(true).clone_owned();
-    let mut weights = DMatrix::zeros(y.nrows(), y.nrows());
-    weights.set_diagonal(&distr.var());
-
-    let mn : &mut MultiNormal = distr.factor_mut().unwrap();
-    //mn.scale_by(weights.clone() * &x);
-    mn.scale_by(x.clone());
-
-    let param = OptimParam::new()
-        .init_state(eta_init)
-        .preserve(100)
-        .max_iter(100);
-
-    // Here, we optimize over scaled_mu (x) but calcualte the gradient wrt the
-    // eta vector.
-    // Carry (y, X, W).
-    let grad = |eta : &DVector<f64>, g : &mut (D, DMatrix<f64>, DMatrix<f64>, DMatrix<f64>)| -> DVector<f64> {
-
-        /*let mut w = g.3.clone();
-        update_weights(&g.0, &mut w);
-        let mn_old : &MultiNormal = g.0.view_factor().unwrap();
-        let old_lin_eta = mn_old.mean().clone();
-
-        let mn : &mut MultiNormal = g.0.factor_mut().unwrap();
-        mn.set_parameter((eta).into(), true);
-        let lin_eta = mn.mean().clone_owned();
-
-        let x = &g.2;
-        let wx = w * x;
-        mn.scale_by(wx.clone());
-        let new_lin_eta = mn.mean().clone_owned();
-        g.0.set_parameter((&new_lin_eta).into(), true);
-        wx.transpose() * (new_lin_eta - old_lin_eta)*/
-
-        let y = &g.1;
-        let x = g.2.clone();
-        // let w = g.3.clone();
-        // update_weights(&g.0, &mut g.3);
-        let y_pred = g.0.mean();
-        let score = x.transpose() * /*&g.3 * */ (y_pred - y);
-        println!("score = {}", score);
-        score
-    };
-    let obj = |eta : &DVector<f64>, g : &mut (D, DMatrix<f64>, DMatrix<f64>, DMatrix<f64>)| -> f64 {
-        // println!("param = {}", x);
-        // During optimization, we will receive a vector of size one from the optimizer.
-        // We must propagate to the actual natural parameter size (3).
-
-        /*let mn : &MultiNormal = g.0.view_factor().unwrap();
-        let y = &g.1;
-        let x = &g.2;
-        let w = &g.3;
-        // let wx = w.clone() * x;
-        let wy = (w.clone() * y).transpose();
-        // mn.scale_by(wx.clone());
-        //(-1.)*mn.log_prob(wy.slice((0, 0), (1, wy.ncols())), None)
-        (-1.)*g.0.log_prob(((w.clone() * y)).slice((0, 0), (y.nrows(), 1)), None)*/
-
-        let mut mn : &mut MultiNormal = g.0.factor_mut().unwrap();
-        mn.set_parameter((eta).into(), true);
-        let eta_lin = mn.mean().clone_owned();
-        g.0.set_parameter((&eta_lin).into(), true);
-        let y = &g.1;
-        println!("eta = {}", eta);
-        (-1.)*g.0.log_prob((y).slice((0, 0), (y.nrows(), 1)), None)
-    };
-    let mut optim = LBFGS::prepare(param, (distr, y, x, weights))
-        .with_gradient(grad)
-        .with_function(obj);
-    let min = optim.minimize()
-        .map_err(|e| format!("Minimization failed: {:?}", e) )?;
-    println!("Minimum = {}", min);
-    let mut distr = optim.take_data().0;
-    let mn : &mut MultiNormal = distr.factor_mut().unwrap();
-    mn.set_parameter((&min.value).into(), false);
-    let mn_mean = mn.mean().clone_owned();
-    distr.set_parameter((&mn_mean).into(), true);
-    Ok(distr)
-}
-
-#[test]
-fn logistic() {
-    // Create random variable with logit value increasing as a function of X.
-    let norm = Normal::new(100, None, None);
-    let logit_noise = 0.1 * norm.sample();
-    let mut bern = Bernoulli::new(100, None);
-    let logit = DVector::from_fn(100, |i, _| -5.0 + i as f64 * 0.1 + logit_noise[i] );
-    bern.set_parameter((&logit).into(), true);
-    let mut mn = multinormal::MultiNormal::new_standard(3);
-    let x = DMatrix::from_columns(&[
-        DVector::from_element(100, 1.),
-        2. * norm.sample().column(0).clone_owned(),
-        3. * norm.sample().column(0).clone_owned()
-    ]);
-    let y = bern.sample();
-    let bern = bern.condition(mn);
-    println!("y = {}", y);
-    println!("x = {}", x);
-    println!("{:?}", irls(bern, y, x));
-}*/
-
-/*
-/// Estimator evaluation generic functions, mostly for testing purposes. If a given estimator
-/// is known to satisfy some algebraic property, those generic functions can be called with
-/// the estimator to verify if they hold. The informed sample should be arbitrarily
-/// big (e.g. a structure that outputs samples by sampling form a RNG).
-pub mod eval {
-
-    /// Generic function used for testing that the mean of the posterior resulting from estimator e
-    /// converges to the bias vector informed by the user as the number of samples (collected by
-    /// resampling the user-informed sample) grows. Biasedness is formally defined by
-    /// E[t|theta] = theta asymptotically, where t is a statistic calculated from the data.
-    pub fn bias<P, R, C>(e : impl Estimator<P>, sample : &dyn Sample<R,C>, bias : &[f64]) {
-
-    }
-
-    /// Generic function used to test that the variance (or covariance diagonal) of the posterior
-    /// resulting from estimator e converges to the variance vector informed by the user as the number
-    /// of samples (collected by resampling the user-informed sample) grows.
-    pub fn variance<P, R, C>(e : impl Estimator<P>, sample : &dyn Sample<R, C>, variance : &[f64]) {
-
-    }
-
-    /// Generic function used to test if the mean of the posterior calculated by an an estimator E consistently approach
-    /// a "true" value, defiend by a generative process informed by the user as the last argument.
-    pub fn consistency<P, R, C>(e : impl Estimator<P>, sample : &dyn Sample<R, C>, true : impl Distribution) {
-
-    }
-}
-*/
 
 

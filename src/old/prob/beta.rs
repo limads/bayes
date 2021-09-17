@@ -249,7 +249,7 @@ impl Distribution for Beta
 
 }
 
-impl Markov for Beta {
+/*impl Markov for Beta {
 
     fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
         self.ab.column_mut(0)
@@ -259,7 +259,7 @@ impl Markov for Beta {
         None
     }
 
-}
+}*/
 
 /*impl Posterior for Beta {
 

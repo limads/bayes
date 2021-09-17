@@ -8,6 +8,14 @@ use crate::fit::linear::OLS;
 /// change in the input vector.
 pub struct Weiner(OLS);
 
+/// Start with the MSE \hat MSE = arg min_\theta E[(y - \tilde y)^2].
+/// Suppose E[\theta] = 0 (prior over \theta is zero) and E[x] = 0
+/// (expected value of observation is zero in principle, i.e. x is an error
+/// between a noisy and "true" signal). If \theta = A^T X where A is an linear
+/// estimator that reduces the MSE, then MSE(A) = E[||\theta - A^T x||_2^2]
+/// Leads to the estimate \hat A = \Sigma_{xx}^{-1} \Sigma_{x\theta}
+/// and \hat \theta_{LMS} = \Sigma_{x\theta} \Sigma_{xx}^{-1} X (Weiner filter).
+/// (derived from Wiener-Hopf Equation).
 /// The LMS adaptively updates filter weights (b) by following
 /// the steepest-descent direction of the mean squared error
 /// between a desired and actual measurement, wrt. the parameter

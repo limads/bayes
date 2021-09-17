@@ -259,7 +259,7 @@ impl Distribution for Gamma
 
 }*/
 
-impl Markov for Gamma {
+/*impl Markov for Gamma {
 
     fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
         self.eta.column_mut(0)
@@ -269,7 +269,7 @@ impl Markov for Gamma {
         None
     }
 
-}
+}*/
 
 impl Serialize for Gamma {
 

@@ -64,7 +64,7 @@ impl Distribution for VonMises
 
 }
 
-impl Markov for VonMises {
+/*impl Markov for VonMises {
 
     fn natural_mut<'a>(&'a mut self) -> DVectorSliceMut<'a, f64> {
         unimplemented!()
@@ -74,7 +74,7 @@ impl Markov for VonMises {
         unimplemented!()
     }
 
-}
+}*/
 
 /*impl Posterior for VonMises {
 

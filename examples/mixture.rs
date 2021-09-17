@@ -1,6 +1,6 @@
 use bayes::prob::*;
 
-fn generate() -> [f64; 200] {
+/*fn generate() -> [f64; 200] {
     let n1 = Normal::new(Some(0.0), Some(1.0));
     let n2 = Normal::new(Some(10.0), Some(0.1));
     let data : [f64; 200] = [0.0; 200];
@@ -12,4 +12,8 @@ fn generate() -> [f64; 200] {
 fn main() {
     let data = [1.0, 1.0, 1.0, 0.0, 0.0, 0.0].iter().map(|v| v + ra)
     let n = Normal::likelihood(&);
+}*/
+
+fn main() {
+
 }
