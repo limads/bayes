@@ -90,6 +90,10 @@ fn set_rerun_build_if_mcmc_changed() {
     println!("cargo:rerun-if-changed=src/foreign/stats/stats.cpp");
 }
 
+fn build_docs() {
+    let cmd = "pandoc docs/md/binomial.md -o docs/html/binomial.html --mathml";
+}
+
 fn main() {
 
     // set_rerun_build_if_mcmc_changed();

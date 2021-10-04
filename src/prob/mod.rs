@@ -1,5 +1,7 @@
 use nalgebra::{DVector, DMatrix};
 
+pub mod binomial;
+
 use rand;
 
 mod normal;
@@ -26,7 +28,21 @@ pub trait Posterior {
 
 }
 
+/* Implemented by functions that can be instantiated from a fitted interval estimator.
+For example, Posterior<BLS> for MultiNormal. Usually used when you need a generative
+model created from a set of observed data. MLE estimators are also created in this way,
+assuming a uniform distribution for the prior.
+pub trait Posterior<E>
+where
+    E : Estimator
+{
+
+    fn posterior(&self, est : E) -> Result<Self, Output>;
+
+}*/
+
 /// Implement Joint<Normal, Association=f64> for Normal AND Joint<Categorical, Association=Contingency> for Categorical.
+/// Also Joint<[Normal]> for Normal to build convergent graph structure.
 pub trait Joint {
 
     type Association;
@@ -58,8 +74,11 @@ pub trait ScaledExponential {
 // (scale) term a constant.
 pub trait Exponential {
 
+    /// Returns the canonical parameter \theta.
     fn location(&self) -> f64;
 
+    /// If applicable, returns the scale parameter, applied as
+    /// (self.predictor() - self.log_partition()) / self.scale()
     fn scale(&self) -> Option<f64>;
 
     /// Returns the RHS of the subtraction inside the exponential.
@@ -72,8 +91,22 @@ pub trait Exponential {
 
     fn canonical(natural : f64) -> f64;
 
+    // TODO rename to log_probability, to also have the probability() call,
+    // which evaluates to the CFD.
     fn log_prob(&self, y : f64) -> f64 {
+        // TODO substitute y by self.statistic()
         Self::natural(self.location()) * y - self.log_partition()
+    }
+
+    /// For likelihood implementors, returns a vector-value function of the data with
+    /// same dimensionality as self.location() (the sufficient statistic term).
+    fn statistic(&self) -> &[f64] {
+        unimplemented!()
+    }
+
+    /// Returns the dot-product between Self::natural(self.location()) and self.statistic().
+    fn predictor(&self) -> f64 {
+        unimplemented!()
     }
 
     /*fn sample<R>(&self, rng: &mut R) -> f64

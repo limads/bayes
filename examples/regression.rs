@@ -1,6 +1,6 @@
 use bayes::prob::Normal;
 use std::collections::HashMap;
-use bayes::sample::Sample;
+// use bayes::sample::Sample;
 use bayes::prob::MultiNormal;
 
 const N : usize = 100;

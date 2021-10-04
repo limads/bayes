@@ -8,7 +8,7 @@ use std::convert::{TryFrom, TryInto};
 use crate::foreign::export::clang::{DistrPtr, model_log_prob};
 use crate::foreign::mcmc::distr_mcmc;
 use crate::fit::utils;
-use crate::sample::Sample;
+// use crate::sample::Sample;
 use std::fmt::{self, Display};
 use crate::prob;
 use std::collections::HashMap;
@@ -61,7 +61,7 @@ impl RandomWalk {
 
 }
 
-impl Posterior<Histogram> for RandomWalk {
+/*impl Posterior<Histogram> for RandomWalk {
 
     /// Returns a non-parametric representation of this distribution
     /// marginal parameter value at index ix.
@@ -71,7 +71,7 @@ impl Posterior<Histogram> for RandomWalk {
         // traj.histogram(ix)
         unimplemented!()
     }
-}
+}*/
 
 /*impl Predictive for RandomWalk {
 
@@ -102,7 +102,7 @@ impl Display for RandomWalk {
 
 }
 
-impl Distribution for RandomWalk
+/*impl Distribution for RandomWalk
     where Self : Sized
 {
 
@@ -150,9 +150,9 @@ impl Distribution for RandomWalk
         None
     }
 
-}
+}*/
 
-/// A Monte Carlo integration problem allow us to approximate any integral of a product of two functions:
+/*/// A Monte Carlo integration problem allow us to approximate any integral of a product of two functions:
 /// \int p(x) f(x) dx where \int p(x) dx = 1.0 is a distribution which integrates to one and
 /// from which we can sample from. The integral is approximated by \sum_{i=1}^n 1/n f(x) where the
 /// set of x values is taken by sampling p(x). By taking p to be a posterior distribution (for example,
@@ -166,6 +166,6 @@ struct MonteCarlo<P>
 where P : Distribution
 {
     distr : P
-}
+}*/
 
 

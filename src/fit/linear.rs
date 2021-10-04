@@ -53,11 +53,35 @@ impl OLS {
 }
 
 #[test]
+fn test_wls() {
+    let wls_py = r#"
+        import statsmodels.api as sm;
+        sm.WLS(
+            [1, 1.4, 2.1, 2.4, 3.1],
+            [[1.0, 1.0], [1.0, 1.5], [1.0, 2.0], [1.0, 2.5], [1.0, 3.0]],
+            [1./0.1, 1./0.1, 1./0.2, 1./0.3, 1./0.4]
+        ).fit().summary()
+    "#;
+
+    let y : DVector<f64> = DVector::from_vec(vec![1.0, 1.4, 2.1, 2.4, 3.1]);
+    let x : DMatrix<f64> = DMatrix::from_vec(5,2,
+        vec![1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.5, 2.0, 2.5, 3.0]
+    );
+    let cov_diag = DVector::from_vec(vec![0.1, 0.1, 0.2, 0.3, 0.4]);
+    let wls = WLS::estimate_from_cov_diag(&y, &cov_diag, &x);
+    println!("beta = {}", wls.ols.beta);
+    println!("err = {}", wls.ols.err.unwrap());
+}
+
+#[test]
 fn test_ols() {
 
-    ols_py = r#"
+    let ols_py = r#"
         import statsmodels.api as sm;
-        sm.OLS([1, 1.4, 2.1, 2.4, 3.1], [[1.0, 1.0], [1.0, 1.5], [1.0, 2.0], [1.0, 2.5], [1.0, 3.0]]).fit().summary()
+        sm.OLS(
+            [1, 1.4, 2.1, 2.4, 3.1],
+            [[1.0, 1.0], [1.0, 1.5], [1.0, 2.0], [1.0, 2.5], [1.0, 3.0]]
+        ).fit().summary()
     "#;
 
     let y : DVector<f64> = DVector::from_vec(vec![1.0, 1.4, 2.1, 2.4, 3.1]);
@@ -69,7 +93,10 @@ fn test_ols() {
     println!("err = {}", ols.err.unwrap());
 }
 
-/// Carry which range of variables in the data rows are to be considered fixed or random.
+/// Carry which range of variables in the data rows are to be considered fixed.
+/// Variables outside this range are assumed to be random, conditional on the
+/// fixed variables. The output will be an array of vectors, each vector corresponding
+/// to the kth random variable.
 pub struct OLSSettings {
     fixed : Range<usize>,
 }
@@ -120,6 +147,10 @@ pub struct WLS {
 
 }
 
+fn assert_nonzero<'a>(a : impl Iterator<Item=&'a f64>) {
+    a.enumerate().for_each(|(ix, it)| assert!(*it != 0.0, "Zero element at position {}", ix) )
+}
+
 impl WLS {
 
     pub fn estimate_from_cov_diag<S>(
@@ -130,6 +161,7 @@ impl WLS {
     where
         S : Storage<f64, Dynamic, U1>
     {
+        assert_nonzero(sigma_diag.iter());
         let sigma_inv_diag = sigma_diag.map(|c| 1. / c );
         Self::estimate_from_prec_diag(&y, &sigma_inv_diag, &x)
     }
@@ -191,6 +223,7 @@ impl WLS {
     ) where
         S : Storage<f64, Dynamic, U1>
     {
+        assert_nonzero(sigma_diag.iter());
         let sigma_inv_diag = sigma_diag.map(|c| 1. / c );
         self.update_from_prec(y, &sigma_inv_diag, x);
     }
@@ -252,4 +285,267 @@ impl BLS {
     }
 
 }
+
+/// Solves the iteratively-reweighted least squares, using
+/// the variance function (a closure that takes the predicted value
+/// and returns the variance for this value) using the current estimate
+/// as the variance for the weight matrix.
+fn var_func_irls(
+    y : DVector<f64>,
+    x : DMatrix<f64>,
+    link : impl Fn(&f64)->f64, // pass Bernoulli::link here
+    var : impl Fn(&f64)->f64,  // Pass variance for given mean, p(1-p^2/n) for Bernoulli/Binomial
+    tol : f64,
+    max_iter : usize
+) -> Result<DVector<f64>, String> {
+    let (n, p) = (x.nrows(), x.ncols());
+    let mut eta = DVector::zeros(n);
+    let mut err = eta.clone();
+    let mut n_iter = 0;
+
+    // Stores coefficients of the current and next iterations
+    let mut beta = DVector::from_element(p, 1.0);
+
+    // Stores the difference between coefficients of the next and current iterations
+    // let mut beta_diff = beta.clone();
+
+    let mut w = DMatrix::zeros(n, n);
+    let mut near_minimum = false;
+
+    // The Newton-Rhapson equations (expressed as a WLS problem) are:
+    // b_{i+1} = b_i + (X^T W X)^-1 X^T (y - \hat y)
+    // Which is just an instance of the weighted least squares problem:
+    // (X^T W X)^-1 X^T e, for e = (y - \hat y) and W = diag{ 1/ var(y_hat) }
+    while !near_minimum && n_iter <= max_iter {
+        eta = &x * &beta;
+
+        let y_pred = eta.map(|e| link(&e) );
+
+        // TODO verify if/why variance of observations equal abslute error at y data scale (see irls impl)
+        let y_var = y_pred.map(|y| var(&y) );
+
+        // Update weight matrix: w^-1 = (d_eta/d_mu)^2 v_0
+        for i in 0..n {
+            w[(i,i)] = 1. / y_var[i];
+        }
+
+        // Calculate adjusted response variable: z = eta + (y - y_pred) * (d_eta/d_mu)
+        // From Bishop (2006) pg. 208: z = Xb - W(y - \hat y)
+        err = &y - y_pred;
+
+        // From Bolstad p.183 / McCullagh & Nelder (1983)
+        let z = eta + w.clone_owned() * err;
+
+        let wls = WLS::estimate_from_prec(&z, &w, &x);
+
+        let beta_diff = wls.ols.beta.clone_owned() - &beta;
+        near_minimum = beta_diff.norm() < tol;
+        beta.copy_from(&wls.ols.beta);
+        n_iter += 1;
+    }
+
+    match (n_iter < max_iter, near_minimum) {
+        (true, true) => {
+            Ok(beta)
+        },
+        (false, _) => {
+            Err(format!("Maximum number of iterations reached"))
+        },
+        (_, false) => {
+            Err(format!("Minimum tolerance not achieved"))
+        }
+    }
+}
+
+fn update_weights(w : &mut DMatrix<f64>, err : &DVector<f64>) {
+    let n = w.nrows();
+    for i in 0..n {
+        w[(i, i)] = 1. / err[i].max(1E-12);
+    }
+}
+
+/// Solves the iteratively-reweighted least squares, using
+/// the absolute error between predicted values and current estimates
+/// as the variance for the weight matrix.
+fn abs_err_irls(
+    y : DVector<f64>,
+    x : DMatrix<f64>,
+    link : impl Fn(&f64)->f64, // pass Bernoulli::link here
+    tol : f64,
+    max_iter : usize
+) -> Result<DVector<f64>, String> {
+    let (n, p) = (x.nrows(), x.ncols());
+    assert!(x.nrows() == y.nrows());
+    let mut w = DMatrix::zeros(n, n);
+    let mut coefs = DVector::from_element(p, 1.0);
+    let mut diff_coefs = DVector::from_iterator(p, (0..p).map(|_| f64::INFINITY ));
+    let mut n_iter = 0;
+
+    while (diff_coefs.norm() > tol) && (n_iter <= max_iter) {
+        let eta = x.clone_owned() * &coefs;
+        let y_pred = eta.map(|e| link(&e) );
+
+        // TODO examine why 1/err can be used to approximate y_pred.variance().
+        // For beronulli, variance weights should be 1/phat(1-phat), not 1/(phat - p) as we are doing here.
+        let err = (y.clone() - y_pred).abs();
+        update_weights(&mut w, &err);
+
+        // Calculate (X^T W X)^{-1}. Note: This step equals
+        // solving WLS::estimate_from_cov_diag(x, err, y)
+        let squared_prod = (x.clone().transpose() * w.clone() * &x);
+        let qr_s = QR::new(squared_prod);
+        if let Some(inv_squared_prod) = qr_s.try_inverse() {
+
+            // Calculate (X^T W y)
+            let cross_prod = x.clone().transpose() * &w * &y;
+            let new_coefs = inv_squared_prod * cross_prod;
+            diff_coefs = new_coefs.clone() - &coefs;
+            coefs = new_coefs;
+            n_iter += 1;
+
+        } else {
+            return Err(String::from("Unable to invert square-product matrix"));
+        }
+    }
+
+    if n_iter <= max_iter {
+        println!("IRLS completed (done in {} iterations)", n_iter);
+        Ok(coefs)
+    } else {
+        Err(String::from("Algorithm did not converge"))
+    }
+}
+
+#[test]
+fn test_irls() {
+    let ols_py = r#"
+        import statsmodels.api as sm;
+        sm.GLM(
+            [1, 0, 1, 0, 1],
+            [[1.0, 1.0], [1.0, 1.5], [1.0, 2.0], [1.0, 2.5], [1.0, 3.0]],
+            sm.families.Binomial()
+        ).fit().summary()
+
+        # OR
+
+        sm.Logit(
+            [1, 0, 1, 0, 1],
+            [[1.0, 1.0], [1.0, 1.5], [1.0, 2.0], [1.0, 2.5], [1.0, 3.0]],
+        ).fit().summary()
+
+        # OR
+        data <- as.data.frame(list(y = c(1, 0, 1, 0, 1), x1 = c(1.0, 1.5, 2.0, 2.5, 3.0)))
+        summary(glm("y~1+x1", family=binomial(link="logit"), data))
+    "#;
+    let y : DVector<f64> = DVector::from_vec(vec![1.0, 0.0, 1.0, 0.0, 1.0]);
+    let x : DMatrix<f64> = DMatrix::from_vec(5,2,
+        vec![1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.5, 2.0, 2.5, 3.0]
+    );
+
+    // println!("{:?}", abs_err_irls(y, x, crate::calc::Variate::sigmoid, 0.000000000001, 10000) );
+    // println!("{:?}", var_func_irls(y, x, crate::calc::Variate::sigmoid, |p : &f64| p*(1. - *p), 0.0001, 10000) );
+
+    // Variance function retrieved from Table1 at https://www.statsmodels.org/stable/glm.html.
+    // p - p^2/n = p(1 - p/n) where n is the domain of the corresponding Binomial. For n=1 this does
+    // not converge; for n>=2 this converge to the right value.
+    println!("{:?}", var_func_irls(y, x, crate::calc::Variate::sigmoid, |p : &f64| *p - p.powf(2.) / 5., 0.0001, 10000) );
+}
+
+/// The iteratively-reweighted least squares estimator recursively calculates the weighted
+/// least squares solution to (y - ybar, X), using var(y bar) as the weights. This estimator
+/// generalizes the WLS procedure to non-normal errors, and is widely used for maximum likelihood
+/// estimation in logistic and poison regression problems. The resulting distribution represents a lower-bound on the
+/// estimator covariance (the Cramer-Rao lower bound), and as such it might underestimate the error
+/// of the observations. Importance sampling of the resulting distribution is a relatively cheap fully
+/// bayesian follow-up procedure, which informs how severe this underestimation is.
+/// If the informed likelihood has no MultiNormal conditional expectation coefficient prior,
+/// the prior is assumed to be uniform, and the posterior covariance will represent the Cramer-Rao Lower Bound for the
+/// estimates.
+pub struct IRLS {
+    settings : IRLSSettings,
+    beta : DVector<f64>
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Family {
+    Binomial,
+    Poison,
+    Normal
+}
+
+pub struct IRLSSettings {
+    fixed : Range<usize>,
+    family : Family,
+    tol : f64,
+    max_iter : usize
+}
+
+impl Estimator for IRLS {
+
+    type Settings = IRLSSettings;
+
+    type Error = String;
+
+    fn estimate(
+        sample : impl Iterator<Item=impl Borrow<[f64]>> + Clone,
+        settings : Self::Settings
+    ) -> Result<Self, Self::Error> {
+        let (y, x) = collect_to_matrix_and_vec(sample);
+        let n = y.nrows();
+
+        let (link, var) : (Box<dyn Fn(&f64)->f64>, Box<dyn Fn(&f64)->f64>) = match settings.family {
+            Family::Binomial => (Box::new(crate::calc::Variate::sigmoid), Box::new(move |p : &f64| *p - p.powf(2.) / n as f64)),
+            Family::Poison => (Box::new(|v : &f64| v.ln() ), Box::new(crate::calc::Variate::identity)),
+            _ => unimplemented!()
+        };
+
+        var_func_irls(
+            y,
+            x,
+            link,
+            var,
+            settings.tol,
+            settings.max_iter,
+        ).map(|beta| Self { beta, settings })
+    }
+
+}
+
+/*pub struct IRLS {
+    lik : Box<dyn Likelihood>,
+
+    // Difference between two iterations of the coefficient vector magnitude,
+    // used as a criterion to stop the optimization.
+    cfg : IRLSConfig,
+
+    ans : Option<MultiNormal>
+}
+
+impl IRLS {
+
+    pub fn new<L>(lik : L, config : Option<IRLSConfig>) -> Result<Self, ()>
+    where
+        L : Likelihood + 'static
+    {
+        Ok(Self{ lik : Box::new(lik), cfg : config.unwrap_or(Default::default()), ans : None })
+    }
+
+    /*// Finds the maximum likelihood estimator.
+    fn mle(y : &dyn Sample, x : &dyn Sample) -> Self {
+        match
+    }*/
+
+    /*// Runs IRLS with the informed prior for the regression coefficients
+    fn map<D>(d : D) -> Self {
+
+    }
+    */
+
+    /*pub fn new<D>(distr : impl Distribution) {
+        for i in 0..100 {
+            let wls = WLS::estimate_from_cov(y, x);
+        }
+    }*/
+
+}*/
 

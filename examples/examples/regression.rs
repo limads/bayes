@@ -56,6 +56,7 @@ fn main() -> Result<(), String> {
         .condition(MultiNormal::prior(0.2) )
         .fit();
 
+    // Let m = MultiNormal::posterior(OLS::estimate(y, OLSSettings { fixed : 1.. }))
     Ok(())
 }
 

@@ -21,6 +21,8 @@ enum Factor {
 
 pub mod prob;
 pub mod fit;
+pub mod approx;
+pub mod calc;
 
 use std::io;
 use std::fmt;

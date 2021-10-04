@@ -22,9 +22,15 @@ pub trait Variate {
 
     fn standardize(&self, mean : &Self, inv_scale : &Self) -> Self;
 
+    fn identity(&self) -> Self;
+
 }
 
 impl Variate for f64 {
+
+    fn identity(&self) -> Self {
+        *self
+    }
 
     fn odds(&self) -> f64 {
         *self / (1. - *self)

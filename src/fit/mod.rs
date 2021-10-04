@@ -50,8 +50,19 @@ pub trait Likelihood {
         O : Borrow<Self::Observation>;
 
     // Just modifies the distribution, by consuming self.values() and setting
-    // the location (and possibly scale) paraments to the MLE estimates.
+    // the location (and possibly scale) paraments to the MLE estimates. TODO
+    // Make fit(.) generic over return type to implement different estimators.
+    // &MultiNormal; &Beta, etc. The restriction is that return type must implement
+    // Posterior, which gives runtime information about what distribution we are dealing
+    // with, allowing the implementation to pick an estimator.
     fn fit(&mut self) {
+        unimplemented!()
+    }
+
+    fn fix<S>(&mut self, fixed : S)
+    where
+        S : IntoIterator<Item=[f64]>
+    {
         unimplemented!()
     }
 

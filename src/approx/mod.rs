@@ -2,7 +2,7 @@ mod density;
 
 mod histogram;
 
-mod walk;
+// mod walk;
 
 mod hdi;
 
@@ -14,7 +14,7 @@ pub use density::*;
 
 pub use histogram::*;
 
-pub use walk::*;
+// pub use walk::*;
 
 pub use interval::*;
 

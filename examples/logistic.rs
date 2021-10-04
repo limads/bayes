@@ -1,5 +1,5 @@
 use bayes::prob::*;
-use bayes::fit::linear::irls;
+// use bayes::fit::linear::irls;
 use rand;
 
 /*/// Add a small random perturbation to each element in the vector
@@ -12,7 +12,7 @@ pub fn jittered(iter : impl Iterator<Item=f64>, ampl : f64) -> impl Iterator<Ite
 }*/
 
 fn main() -> Result<(), String> {
-    let n = 100;
+    /*let n = 100;
     let ys : Vec<_> = (0..100).map(|y| if y < 50 { true } else { false } ).collect();
     let mut b = Bernoulli::likelihood(ys.iter());
     println!("{:?}", b.observations());
@@ -31,7 +31,7 @@ fn main() -> Result<(), String> {
 
     irls(&mut b, 0.0001, 1000)?;
     let mn : &MultiNormal = b.view_factor().unwrap();
-    println!("{:?}", mn.view_parameter(true) );
+    println!("{:?}", mn.view_parameter(true) );*/
 
     Ok(())
 }
