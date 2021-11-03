@@ -67,4 +67,27 @@ impl Variate for f64 {
 
 }
 
+/// Single-iteration univariate statistical quantities.
+pub mod running {
 
+    pub fn mean_variance(d : &[f64], unbiased : bool) -> (f64, f64) {
+        let n = d.len() as f64;
+        let (sum, sum_sq) = d.iter()
+            .map(|s| (*s, s.powf(2.)) )
+            .fold((0.0, 0.0), |acc, s| (acc.0 + s.0, acc.1 + s.1) );
+        let mean = sum / n;
+        let var = (sum_sq - sum.powf(2.) / n) / if unbiased { n - 1. } else { n };
+        (mean, var)
+    }
+
+    /*pub fn mean_absdev(d : &[f64], unbiased : bool) -> (f64, f64) {
+        let n = d.len() as f64;
+        let (sum, sum_sq) = d.iter()
+            .map(|s| (*s, s.powf(2.)) )
+            .fold((0.0, 0.0), |acc, s| (acc.0 + s.0, acc.1 + s.1) );
+        let mean = sum / n;
+        let var = (sum_sq - sum.powf(2.) / n) / if unbiased { n - 1. } else { n };
+        (mean, var)
+    }*/
+
+}

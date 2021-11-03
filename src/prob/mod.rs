@@ -1,8 +1,9 @@
 use nalgebra::{DVector, DMatrix};
+use std::rc::Rc;
 
 pub mod binomial;
 
-use rand;
+// use rand;
 
 mod normal;
 
@@ -15,6 +16,8 @@ pub use normal::*;
 pub use multinormal::*;
 
 pub use categorical::*;
+
+pub use rand;
 
 pub trait Prior {
 
@@ -53,6 +56,24 @@ pub trait Joint {
 
 }
 
+/*pub trait Conditional<F> {
+
+    fn condition(&mut self, factor : F);
+
+    fn condition_shared(&mut self, factor : Rc<F>);
+
+}
+
+pub fn jointly_conditional<C, F, I>(conds : I, common_factor : F) -> I
+where
+    I : impl Iterator<Item=C>,
+    C : Conditional<F>
+{
+    let shared = Rc::new(common_factor);
+    conds.for_each(|ref mut el| el.condition(shared) );
+    conds
+}*/
+
 // ScaledExponential implementors can be linked indefinitely by the Conditional
 // trait to follow the right-hand path (scale) in a factor tree. This means elements
 // are always independent conditioned on the right-hand distribution realization; considering
@@ -66,6 +87,14 @@ pub trait ScaledExponential {
 
 }
 
+pub trait Markov {
+
+    // fn markov(order : usize) -> Self;
+
+    fn evolve(&mut self, pt : &[f64], transition : impl Fn(&mut Self, &[f64]));
+
+}
+
 // Implemented only for univariate distributions. May also be called Univariate.
 // If Distribution does not have a scale parameter, scale(&self) always return 1.0.
 // Exponential implementors can be linked indefinitely by the Conditional trait to
@@ -76,6 +105,11 @@ pub trait Exponential {
 
     /// Returns the canonical parameter \theta.
     fn location(&self) -> f64;
+
+    /// Returns the deviate data - self.location()
+    fn error(&self, data : f64) -> f64 {
+        data - self.location()
+    }
 
     /// If applicable, returns the scale parameter, applied as
     /// (self.predictor() - self.log_partition()) / self.scale()

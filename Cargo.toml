@@ -13,7 +13,7 @@ readme = "README.md"
 description = "Composable abstractions to build probabilistic models and inference algorithms"
 
 [lib]
-crate-type = ["staticlib", "rlib", "dylib"]
+crate-type = ["rlib", "dylib"]
 # crate-type = ["dylib"]
 
 [[bin]]

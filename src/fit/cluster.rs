@@ -2,7 +2,8 @@ use super::*;
 
 pub struct KMeansSettings {
     pub n_cluster : usize,
-    pub max_iter : usize
+    pub max_iter : usize,
+    pub allocations : Option<Vec<usize>>
 }
 
 #[derive(Debug)]
@@ -34,6 +35,40 @@ impl KMeans {
         self.n_iter
     }
 
+    pub fn count_allocations(&self, cluster_ix : usize) -> usize {
+        self.allocations().iter().filter(|alloc| **alloc == cluster_ix ).count()
+    }
+
+}
+
+/// In case the observations had size one, returns the minimum and
+/// maximum observations assigned to the given cluster. This function
+/// is not a part of KMeans, since it would require storing the samples
+/// inside the structure, which might impact performance.
+pub fn extremes(
+    km : &KMeans,
+    sample : impl Iterator<Item=impl Borrow<[f64]>> + Clone,
+    cluster_ix : usize
+) -> Option<(f64, f64)> {
+    if km.means[0].len() > 1 {
+        return None;
+    }
+    let (mut min, mut max) = (f64::INFINITY, 0.0);
+    if sample.clone().count() != km.allocations().len() {
+        return None;
+    }
+    for (alloc, sample) in km.allocations().iter().zip(sample) {
+        if *alloc == cluster_ix {
+            let s = sample.borrow();
+            if s[0] > max {
+                max = s[0];
+            }
+            if s[0] < min {
+                min = s[0];
+            }
+        }
+    }
+    Some((min, max))
 }
 
 impl Display for KMeans {
@@ -293,7 +328,7 @@ impl Estimator for KMeans {
 
     fn estimate(
         sample : impl Iterator<Item=impl Borrow<[f64]>> + Clone,
-        settings : Self::Settings
+        mut settings : Self::Settings
     ) -> Result<Self, Self::Error> {
 
         let n = sample.clone().count();
@@ -303,7 +338,11 @@ impl Estimator for KMeans {
         // Staring with a dendrogram favors identifiability, by exploring a space where
         // observations are already close to one another, instead of being in a space where
         // all possible optimal configurations are not yet explored.
-        let mut allocations : Vec<usize> = seed_allocations(&settings, sample.clone(), n);
+        let mut allocations : Vec<usize> = if let Some(allocs) = settings.allocations.take() {
+            allocs
+        } else {
+            seed_allocations(&settings, sample.clone(), n)
+        };
 
         // let mut allocations : Vec<usize> = random_allocations(&settings, n);
 

@@ -1,10 +1,12 @@
 use rand_distr;
 use super::*;
 use std::borrow::Borrow;
-use rand_distr::{StandardNormal, Distribution};
+use rand_distr::{StandardNormal};
 use crate::fit::{Likelihood, FixedLikelihood, MarginalLikelihood};
 use std::iter::IntoIterator;
 use std::default::Default;
+
+pub use rand_distr::Distribution;
 
 #[derive(Debug)]
 pub struct Normal {
@@ -25,6 +27,9 @@ pub struct Normal {
 
     n : usize,
 
+    // Consider storing StaticRc<N, Normal> if the child factor is [Normal; N]. On
+    // the impl Condition<Normal> for [Normal; N] we create StaticRc::<Normal, N, N>.
+    // Mutability is only allowed if we join all child nodes.
     factor : Option<Box<Factor<Normal, Normal>>>
 
 }
@@ -51,6 +56,17 @@ impl Default for Normal {
     }
 
 }*/
+
+impl Markov for Normal {
+
+    // fn markov(order : usize) -> Self {
+    //    unimplemented!()
+    // }
+
+    fn evolve(&mut self, pt : &[f64], transition : impl Fn(&mut Self, &[f64])) {
+        transition(self, pt);
+    }
+}
 
 impl Exponential for Normal {
 
@@ -86,6 +102,10 @@ impl rand_distr::Distribution<f64> for Normal {
     where
         R: rand::Rng + ?Sized
     {
+        // If S is an integer seed and a, b c are constants,
+        // r = (a S + b) % c is a new random variate (divide a S + b by c).
+        // If r1, r2 are uniformly-distributed variates, sqrt(-2 log r1) cos(2 \pi r2) is
+        // a standard normal variate (Smith, 1997).
         use rand::prelude::*;
         let z : f64 = rng.sample(rand_distr::StandardNormal);
         self.scale.sqrt() * (z + self.loc)
