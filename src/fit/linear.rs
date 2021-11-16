@@ -101,6 +101,18 @@ pub struct OLSSettings {
     fixed : Range<usize>,
 }
 
+impl OLSSettings {
+
+    pub fn new() -> Self {
+        Self { fixed : (1..1) }
+    }
+
+    pub fn fixed(mut self, range : Range<usize>) -> Self {
+        self.fixed = range;
+        self
+    }
+}
+
 /// Collect first sample of the data iterator to a vector
 /// and the remaining samples to a matrix.
 fn collect_to_matrix_and_vec(

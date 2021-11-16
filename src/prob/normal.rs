@@ -108,7 +108,7 @@ impl rand_distr::Distribution<f64> for Normal {
         // a standard normal variate (Smith, 1997).
         use rand::prelude::*;
         let z : f64 = rng.sample(rand_distr::StandardNormal);
-        self.scale.sqrt() * (z + self.loc)
+        z * self.scale.sqrt() + self.loc
     }
 
 }
