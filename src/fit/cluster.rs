@@ -404,7 +404,7 @@ fn kmeans() {
 
     let km = KMeans::estimate(
         data.iter().map(|d| [*d] ),
-        KMeansSettings { n_cluster : 3, max_iter : 1000 }
+        KMeansSettings { n_cluster : 3, max_iter : 1000, allocations : None }
     ).unwrap();
 
     println!("{}", km);

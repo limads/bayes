@@ -380,3 +380,5 @@ fn histogram() {
     // println!("{}", hist);
     // println!("{}", hist.subsample(10));
 }
+
+

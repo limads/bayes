@@ -1,3 +1,5 @@
+// TODO remove this file. It has been moved to away::dendro::mod.
+
 use nalgebra::*;
 use std::cmp::{Eq, PartialEq, Ordering};
 use std::collections::HashMap;
