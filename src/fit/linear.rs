@@ -116,27 +116,36 @@ impl OLSSettings {
 /// Collect first sample of the data iterator to a vector
 /// and the remaining samples to a matrix.
 fn collect_to_matrix_and_vec(
-    sample : impl Iterator<Item=impl Borrow<[f64]>> +
-    Clone
-) -> (DVector<f64>, DMatrix<f64>) {
-    let row_len = sample.clone().next().unwrap().borrow().len();
+    sample : impl Iterator<Item=impl Borrow<[f64]>> + Clone
+) -> Option<(DVector<f64>, DMatrix<f64>)> {
+    let ncol = sample.clone().next()?.borrow().len();
+    if ncol < 2 {
+        return None;
+    }
     let n = sample.clone().count();
+    if n == 0 {
+        return None;
+    }
     let y = DVector::from_iterator(n, sample.clone().map(|r| r.borrow()[0] ));
-    let x = DMatrix::from_iterator(row_len - 1, n, sample.clone().map(|r| r.borrow().iter().cloned().collect::<Vec<_>>() ).flatten());
-    (y, x)
+    // let x = DMatrix::from_iterator(n, row_len - 1, sample.clone().map(|r| r.borrow()[1..].iter().cloned().collect::<Vec<_>>() ).flatten());
+    let mut x = DMatrix::zeros(n, ncol - 1);
+    for (ix, row) in sample.enumerate() {
+        x.row_mut(ix).copy_from_slice(&row.borrow()[1..]);
+    }
+    Some((y, x))
 }
 
 impl Estimator for OLS {
 
     type Settings = OLSSettings;
 
-    type Error = ();
+    type Error = String;
 
     fn estimate(
         sample : impl Iterator<Item=impl Borrow<[f64]>> + Clone,
         _settings : Self::Settings
     ) -> Result<Self, Self::Error> {
-        let (y, x) = collect_to_matrix_and_vec(sample);
+        let (y, x) = collect_to_matrix_and_vec(sample).ok_or(String::from("Invalid data matrix"))?;
         Ok(OLS::estimate_from_data(&y, &x))
     }
 
@@ -502,7 +511,7 @@ impl Estimator for IRLS {
         sample : impl Iterator<Item=impl Borrow<[f64]>> + Clone,
         settings : Self::Settings
     ) -> Result<Self, Self::Error> {
-        let (y, x) = collect_to_matrix_and_vec(sample);
+        let (y, x) = collect_to_matrix_and_vec(sample).ok_or(String::from("Invalid data matrix"))?;
         let n = y.nrows();
 
         let (link, var) : (Box<dyn Fn(&f64)->f64>, Box<dyn Fn(&f64)->f64>) = match settings.family {

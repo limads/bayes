@@ -39,3 +39,4 @@ fn condition() {
         .map(|v| Normal::likelihood([v]) )
         .collect();
 }
+
