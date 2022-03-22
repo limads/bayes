@@ -1,4 +1,12 @@
 use super::*;
+use nalgebra::DVector;
+use std::borrow::Borrow;
+use crate::fit::Estimator;
+use std::fmt::Display;
+use rand::prelude::*;
+use std::fmt;
+use std::collections::HashMap;
+use nalgebra::DVectorSlice;
 
 pub struct KMeansSettings {
     pub n_cluster : usize,
@@ -71,9 +79,9 @@ pub fn extremes(
     Some((min, max))
 }
 
-impl Display for KMeans {
+impl fmt::Display for KMeans {
 
-    fn fmt(&self, f : &mut Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f : &mut fmt::Formatter) -> Result<(), fmt::Error> {
         let mut dst = String::new();
         for c in 0.. self.means.len() {
             let obs_ix = self.allocations.iter()

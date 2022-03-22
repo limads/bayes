@@ -63,6 +63,16 @@ impl Variate for f64 {
         *self - *mean
     }
 
+    ///
+    /// "Unscales" a value by multiplying it by its precision.
+    ///
+    /// ```rust
+    /// bayes::calc::unscale(1.0, 2.0);
+    /// ```
+    ///
+    /// ```lua
+    /// bayes.calc.unscale(1, 0.2)
+    /// ```
     fn unscale(&self, inv_scale : &Self) -> Self {
         *self / *inv_scale
     }
@@ -78,14 +88,17 @@ pub mod running {
 
     use super::*;
 
-    pub fn mean_variance(d : &[f64], unbiased : bool) -> (f64, f64) {
-        let n = d.len() as f64;
-        let (sum, sum_sq) = d.iter()
-            .map(|s| (*s, s.powf(2.)) )
+    pub fn mean_variance(d : impl Iterator<Item=f64>, count : usize, unbiased : bool) -> (f64, f64) {
+        let (sum, sum_sq) = d.map(|s| (s, s.powf(2.)) )
             .fold((0.0, 0.0), |acc, s| (acc.0 + s.0, acc.1 + s.1) );
+        let n = count as f64;
         let mean = sum / n;
         let var = (sum_sq - sum.powf(2.) / n) / if unbiased { n - 1. } else { n };
         (mean, var)
+    }
+
+    pub fn mean_variance_from_slice(d : &[f64], unbiased : bool) -> (f64, f64) {
+        mean_variance(d.iter().cloned(), d.len(), unbiased)
     }
 
     /*pub fn mean_absdev(d : &[f64], unbiased : bool) -> (f64, f64) {
@@ -133,6 +146,8 @@ pub mod running {
         None
     }
 
+    /// Given a sequence of counts and a set of quatiles in [0,1], return how many elements
+    /// are within each quantile.
     pub fn quantiles<S>(
         mut s : impl Iterator<Item=S>,
         total : S,

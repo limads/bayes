@@ -35,19 +35,19 @@ impl OLS {
     /// matrices (X^T X) and the fixed predictor x observation vector (X^T y). This gives
     /// the least squares solution b = (X^T X)^{-1} X^T y via QR decomposition. This instantiates
     /// self with only a beta vector, without the error vector.
-    pub fn estimate_from_cp(xx : &DMatrix<f64>, xy : &DVector<f64>) -> Self {
+    pub fn estimate_from_cp(xx : &DMatrix<f64>, xy : &DVector<f64>) -> Option<Self> {
         let xx_qr = xx.clone().qr();
-        let beta = xx_qr.solve(&xy).unwrap();
-        let sigma_b = xx_qr.try_inverse().unwrap();
-        Self { beta, sigma_b, err : None }
+        let beta = xx_qr.solve(&xy)?;
+        let sigma_b = xx_qr.try_inverse()?;
+        Some(Self { beta, sigma_b, err : None })
     }
 
-    pub fn estimate_from_data(y : &DVector<f64>, x : &DMatrix<f64>) -> Self {
+    pub fn estimate_from_data(y : &DVector<f64>, x : &DMatrix<f64>) -> Option<Self> {
         let xx = x.clone().transpose() * x;
         let xy = x.clone().transpose() * y;
-        let mut ols = Self::estimate_from_cp(&xx, &xy);
+        let mut ols = Self::estimate_from_cp(&xx, &xy)?;
         ols.err = Some(ols.predict(&x) - y);
-        ols
+        Some(ols)
     }
 
 }
@@ -88,7 +88,7 @@ fn test_ols() {
     let x : DMatrix<f64> = DMatrix::from_vec(5,2,
         vec![1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.5, 2.0, 2.5, 3.0]
     );
-    let ols = OLS::estimate_from_data(&y, &x);
+    let ols = OLS::estimate_from_data(&y, &x).unwrap();
     println!("beta = {}", ols.beta);
     println!("err = {}", ols.err.unwrap());
 }
@@ -104,7 +104,7 @@ pub struct OLSSettings {
 impl OLSSettings {
 
     pub fn new() -> Self {
-        Self { fixed : (1..1) }
+        Self { fixed : (1..2) }
     }
 
     pub fn fixed(mut self, range : Range<usize>) -> Self {
@@ -119,18 +119,25 @@ fn collect_to_matrix_and_vec(
     sample : impl Iterator<Item=impl Borrow<[f64]>> + Clone
 ) -> Option<(DVector<f64>, DMatrix<f64>)> {
     let ncol = sample.clone().next()?.borrow().len();
+
+    // Assume at least one dependent and one independent variable.
     if ncol < 2 {
         return None;
     }
+
     let n = sample.clone().count();
     if n == 0 {
         return None;
     }
+
+    // TODO calc y1..yn if fixed > 1.
     let y = DVector::from_iterator(n, sample.clone().map(|r| r.borrow()[0] ));
     // let x = DMatrix::from_iterator(n, row_len - 1, sample.clone().map(|r| r.borrow()[1..].iter().cloned().collect::<Vec<_>>() ).flatten());
     let mut x = DMatrix::zeros(n, ncol - 1);
     for (ix, row) in sample.enumerate() {
-        x.row_mut(ix).copy_from_slice(&row.borrow()[1..]);
+        let fix_vars_row = &row.borrow()[1..];
+        assert!(fix_vars_row.len() == ncol - 1);
+        x.row_mut(ix).copy_from_slice(&fix_vars_row);
     }
     Some((y, x))
 }
@@ -146,7 +153,7 @@ impl Estimator for OLS {
         _settings : Self::Settings
     ) -> Result<Self, Self::Error> {
         let (y, x) = collect_to_matrix_and_vec(sample).ok_or(String::from("Invalid data matrix"))?;
-        Ok(OLS::estimate_from_data(&y, &x))
+        Ok(OLS::estimate_from_data(&y, &x).ok_or(format!("Impossible to solve system"))?)
     }
 
 }
@@ -168,6 +175,51 @@ pub struct WLS {
 
 }
 
+pub struct WLSSettings {
+    fixed : Range<usize>,
+    precisions : Option<DVector<f64>>
+}
+
+impl WLSSettings {
+
+    pub fn new() -> Self {
+        Self { fixed : (1..2), precisions : None }
+    }
+
+    pub fn precisions(mut self, precisions : DVector<f64>) -> Self {
+        self.precisions = Some(precisions);
+        self
+    }
+
+    pub fn variances(mut self, mut variances : DVector<f64>) -> Self {
+        self.precisions = Some(DVector::from_iterator(variances.len(), variances.iter().map(|v| 1. / *v )));
+        self
+    }
+
+    pub fn fixed(mut self, range : Range<usize>) -> Self {
+        self.fixed = range;
+        self
+    }
+}
+
+impl Estimator for WLS {
+
+    type Settings = WLSSettings;
+
+    type Error = String;
+
+    fn estimate(
+        sample : impl Iterator<Item=impl Borrow<[f64]>> + Clone,
+        settings : Self::Settings
+    ) -> Result<Self, Self::Error> {
+        let (y, x) = collect_to_matrix_and_vec(sample).ok_or(String::from("Invalid data matrix"))?;
+        let n = y.nrows();
+        let prec_diag = settings.precisions.unwrap_or(DVector::repeat(n, 1.));
+        Ok(WLS::estimate_from_prec_diag(&y, &prec_diag, &x).ok_or(format!("Impossible to solve system"))?)
+    }
+
+}
+
 fn assert_nonzero<'a>(a : impl Iterator<Item=&'a f64>) {
     a.enumerate().for_each(|(ix, it)| assert!(*it != 0.0, "Zero element at position {}", ix) )
 }
@@ -178,7 +230,7 @@ impl WLS {
         y : &Matrix<f64, Dynamic, U1, S>,
         sigma_diag : &DVector<f64>,
         x : &DMatrix<f64>
-    ) -> Self
+    ) -> Option<Self>
     where
         S : Storage<f64, Dynamic, U1>
     {
@@ -193,16 +245,16 @@ impl WLS {
         y : &Matrix<f64, Dynamic, U1, S>,
         sigma_inv : &DMatrix<f64>,
         x : &DMatrix<f64>
-    ) -> Self
+    ) -> Option<Self>
     where
         S : Storage<f64, Dynamic, U1>
     {
         debug_assert!(is_approx_diagonal(&sigma_inv));
         let xwx = x.clone().transpose() * sigma_inv * x;
         let xwy = x.clone().transpose() * sigma_inv * y;
-        let mut ols = OLS::estimate_from_cp(&xwx, &xwy);
+        let mut ols = OLS::estimate_from_cp(&xwx, &xwy)?;
         ols.err = Some(ols.predict(&x) - y);
-        Self{ ols, sigma_inv : Some(sigma_inv.clone_owned()) }
+        Some(Self{ ols, sigma_inv : Some(sigma_inv.clone_owned()) })
     }
 
     /// Solves the weighted least squares problem from a vector of diagonal precision values
@@ -211,7 +263,7 @@ impl WLS {
         y : &Matrix<f64, Dynamic, U1, S>,
         sigma_inv_diag : &DVector<f64>,
         x : &DMatrix<f64>
-    ) -> Self
+    ) -> Option<Self>
     where
         S : Storage<f64, Dynamic, U1>
     {
@@ -224,7 +276,7 @@ impl WLS {
         y : &Matrix<f64, Dynamic, U1, S>,
         sigma_inv_diag : &DVector<f64>,
         x : &DMatrix<f64>
-    )
+    ) -> bool
     where
         S : Storage<f64, Dynamic, U1>
     {
@@ -233,7 +285,12 @@ impl WLS {
         for i in 0..k {
             self.sigma_inv.as_mut().unwrap()[(i, i)] = sigma_inv_diag[i];
         }
-        *self = Self::estimate_from_prec(&y, self.sigma_inv.as_ref().unwrap(), &x);
+        if let Some(new) = Self::estimate_from_prec(&y, self.sigma_inv.as_ref().unwrap(), &x) {
+            *self = new;
+            true
+        } else {
+            false
+        }
     }
 
     pub fn update_from_cov<S>(
@@ -241,12 +298,12 @@ impl WLS {
         y : &Matrix<f64, Dynamic, U1, S>,
         sigma_diag : &DVector<f64>,
         x : &DMatrix<f64>
-    ) where
+    ) -> bool where
         S : Storage<f64, Dynamic, U1>
     {
         assert_nonzero(sigma_diag.iter());
         let sigma_inv_diag = sigma_diag.map(|c| 1. / c );
-        self.update_from_prec(y, &sigma_inv_diag, x);
+        self.update_from_prec(y, &sigma_inv_diag, x)
     }
 
 }
@@ -297,12 +354,12 @@ impl BLS {
         x : &DMatrix<f64>,
         b_prior : &DVector<f64>,
         sigma_b_prior : &DMatrix<f64>
-    ) -> Self {
+    ) -> Option<Self> {
         let xy_b = sigma_inv * (y.clone() - x.clone() * b_prior);
         let xx_b = sigma_b_prior + x.clone().transpose() * sigma_inv * x;
-        let mut ols = OLS::estimate_from_cp(&xx_b, &xy_b);
+        let mut ols = OLS::estimate_from_cp(&xx_b, &xy_b)?;
         ols.err = Some(ols.predict(&x) - y);
-        Self { b_prior : b_prior.clone(), sigma_b_prior : sigma_b_prior.clone(), ols }
+        Some(Self { b_prior : b_prior.clone(), sigma_b_prior : sigma_b_prior.clone(), ols })
     }
 
 }
@@ -357,7 +414,7 @@ fn var_func_irls(
         // From Bolstad p.183 / McCullagh & Nelder (1983)
         let z = eta + w.clone_owned() * err;
 
-        let wls = WLS::estimate_from_prec(&z, &w, &x);
+        let wls = WLS::estimate_from_prec(&z, &w, &x).ok_or(format!("Unable to solve system"))?;
 
         let beta_diff = wls.ols.beta.clone_owned() - &beta;
         near_minimum = beta_diff.norm() < tol;

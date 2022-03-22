@@ -44,15 +44,31 @@ where
 
 }*/
 
+// pub struct Joint<T>
+    // where T : Exponential
+// {
+
+//    phantom : PhantomData<T>
+// }
+
 /// Implement Joint<Normal, Association=f64> for Normal AND Joint<Categorical, Association=Contingency> for Categorical.
 /// Also Joint<[Normal]> for Normal to build convergent graph structure.
-pub trait Joint {
+pub trait Marginal {
 
     type Association;
 
+    // Builds a joint distribution from self (assumed to be one of the marginals after joining) and other, assumed
+    // to be another marginal after joining. Joint is parametrized by the marginal correlations between the variables.
+    // This returns Join<T>, with self being accessable by marginal(n) and all others being accessible by marginal (n+k)
+    // where k is the slice of marginals.
     fn joint<const U : usize>(&mut self, other : [Self; U], assoc : Self::Association)
     where
         Self : Sized;
+
+    // Access a marginal distribution from this joint distribution.
+    // fn marginal(&self, ix : usize)
+
+    // fn conditional(&self, ix : usize)
 
 }
 
