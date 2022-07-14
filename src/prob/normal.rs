@@ -1,43 +1,28 @@
 use rand_distr;
-use super::*;
 use std::borrow::Borrow;
 use rand_distr::{StandardNormal};
-use crate::fit::{Likelihood, FixedLikelihood, MarginalLikelihood};
+use crate::prob::*;
 use std::iter::IntoIterator;
 use std::default::Default;
-
 pub use rand_distr::Distribution;
+use rand::Rng;
+use nalgebra::*;
 
 #[derive(Debug)]
 pub struct Normal {
 
-    // mean
     loc : f64,
 
-    // variance
     scale : f64,
 
-    // Make part of Factor enum.
-    // mix : Vec<Box<Normal>>,
-
-    // data, fixed
-    // Box<dyn Iterator<Item=f64>> or Box<dyn Iterator<Item=[f64; 5]>>
-    // Would require the use of move semantics (e.g. from Vec<.>) and save
-    // up on a copy; but we would lose API generality.
-
     n : usize,
-
-    // Consider storing StaticRc<N, Normal> if the child factor is [Normal; N]. On
-    // the impl Condition<Normal> for [Normal; N] we create StaticRc::<Normal, N, N>.
-    // Mutability is only allowed if we join all child nodes.
-    factor : Option<Box<Factor<Normal, Normal>>>
 
 }
 
 impl Default for Normal {
 
     fn default() -> Self {
-        Normal { loc : 0.0, scale : 1.0, n : 0, factor : None }
+        Normal { loc : 0.0, scale : 1.0, n : 1 }
     }
 
 }
@@ -57,16 +42,7 @@ impl Default for Normal {
 
 }*/
 
-impl Markov for Normal {
-
-    // fn markov(order : usize) -> Self {
-    //    unimplemented!()
-    // }
-
-    fn evolve(&mut self, pt : &[f64], transition : impl Fn(&mut Self, &[f64])) {
-        transition(self, pt);
-    }
-}
+impl Univariate for Normal { }
 
 impl Exponential for Normal {
 
@@ -74,21 +50,21 @@ impl Exponential for Normal {
         self.loc
     }
 
-    fn natural(canonical : f64) -> f64 {
-        canonical
+    fn link(avg : f64) -> f64 {
+        avg
     }
 
-    fn canonical(natural : f64) -> f64 {
-        natural
+    fn link_inverse(avg : f64) -> f64 {
+        avg
     }
 
     fn scale(&self) -> Option<f64> {
         Some(self.scale)
     }
 
-    fn partition(&self) -> f64 {
-        unimplemented!()
-    }
+    // fn partition(&self) -> f64 {
+    //    unimplemented!()
+    // }
 
     fn log_partition(&self) -> f64 {
         self.loc.powf(2.) / (2.*self.scale) + self.scale.sqrt().ln()
@@ -113,46 +89,33 @@ impl rand_distr::Distribution<f64> for Normal {
 
 }
 
-impl Prior for Normal {
+/*impl Prior for Normal {
 
     fn prior(loc : f64, scale : Option<f64>) -> Self {
         Self { loc, scale : scale.unwrap_or(1.0), n : 1, factor : None }
     }
 
-}
+}*/
 
-impl Posterior for Normal {
+/*impl Posterior for Normal {
 
     fn size(&self) -> Option<usize> {
         Some(self.n)
     }
 
-}
+}*/
 
-impl Likelihood for Normal {
+/*impl Likelihood for Normal {
 
-    type Observation = f64;
-
-    // type Posterior = Self;
-
-    fn likelihood<S, O>(sample : S) -> Self
-    where
-        S : IntoIterator<Item=O>,
-        O : Borrow<Self::Observation>
-    {
-        let (loc, scale, n) = single_pass_sum_sum_sq(sample);
-        Normal { loc, scale, n, factor : None }
+    fn likelihood(sample : &[f64]) -> Joint<Self> {
+        // let (loc, scale, n) = crate::calc::running::single_pass_sum_sum_sq(sample.iter());
+        // Normal { loc, scale, n }
+        Joint::<Normal>::from_slice(sample)
     }
 
-}
+}*/
 
-pub trait Condition<F> {
-
-    fn condition(&mut self, f : F) -> &mut Self;
-
-}
-
-/// Condition<MultiNormal> is implemented for [Normal] but not for Normal,
+/*/// Condition<MultiNormal> is implemented for [Normal] but not for Normal,
 /// which gives the user some type-safety when separating regression AND mixture
 /// from conjugate models. A regression model is Condition<MultiNormal> for [Normal],
 /// and a mixture model is Condition<Categorical> for [Normal]. For mixture models,
@@ -164,136 +127,13 @@ impl<'a> Condition<MultiNormal> for [Normal] {
         unimplemented!()
     }
 
-}
+}*/
 
-/// Used to initialize fixed likelihood arrays.
 const STANDARD_NORMAL : Normal = Normal {
     loc : 0.0,
     scale : 0.0,
-    n : 0,
-    factor : None
+    n : 0
 };
-
-// This requires knowing the sample size at compile time. TODO implement for [Normal],
-// which is !Sized.
-impl<const N : usize> Likelihood for [Normal; N] {
-
-    type Observation = f64;
-
-    // type Posterior = Self;
-
-    fn likelihood<S, O>(sample : S) -> Self
-    where
-        S : IntoIterator<Item=O>,
-        O : Borrow<Self::Observation>
-    {
-        let mut norms : [Normal; N] = [STANDARD_NORMAL; N];
-        let mut n_sample = 0;
-        for (mut n, s) in norms.iter_mut().zip(sample) {
-            n.loc = *s.borrow();
-            n.scale = f64::INFINITY;
-            n_sample += 1;
-        }
-        if N != n_sample {
-            panic!("Likelihood has {} independent samples, but informed sample has {}", N, n_sample);
-        }
-        norms
-    }
-
-}
-
-impl Likelihood for Vec<Normal> {
-
-    type Observation = f64;
-
-    // type Posterior = Self;
-
-    fn likelihood<S, O>(sample : S) -> Self
-    where
-        S : IntoIterator<Item=O>,
-        O : Borrow<Self::Observation>
-    {
-        let mut norms = Vec::new();
-        let mut n_sample = 0;
-        for s in sample {
-            let mut n : Normal = Default::default();
-            n.loc = *s.borrow();
-            n.scale = f64::INFINITY;
-            norms.push(n);
-            n_sample += 1;
-        }
-        if norms.len() != n_sample {
-            panic!("Likelihood has {} independent samples, but informed sample has {}", norms.len(), n_sample);
-        }
-        norms
-    }
-
-}
-
-/*impl Fixed for Normal {
-
-    type Observation = f64;
-
-    type Posterior = MultiNormal;
-
-    fn fixed<S, F, O>(sample : S, fixed : &[impl IntoIterator<Item=F>]) -> Self
-    where
-        S : IntoIterator<Item=O>,
-        O : Borrow<Self::Observation>,
-        F : Borrow<f64>
-    {
-        unimplemented!()
-    }
-
-    fn set_fixed(&mut self, fixed : &[impl Borrow<f64>]) {
-        unimplemented!()
-    }
-
-}*/
-
-/*impl Marginal for Normal {
-
-    type Observation = f64;
-
-    type Posterior = Categorical;
-
-    // Any samples now calculated with respect to this cluster
-    fn set_marginal(&mut self, cluster : usize) {
-        unimplemented!()
-    }
-
-    fn marginal<S, O>(sample : S, clusters : usize) -> Self
-    where
-        S : IntoIterator<Item=O>,
-        O : Borrow<Self::Observation>
-    {
-        unimplemented!()
-    }
-}*/
-
-impl Factorable<Normal, Normal> for Normal {
-
-    fn factor(&self) -> &Option<Box<Factor<Normal, Normal>>> {
-        &self.factor
-    }
-
-    fn factor_mut(&mut self) -> &mut Option<Box<Factor<Normal, Normal>>> {
-        &mut self.factor
-    }
-
-}
-
-fn single_pass_sum_sum_sq(sample : impl IntoIterator<Item=impl Borrow<f64>>) -> (f64, f64, usize) {
-    let mut n = 0;
-    let (sum, sum_sq) = sample.into_iter().fold((0.0, 0.0), |accum, d| {
-        n += 1;
-        let (sum, sum_sq) = (accum.0 + *d.borrow(), accum.1 + d.borrow().powf(2.));
-        (sum, sum_sq)
-    });
-    // let n = data.len() as f64;
-    let mean = sum / (n as f64);
-    (mean, sum_sq / (n as f64) - mean.powf(2.), n)
-}
 
 /*impl rand::distributions::Distribution<f64> for Normal {
 
@@ -306,3 +146,48 @@ fn single_pass_sum_sum_sq(sample : impl IntoIterator<Item=impl Borrow<f64>>) -> 
 
 }*/
 
+// based on stats::dnorm.ipp
+fn normal_log_prob(x : f64, mu : f64, stddev : f64) -> f64 {
+    std_normal_log_prob((x - mu) / stddev, stddev)
+}
+
+// based on stats::dnorm.ipp
+fn std_normal_log_prob(z : f64, stddev : f64) -> f64 {
+    -0.5 * (2.0*std::f64::consts::PI).ln() - stddev.ln() - z.powf(2.0) / 2.0
+}
+
+// Based on the statslib impl
+pub(crate) fn multinormal_log_prob(x : &DVector<f64>, mean : &DVector<f64>, cov : &DMatrix<f64>) -> f64 {
+
+    // This term can be computed at compile time if VectorN is used. Or we might
+    // keep results into a static array of f64 and just index it with x.nrows().
+    let partition = -0.5 * x.nrows() as f64 * (2.0*std::f64::consts::PI).ln();
+
+    let xc = x.clone() - mean;
+
+    let cov_chol = Cholesky::new(cov.clone()).unwrap();
+
+    // x^T S^-1 x
+    let mahalanobis = xc.transpose().dot(&cov_chol.solve(&xc));
+
+    partition - 0.5 * (cov_chol.determinant().ln() + mahalanobis)
+}
+
+impl Joint<Normal> {
+
+    pub fn mean(&self) -> &DVector<f64> {
+        &self.loc
+    }
+
+    pub fn probability(&self, x : &DVector<f64>) -> f64 {
+        self.log_probability(x).exp()
+    }
+
+    pub fn log_probability(&self, x : &DVector<f64>) -> f64 {
+        multinormal_log_prob(x, self.mean(), self.scale.as_ref().unwrap())
+    }
+
+}
+
+// When generating joint gaussian samples, add a small multiple of the identity \epsilon I to
+// the covariance before inverting it, for numerical reasons.

@@ -4,7 +4,18 @@ use num_traits::Zero;
 use num_traits::sign::Unsigned;
 use num_traits::cast::{NumCast, ToPrimitive};
 use std::ops::AddAssign;
-use std::cmp::Ord;
+use std::cmp::{Ord, Eq};
+use std::ops::Sub;
+use std::cmp::{PartialOrd, Ordering};
+
+/* If two values are equal, return 1.0; else return 0.0. Useful to map
+realizations of categorical in the integers [0..k] to a real weight.
+This is the indicator function, a.k.a. Iverson Bracket, for the
+logical predicate being the argument a belongs to the set with the
+unique element B. */
+pub fn indicator<T : Eq>(a : T, b : T) -> f64 {
+    if a == b { 1.0 } else { 0.0 }
+}
 
 // TODO possibly separate into Binary (logit/sigmoid conversions) / Continuous (standardization conversions)/
 // Count (combinatorial calculations). Also, create calc::special to hold the gamma and beta functions.
@@ -83,10 +94,84 @@ impl Variate for f64 {
 
 }
 
+/* Normalizing wrt maximum is useful if values are odds-ratios. Then the
+ratio to the maximum odds rato gives a probability. */
+pub fn odds_to_probs(bins : &[u32]) -> Vec<f32> {
+    let max = bins.iter().copied().max().unwrap() as f32;
+    bins.iter().map(move |count| *count as f32 / max ).collect()
+}
+
+pub fn counts_to_probs_static<const N : usize>(bins : &[u32; N]) -> [f32; N] {
+    let max = bins.iter().sum::<u32>() as f32;
+    bins.map(move |count| count as f32 / max )
+}
+
+/* Normalizing wrt sum of values is useful if values are absolute
+frequencies. The ratio to the sum then gives a probability */
+pub fn counts_to_probs(bins : &[u32]) -> Vec<f32> {
+    let max = bins.iter().sum::<u32>() as f32;
+    bins.iter().map(move |count| *count as f32 / max ).collect()
+}
+
+// For each probability entry in the iterator, calculate the entropy
+// for all probs up to the desired point.
+pub fn cumulative_entropies<'a>(probs : impl Iterator<Item=f32> + 'a) -> impl Iterator<Item=f32> + 'a {
+    running::cumulative_sum(probs.map(move |p| p * p.ln() ))
+}
+
+// Calculate the total entropy for an iterator over probabilities.
+pub fn entropy(probs : impl Iterator<Item=f32>) -> f32 {
+    (-1.)*probs.fold(0.0, |s, p| s + p * p.ln() )
+}
+
+pub fn squared_deviations<'a>(vals : impl Iterator<Item=f32> + 'a, m : f32) -> impl Iterator<Item=f32>  + 'a {
+    vals.map(move |v| (v - m).powf(2.) )
+}
+
+pub fn cumulative_squares<'a>(vals : impl Iterator<Item=f32> + 'a) -> impl Iterator<Item=f32>  + 'a {
+    running::cumulative_sum(vals.map(move |v| v.powf(2.) ) )
+}
+
+pub fn cumulative_squared_deviations<'a>(vals : impl Iterator<Item=f32> + 'a, m : f32) -> impl Iterator<Item=f32> + 'a {
+    running::cumulative_sum(vals.map(move |v| (v - m).powf(2.) ))
+}
+
 /// Single-pass univariate statistical calculations.
 pub mod running {
 
     use super::*;
+    use std::borrow::Borrow;
+    use num_traits::Zero;
+    use std::ops::*;
+
+    pub fn cumulative_sum<T>(iter : impl Iterator<Item=T>) -> impl Iterator<Item=T>
+    where
+        T : AddAssign + Zero + Copy
+    {
+        iter.scan(
+            T::zero(),
+            |state : &mut T, it : T| {
+                *state += it;
+                Some(*state)
+            }
+        )
+    }
+
+    pub fn single_pass_sum_sum_sq(sample : impl IntoIterator<Item=impl Borrow<f64>>) -> (f64, f64, usize) {
+        let mut n = 0;
+        let (sum, sum_sq) = sample.into_iter().fold((0.0, 0.0), |accum, d| {
+            n += 1;
+            let (sum, sum_sq) = (accum.0 + *d.borrow(), accum.1 + d.borrow().powf(2.));
+            (sum, sum_sq)
+        });
+        // let n = data.len() as f64;
+        let mean = sum / (n as f64);
+        (mean, sum_sq / (n as f64) - mean.powf(2.), n)
+    }
+
+    pub fn mean(d : impl Iterator<Item=f64>, count : usize) -> f64 {
+        d.sum::<f64>() / count as f64
+    }
 
     pub fn mean_variance(d : impl Iterator<Item=f64>, count : usize, unbiased : bool) -> (f64, f64) {
         let (sum, sum_sq) = d.map(|s| (s, s.powf(2.)) )
@@ -166,6 +251,39 @@ pub mod running {
             }
         }
         qs
+    }
+
+}
+
+pub struct Ranks<T> {
+    pub min : T,
+    pub max : T,
+    pub q25 : T,
+    pub q75 : T,
+    pub median : T
+}
+
+impl<T> Ranks<T>
+where
+    T : Copy + PartialOrd + Sub<Output=T>
+{
+
+    pub fn iqr(&self) -> T {
+        self.q75 - self.q25
+    }
+
+    pub fn calculate(vals : &[T]) -> Self {
+        let mut v : Vec<_> = vals.iter().copied().collect();
+        v.sort_by(|a, b| a.partial_cmp(&b).unwrap_or(Ordering::Equal) );
+        let n = v.len();
+        let nf = n as f64;
+        Ranks {
+            min : v[0],
+            max : v[n-1],
+            q25 : v[(nf * 0.25) as usize],
+            q75 : v[(nf * 0.75) as usize],
+            median : v[n/2]
+        }
     }
 
 }

@@ -1,6 +1,18 @@
-pub mod ffi;
+#![allow(warnings)]
 
-use nalgebra::DVector;
+#![doc(html_logo_url = "https://raw.githubusercontent.com/limads/bayes/master/assets/bayes-logo.png")]
+
+pub mod prob;
+
+pub mod fit;
+
+pub mod approx;
+
+pub mod calc;
+
+// pub mod ffi;
+
+// use nalgebra::DVector;
 
 /*
 pub struct LocationExponential {
@@ -43,7 +55,7 @@ where
 // impl From<[D]> for Joint<D>
 // impl FromIterator<D> for Joint<D>
 
-// Implemented only for univariate distributions. May also be called Univariate.
+/*// Implemented only for univariate distributions. May also be called Univariate.
 // If Distribution does not have a scale parameter, scale(&self) always return 1.0.
 pub trait Exponential {
 
@@ -55,20 +67,12 @@ pub trait Exponential {
 
     fn scale(&self) -> Option<Self::Scale>;
 
-}
+}*/
 
-enum Factor {
+/*enum Factor {
 
     Fixed(DVector<f64>, )
 }
-
-pub mod prob;
-
-pub mod fit;
-
-pub mod approx;
-
-pub mod calc;
 
 use std::io;
 use std::fmt;
@@ -84,6 +88,34 @@ fn condition() {
     let a : Box<[Normal]> = [0.0].iter()
         .map(|v| Normal::likelihood([v]) )
         .collect();
-}
+}*/
 
 // extern "C" fn avg()
+
+/*
+
+// Represent a stochastic process. Each realization of a process yields a univariate or joint distribution,
+// which in turn can be sampled.
+// Some processes are markov (depend only on the previous realization). Some can also be strict-sense
+// stationary (parameters of realizations are exchangeable, such as white noise). Or wide-sense stationary
+// (parameters are not exchangeable, but are dependent only on the distance between samples, not on distance
+// between samples and origin).
+pub trait Stochastic {
+
+    pub fn realize(&mut self) -> &Joint<Normal>;
+
+}
+
+pub struct Process<D> {
+
+    distr : D
+
+}
+
+impl Stochastic for Process<Normal>
+
+impl Stochastic for Process<Joint<Normal>>;
+
+impl Stochastic for Process<Dirichlet>
+
+*/

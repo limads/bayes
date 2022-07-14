@@ -1,2 +1,0 @@
-# [build]
-# rustflags = ["-L /home/diego/Software/bayes/target/c/", "-lstatic=pg_helper"]

@@ -1,4 +1,4 @@
-use std::env;
+/*use std::env;
 use std::fs;
 use cc;
 use std::path::Path;
@@ -92,7 +92,7 @@ fn set_rerun_build_if_mcmc_changed() {
 
 fn build_docs() {
     let cmd = "pandoc docs/md/binomial.md -o docs/html/binomial.html --mathml";
-}
+}*/
 
 fn main() {
 

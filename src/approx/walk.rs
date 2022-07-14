@@ -1,4 +1,4 @@
-use nalgebra::*;
+/*use nalgebra::*;
 use crate::prob::*;
 use crate::fit::Estimator;
 use crate::model::Model;
@@ -14,9 +14,15 @@ use crate::prob;
 use std::collections::HashMap;
 use crate::fit::markov::Trajectory;
 use rand;
-use crate::approx::Histogram;
+use crate::approx::Histogram;*/
 
-/// A non-parametric representation of a posterior distribution in terms of the sampling
+/* A distribution represented as the long-run frequency of a Markov process
+random walk */
+pub struct Walk {
+
+}
+
+/*/// A non-parametric representation of a posterior distribution in terms of the sampling
 /// trajectory created by a random walk based algorithm, such as the Metropolis-Hastings.
 /// To sample from this Distribution, a uniform random sample is taken and interpreted as
 /// an index of the random walk, and the values of all parameters at this index are
@@ -102,7 +108,7 @@ impl Display for RandomWalk {
 
 }
 
-/*impl Distribution for RandomWalk
+impl Distribution for RandomWalk
     where Self : Sized
 {
 

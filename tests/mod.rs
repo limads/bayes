@@ -1,4 +1,10 @@
-use nalgebra::*;
+
+#[test]
+fn sampling() {
+
+}
+
+/*use nalgebra::*;
 // Move those to specific modules
 // use bayes::foreign::gsl::randist::*;
 // use bayes::foreign::gsl::vector_double::*;
@@ -202,4 +208,6 @@ fn surface() {
     println!("{}", s.extract());
     s.reposition((2,1),(2,2));
     println!("{}", s.extract());
-}*/
+}*/*/
+
+

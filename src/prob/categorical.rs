@@ -1,4 +1,3 @@
-use crate::fit::Likelihood;
 use core::borrow::Borrow;
 use std::convert::{TryFrom, Into};
 use std::fmt;
@@ -114,22 +113,6 @@ pub struct Categorical<const N : usize> {
 }
 
 impl<const N : usize> Categorical<N> {
-
-}
-
-/// Since Likelihood cannot fail, we require the Bounded type, which is guaranteed
-/// to be below the number of categories K that we require.
-impl<const K : usize> Likelihood for Categorical<K> {
-
-    type Observation = Bounded<K>;
-
-    fn likelihood<S, O>(sample : S) -> Self
-    where
-        S : IntoIterator<Item=O>,
-        O : Borrow<Self::Observation>
-    {
-        unimplemented!()
-    }
 
 }
 

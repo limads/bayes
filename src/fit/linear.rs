@@ -13,7 +13,7 @@ use std::ops::Range;
 /// you can condition this normal on a multivariate normal with the prior values. In this case, the
 /// posterior will be found via the pseudo-data approach:
 /// Add the prior mean as a (n-weighted) pseudo-observation and call the same OLS procedure.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct OLS {
     pub beta : DVector<f64>,
 
@@ -21,10 +21,20 @@ pub struct OLS {
     // covariance for OLS; or the CRLB for WLS problems.
     pub sigma_b : DMatrix<f64>,
 
-    pub err : Option<DVector<f64>>
+    pub err : Option<DVector<f64>>,
+
+    pub r_squared : Option<f64>
+
 }
 
 impl OLS {
+
+    /*// R^2 = 1 - (xi-xhat)^2 / (xi-xbar)
+    pub fn r_squared(&self, y : &DVector<f64>, x : &DMatrix<f64>) -> Option<f64> {
+        let yhat = self.predict(x);
+        let ybar = y.mean();
+        let rhat = 1. - ()
+    }*/
 
     pub fn predict(&self, x : &DMatrix<f64>) -> DVector<f64> {
         assert!(x.ncols() == self.beta.nrows());
@@ -32,21 +42,31 @@ impl OLS {
     }
 
     /// Carry estimation based on a prediction by solving the linear system of cross-product
-    /// matrices (X^T X) and the fixed predictor x observation vector (X^T y). This gives
-    /// the least squares solution b = (X^T X)^{-1} X^T y via QR decomposition. This instantiates
+    /// matrices (X^T X) and the fixed predictor x observation vector (X^T y) (i.e. normal equations).
+    /// This gives the least squares solution b = (X^T X)^{-1} X^T y via QR decomposition. This instantiates
     /// self with only a beta vector, without the error vector.
     pub fn estimate_from_cp(xx : &DMatrix<f64>, xy : &DVector<f64>) -> Option<Self> {
         let xx_qr = xx.clone().qr();
         let beta = xx_qr.solve(&xy)?;
         let sigma_b = xx_qr.try_inverse()?;
-        Some(Self { beta, sigma_b, err : None })
+        Some(Self { beta, sigma_b, err : None, r_squared : None })
     }
 
     pub fn estimate_from_data(y : &DVector<f64>, x : &DMatrix<f64>) -> Option<Self> {
         let xx = x.clone().transpose() * x;
         let xy = x.clone().transpose() * y;
         let mut ols = Self::estimate_from_cp(&xx, &xy)?;
-        ols.err = Some(ols.predict(&x) - y);
+        let yhat = ols.predict(&x);
+        let ybar = y.mean();
+        let err = yhat - y;
+        let ss_res = err.map(|e| e.powf(2.) ).sum();
+        let ss_tot = y.map(|y| (y - ybar).powf(2.) ).sum();
+        let r_squared = 1. - (ss_res / (ss_tot+std::f64::EPSILON) );
+
+        // assert!(r_squared >= 0. && r_squared <= 1.);
+
+        ols.err = Some(err);
+        ols.r_squared = Some(r_squared);
         Some(ols)
     }
 
@@ -165,7 +185,7 @@ impl Estimator for OLS {
 /// applied to the transformed variables X* = W^{1/2} X and y* = W y, which resolves into
 /// (X^T W X)^-1 X^T W y, so it is useful if you have heteroscedastic observations
 /// conditional on a set of linear predictors, and you don't have informaiton to guide inferencerive
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WLS {
 
     pub ols: OLS,
@@ -327,42 +347,83 @@ fn is_approx_diagonal(m : &DMatrix<f64>) -> bool {
     }
 }
 
-/// Solves the Bayesian least squares problem, when we have a prior (b0, Sb0) for the
+/*/// Solves the Bayesian least squares problem, when we have a prior (b0, Sb0) for the
 /// beta coefficient and the sigma covariance matrix of the regression coefficients.
 /// Ridge regression arises as a special case when b_0 = 0 and Sb0 = sigma_b0 I
 /// (homoscedastic regression coefficient vector) and Sy = sigma_y (homoscedastic error vector)
 /// where lambda = sigma_y / sigma_b0; \lambda \in [0, 1] as (lambda I + X^T X)^-1 X^T y.
 /// In either case, this gives a MAP estimate of regression coefficients.
+/// (cf. Theodoridis (2020) p. 598).
 pub struct BLS {
+
     b_prior : DVector<f64>,
+
     sigma_b_prior : DMatrix<f64>,
 
     // ols.beta will carry the mean of the posterior;
     // ols.sigma_b will carry the covariance of the posterior.
-    ols : OLS,
+    ols : Option<OLS>,
 
 }
 
 impl BLS {
 
+    pub fn new(
+        b_prior : &DVector<f64>,
+        sigma_b_prior : &DMatrix<f64>
+    ) -> Self {
+        Self { b_pior : b_prior.clone(), sigma_b_prior : sigma_b_prior.clone(), ols : None }
+    }
+
+    pub fn estimate_from_data(
+        &mut self,
+        y : &DVector<f64>,
+        x : &DMatrix<f64>
+    ) -> DVector<f64> {
+        self.b_prior +
+    }
+
+}*/
+
+/*/// Solves the weighted BLS problem, where we have a prior as in the BLS case,
+/// but the observations are not homoscedastic.
+pub struct WBLS {
+
+    b_prior : DVector<f64>,
+
+    sigma_b_prior : DMatrix<f64>,
+
+    wls : Option<WLS>
+
+}
+
+impl WBLS {
+
+    pub fn new(
+        b_prior : &DVector<f64>,
+        sigma_b_prior : &DMatrix<f64>
+    ) -> Self {
+        Self { b_pior, sigma_b_prior, wls : None }
+    }
+
     /// sigma_inv : obsevation precision (n x n)
     /// b_prior : Coefficient mean prior (p)
     /// sigma_b_prior : Coefficient covariance prior (p x p)
     pub fn estimate_from_data(
+        &mut self,
         y : &DVector<f64>,
         sigma_inv : &DMatrix<f64>,
         x : &DMatrix<f64>,
-        b_prior : &DVector<f64>,
-        sigma_b_prior : &DMatrix<f64>
     ) -> Option<Self> {
-        let xy_b = sigma_inv * (y.clone() - x.clone() * b_prior);
+        // cf. (12.10) of Theodoridis (2020) p. 598.
         let xx_b = sigma_b_prior + x.clone().transpose() * sigma_inv * x;
+        let xy_b = sigma_inv * (y.clone() - x.clone() * b_prior);
         let mut ols = OLS::estimate_from_cp(&xx_b, &xy_b)?;
         ols.err = Some(ols.predict(&x) - y);
         Some(Self { b_prior : b_prior.clone(), sigma_b_prior : sigma_b_prior.clone(), ols })
     }
 
-}
+}*/
 
 /// Solves the iteratively-reweighted least squares, using
 /// the variance function (a closure that takes the predicted value
@@ -627,3 +688,118 @@ impl IRLS {
 
 }*/
 
+/// The Weiner filter is basically a least-squares problem, where the k past
+/// samples are taken to be predictors for the next sample. The disadvantage
+/// is that we must re-calculate the OLS estimate for each new circular
+/// change in the input vector.
+pub struct Weiner(OLS);
+
+/// Start with the MSE \hat MSE = arg min_\theta E[(y - \tilde y)^2].
+/// Suppose E[\theta] = 0 (prior over \theta is zero) and E[x] = 0
+/// (expected value of observation is zero in principle, i.e. x is an error
+/// between a noisy and "true" signal). If \theta = A^T X where A is an linear
+/// estimator that reduces the MSE, then MSE(A) = E[||\theta - A^T x||_2^2]
+/// Leads to the estimate \hat A = \Sigma_{xx}^{-1} \Sigma_{x\theta}
+/// and \hat \theta_{LMS} = \Sigma_{x\theta} \Sigma_{xx}^{-1} X (Weiner filter).
+/// (derived from Wiener-Hopf Equation).
+/// The LMS adaptively updates filter weights (b) by following
+/// the steepest-descent direction of the mean squared error
+/// between a desired and actual measurement, wrt. the parameter
+/// vector. In the long-run, the LMS converges to the Weiner filter.
+/// While the algorithm supplies the steepest-descent direction for
+/// a new sample, the user must tune the learning rate by informing
+/// a constant number in [0.0..1.0].
+pub struct LMS {
+
+    // Coefficient vector
+    b : DVector<f64>,
+
+    // Actual past output value of dimension 1x1
+    y_old : f64,
+
+    // Predictor values of current sample of dimension kx1
+    scaled_x_new : DVector<f64>,
+
+    // Learning rate
+    rate : f64
+}
+
+impl LMS {
+
+    pub fn init(k : usize, rate : f64) -> Self {
+        let b = DVector::from_element(k, 1e-6);
+        Self { b, y_old : 0.0, scaled_x_new : DVector::zeros(k), rate }
+    }
+
+    pub fn step(&mut self, x_new : &[f64], y_new : &[f64]) {
+        let x_new = DVectorSlice::from(x_new);
+        let err = self.y_old - self.b.dot(&x_new);
+        self.scaled_x_new.copy_from(&x_new);
+        self.scaled_x_new.scale_mut(err * self.rate);
+
+        // b_new = b_old * rate*err*x_new
+        self.b += &self.scaled_x_new;
+
+        self.y_old = self.b.dot(&x_new);
+
+    }
+
+}
+
+pub struct RLS {
+
+    // Coefficient vector
+    b : DVector<f64>,
+
+    // P matrix
+    p_mat : DMatrix<f64>,
+
+    y_old : f64,
+
+    // Learning rate
+    rate : f64,
+
+    z : DVector<f64>,
+
+    scaled_err : DVector<f64>,
+
+    kalman : DVector<f64>
+}
+
+impl RLS {
+
+    /// lambda should be a value close to 1.0 (e.g. 0.98, 0.99).
+    pub fn init(k : usize, lambda : f64, rate : f64) -> Self {
+        let mut p_mat = DMatrix::zeros(k, k);
+        p_mat.fill_diagonal(1. / lambda);
+        let b = DVector::from_element(k, 1e-6);
+        let y_old = 0.0;
+        let kalman = DVector::zeros(k);
+        let scaled_err = DVector::zeros(k);
+        let z = DVector::zeros(k);
+        Self { b, p_mat, y_old, rate, scaled_err, kalman, z }
+    }
+
+    pub fn step(&mut self, x_new : &[f64], y_new : f64) {
+        let x_new = DVectorSlice::from(x_new);
+
+        // Calculate Kalman gain from inverse-covariance and new predictors
+        self.z = &self.p_mat * &x_new;
+        self.kalman = self.z.clone();
+        self.kalman.scale_mut(1. / (self.rate + x_new.dot(&self.z)));
+
+        // Update coefficients
+        self.scaled_err = self.kalman.clone();
+        let err = self.y_old - self.b.dot(&x_new);
+        self.scaled_err.scale_mut(err);
+        self.b += &self.scaled_err;
+
+        // Update p matrix
+        let mut kal_prod_zt = self.kalman.clone() * self.z.transpose();
+        kal_prod_zt.scale_mut(1. / self.rate);
+        self.p_mat.scale_mut(1. / self.rate);
+        self.p_mat -= &kal_prod_zt;
+
+        self.y_old = self.b.dot(&x_new);
+    }
+}

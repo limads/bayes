@@ -11,3 +11,6 @@ rustfmt src/foreign/ipp/ippi.rs
 
 bindgen /opt/intel/oneapi/ipp/latest/include/ipps.h -o src/foreign/ipp/ipps.rs --no-rustfmt-bindings
 rustfmt src/foreign/ipp/ipps.rs
+
+bindgen /opt/intel/oneapi/ipp/latest/include/ippcv.h -o src/foreign/ipp/ippcv.rs --no-rustfmt-bindings
+rustfmt src/foreign/ipp/ippcv.rs

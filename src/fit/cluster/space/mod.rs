@@ -1,10 +1,12 @@
 use std::collections::HashMap;
-use spade::rtree::RTree;
+// use spade::rtree::RTree;
 use crate::*;
 use std::cmp::PartialEq;
-use spade::HasPosition;
+// use spade::HasPosition;
 use crate::fit::cluster::Distance;
 use crate::fit::cluster::Euclidian;
+
+/* TODO implement spatial search step with kd-tree = "0.4.1" or acacia = "0.2.0" */
 
 /// Implements density-based clustering (dbscan algorithm).
 pub struct SpatialClustering<T> {
@@ -22,7 +24,7 @@ impl<T> SpatialClustering<T> {
         density_clustering(&search, max_dist, min_clust_sz)
     }
 
-    pub fn cluster_indexed(pts : &[T], max_dist : f64, min_clust_sz : usize) -> Self
+    /*pub fn cluster_indexed(pts : &[T], max_dist : f64, min_clust_sz : usize) -> Self
     where
         T : PartialEq + Distance<Euclidian> + spade::PointN + Copy + Clone
     {
@@ -34,7 +36,7 @@ impl<T> SpatialClustering<T> {
             max_dist
         };
         density_clustering(&search, max_dist, min_clust_sz)
-    }
+    }*/
 }
 
 trait SpatialSearch<'a, T> {
@@ -72,7 +74,7 @@ where
     }
 }
 
-struct IndexedSearch<'a, T>
+/*struct IndexedSearch<'a, T>
 where
     PointRef<'a, T>: spade::HasPosition
 {
@@ -129,7 +131,7 @@ where
     fn points(&'a self) -> &'a [T] {
         &self.pts[..]
     }
-}
+}*/
 
 fn expand_local_neighborhood<'a, T>(
     labels : &mut [Assignment],
