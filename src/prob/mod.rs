@@ -8,6 +8,43 @@ use std::marker::PhantomData;
 use std::ops::{Index, IndexMut};
 use crate::fit::Estimator;
 use crate::approx::Walk;
+use smallvec::SmallVec;
+
+mod beta;
+
+mod bernoulli;
+
+mod categorical;
+
+mod dirichlet;
+
+mod gamma;
+
+mod joint;
+
+mod normal;
+
+mod poisson;
+
+mod binomial;
+
+pub use binomial::*;
+
+pub use beta::*;
+
+pub use bernoulli::*;
+
+pub use categorical::*;
+
+pub use dirichlet::*;
+
+pub use gamma::*;
+
+pub use joint::*;
+
+pub use normal::*;
+
+pub use poisson::*;
 
 /*pub enum MFactor {
 
@@ -26,12 +63,13 @@ pub struct SubGraph {
 
 }
 
+#[derive(Clone)]
 pub enum Factor {
     Bern(Bernoulli),
     Poiss(Poisson),
     Norm(Normal),
-    Beta(Beta),
-    Gamma(Gamma),
+    Beta(crate::prob::beta::Beta),
+    Gamma(crate::prob::gamma::Gamma),
     JointBern(Joint<Bernoulli>),
     JointPoiss(Joint<Poisson>),
     JointNorm(Joint<Normal>),
@@ -71,6 +109,10 @@ pub struct Node<D> {
 }
 
 impl<D> Node<D> {
+
+    pub fn raw(&self) -> NodeIndex {
+        self.ix
+    }
 
     /* Transform this node into the equivalent Walk node, to index a posterior graph
     generated from the graph this original index refers to.
@@ -118,6 +160,33 @@ pub struct Sample {
 
 }
 
+pub struct Child {
+
+    pub child : Node<Factor>,
+
+    // Returns the parents of child, except for the original node for which families was called.
+    pub coparents : SmallVec<[Node<Factor>; 4]>,
+
+}
+
+/* Returns the family for a given distribution index (i.e. Markov blanket). The blanket is
+formed by the parent factors; If this connects directly to an evidence (likelihood)
+node, then it is also formed by the children and the children's parents (co-parents).
+If Pi is the subset of G containing the parents of node i; and Ci is the subset of G
+containing the children of node i; Qi is the subset of G containing co-parents of i's children, then:
+A DAG without evidence nodes (all unobserved) factors as p(x1..xk) = \prod p(x_i|x_{j; j \in Pi})
+A DAG with unobserved nodes that are parents of observed nodes (nodes y_p) and unobserved nodes
+that are parents of other unobserved nodes x_i factor as
+p(x1..xk,y1..yk) = \prod p(x_i|x_{j; j \in Pi}) \prod(y_i|x_{j; j in Pi \union \Ci \union Q_i}) */
+pub struct Family {
+
+    pub parents : SmallVec<[Node<Factor>; 4]>,
+
+    // TO access the coparents of each child, access the field parents in the Child struct.
+    pub children : SmallVec<[Child; 4]>,
+
+}
+
 // Can also be called Joint<D>
 // #[derive(Debug, Clone)]
 pub struct Graph(DiGraph<Factor, Option<f64>, u32>);
@@ -136,19 +205,54 @@ impl Graph {
         }
     }
 
-    pub fn children_factors<'a>(&'a self, ix : Node<Factor>) -> impl Iterator<Item=&'a Factor> + 'a {
+    /// Return this nodes parents, children, and co-parents (parents of the same children),
+    /// i.e. the Markov Blanket over the node.
+    pub fn family(&self, ix : Node<Factor>) -> Family {
+        let mut children = SmallVec::new();
+        for c in self.children(ix.clone()) {
+            let mut coparents = self.parents(c.clone());
+            for i in 0..coparents.len() {
+                if coparents[i].raw() == ix.raw() {
+                    coparents.remove(i);
+                    break;
+                }
+            }
+            children.push(Child { child : c.clone(), coparents });
+        }
+        Family { children, parents : self.parents(ix) }
+    }
+
+    pub fn children<'a>(&'a self, ix : Node<Factor>) -> SmallVec<[Node<Factor>; 4]> {
+        let mut neighs_iter = self.0.neighbors_directed(ix.ix, petgraph::Direction::Outgoing).detach();
+        let mut neighs = SmallVec::new();
+        while let Some(n) = neighs_iter.next_node(&self.0) {
+            neighs.push(Node::<Factor> { ix : n, d : PhantomData });
+        }
+        neighs
+    }
+
+    pub fn parents<'a>(&'a self, ix : Node<Factor>) -> SmallVec<[Node<Factor>; 4]> {
+        let mut neighs_iter = self.0.neighbors_directed(ix.ix, petgraph::Direction::Incoming).detach();
+        let mut neighs = SmallVec::new();
+        while let Some(n) = neighs_iter.next_node(&self.0) {
+            neighs.push(Node::<Factor> { ix : n, d : PhantomData });
+        }
+        neighs
+    }
+
+    /*pub fn children_factors<'a>(&'a self, ix : Node<Factor>) -> impl Iterator<Item=&'a Factor> + 'a {
         let mut neighs = self.0.neighbors_directed(ix.ix, petgraph::Direction::Outgoing).detach();
         std::iter::from_fn(move || {
             neighs.next_node(&self.0).map(|node| &self.0[node] )
         })
-    }
+    }*/
 
-    pub fn parent_factors<'a>(&'a self, ix : Node<Factor>) -> impl Iterator<Item=&'a Factor> + 'a {
+    /*pub fn parent_factors<'a>(&'a self, ix : Node<Factor>) -> impl Iterator<Item=&'a Factor> + 'a {
         let mut neighs = self.0.neighbors_directed(ix.ix, petgraph::Direction::Incoming).detach();
         std::iter::from_fn(move || {
             neighs.next_node(&self.0).map(|node| &self.0[node] )
         })
-    }
+    }*/
 
     /*pub fn parent_factors_mut<'a>(&'a mut self, ix : Node<Factor>) -> impl Iterator<Item=&'a mut Factor> + 'a {
         let mut neighs = self.0.neighbors_directed(ix.ix, petgraph::Direction::Incoming).detach();
@@ -277,42 +381,6 @@ where
     // }
 }*/
 
-mod beta;
-
-mod bernoulli;
-
-mod categorical;
-
-mod dirichlet;
-
-mod gamma;
-
-mod joint;
-
-mod normal;
-
-mod poisson;
-
-mod binomial;
-
-pub use binomial::*;
-
-pub use beta::*;
-
-pub use bernoulli::*;
-
-pub use categorical::*;
-
-pub use dirichlet::*;
-
-pub use gamma::*;
-
-pub use joint::*;
-
-pub use normal::*;
-
-pub use poisson::*;
-
 /* Univariate/Multivariate are implemented by both analytical (Exponential) and
 empirical distribution approximations (Histogram, Joint<Histogram>, Density, Empirical, Cumulative, Walk, Joint<Walk>). */
 
@@ -401,7 +469,8 @@ pub trait Exponential {
 
 pub trait Likelihood
 where
-    Self : Univariate + Sized
+    Self : Univariate + Sized + Clone,
+    Joint<Self> : Clone
 {
 
     fn likelihood(data : &[f64]) -> Joint<Self>;
@@ -465,8 +534,8 @@ where
     // where k is the slice of marginals.
     fn joint<I, const N : usize>(distrs : I) -> Joint<Self::Univariate>
     where
-        Self : Sized,
-        I : IntoIterator<Item=Self::Univariate>;
+        Self : Sized + Clone,
+        I : IntoIterator<Item=Self::Univariate>, <Self as Marginal>::Univariate: Clone;
 
     fn len(&self) -> usize;
 

@@ -18,6 +18,7 @@ use crate::approx::Histogram;*/
 
 /* A distribution represented as the long-run frequency of a Markov process
 random walk */
+#[derive(Clone)]
 pub struct Walk {
 
 }

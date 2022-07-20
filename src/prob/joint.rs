@@ -12,9 +12,10 @@ or nested set of Metropolis-Hastings steps. Joint elements might be independent 
 specified in terms of an undirected graph between the elements. The add_edges(.) method is used to
 establish such edges. Those symmetrical dependencies usually are correlations (for Joint<Normal>)
 or contingency tables (for Joint<Bernoulli> and Joint<Categorical>). */
+#[derive(Clone)]
 pub struct Joint<U>
 where
-    U : Univariate + ?Sized
+    U : Univariate + ?Sized + Clone
 {
 
     pub(crate) loc : DVector<f64>,
@@ -28,7 +29,7 @@ where
 
 impl<U> Joint<U>
 where
-    U : Univariate
+    U : Univariate + Clone
 {
 
     pub fn add_edges(&mut self, edges : &[f64]) {
@@ -104,7 +105,7 @@ where
 
 impl<U> Index<usize> for Joint<U>
 where
-    U : Univariate
+    U : Univariate + Clone
 {
 
     type Output = U;
