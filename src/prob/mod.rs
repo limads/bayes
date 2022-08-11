@@ -410,6 +410,10 @@ pub trait Multivariate {
 // (scale) term a constant.
 pub trait Exponential {
 
+    fn base_measure(&self) -> f64 {
+        1.0
+    }
+
     /// Returns the location parameter eta. This is before the link transformation
     /// is applied.
     fn location(&self) -> f64;

@@ -263,6 +263,22 @@ pub struct Ranks<T> {
     pub median : T
 }
 
+pub fn baseline_median<T>(s : &mut [T]) -> T
+where
+    T : Copy + PartialOrd
+{
+    baseline_quantile(s, 0.5)
+}
+
+pub fn baseline_quantile<T>(s : &mut [T], rank : f64) -> T
+where
+    T : Copy + PartialOrd
+{
+    assert!(rank >= 0.0 && rank <= 1.0 );
+    s.sort_by(|a, b| a.partial_cmp(&b).unwrap_or(Ordering::Equal) );
+    s[(s.len() as f64 * rank).floor() as usize]
+}
+
 impl<T> Ranks<T>
 where
     T : Copy + PartialOrd + Sub<Output=T>
@@ -288,13 +304,56 @@ where
 
 }
 
+/*// Based on: https://brilliant.org/wiki/median-finding-algorithm/
+// Elements in the list must be distinct
+fn recursive_rank_find(mut lst : &mut [T], rank  : usize)
+where
+    T : PartialOrd
+{
+
+    let mut sublists = Vec::new();
+    for j in 0..a.len().step_by(5) {
+        let sub = &mut lst[j..(j+5)];
+        sub.sort_by(|a, b| a.partital_cmp(&b).unwrap_or(Ordering::Equal) );
+        sublists.push(sub);
+    }
+
+    let mut medians = Vec::new();
+    for sub in sublists {
+        medians.push(sub[sub.len() / 2]);
+    }
+
+    let mut pivot = medians[0];
+    if medians.len() <= 5 {
+        medians.sort_by(|a, b| a.partial_cmp(&b).unwrap_or(Ordering::Equal) );
+        pivot = medians[medians.len()/2];
+    } else {
+        pivot = recursive_rank_find(medians, len(medians)/2);
+    }
+
+    // Just swap elements in A inplace: if i < pivot and list[i] < pivot, do nothing. Else
+    // swap by an element to the right of pivot. This is done in linear time. The elements
+    // will still be unordered in the half sub-lists, but they will be smaller than or greater
+    // than the pivot.
+    let mut low : Vec<_> = lst.iter().filter(|s| *s < pivot ).copied().collect();
+    let mut high : Vec<_> = lst.iter().filter(|s| *s > pivot ).copied().collect();
+    let k = low.len();
+    if rank < k {
+        recursive_rank_find(&mut low[..], rank)
+    } else if rank > k {
+        recursive_rank_find(&mut high[..], rank-k-1)
+    } else {
+        pivot
+    }
+}*/
+
 #[test]
 fn quantile() {
     let mut s = (0..100).map(|s| 1u64 );
     let s_sum = s.clone().sum::<u64>();
-    let q_25 = running::quantile(&mut s, None, s_sum, 0.25).unwrap();
+    /*let q_25 = running::quantile(&mut s, None, s_sum, 0.25).unwrap();
     let q_75 = running::quantile(&mut s, Some(q_25), s_sum, 0.75).unwrap();
     println!("Q25 = {:?}; Q75 = {:?}", q_25, q_75);
-    println!("Q25/Q75 = {:?};", running::quantiles((0..100).map(|s| 1u64 ), s_sum, &[0.25, 0.75]));
+    println!("Q25/Q75 = {:?};", running::quantiles((0..100).map(|s| 1u64 ), s_sum, &[0.25, 0.75]));*/
 
 }

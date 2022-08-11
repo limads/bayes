@@ -89,8 +89,8 @@ fn test_wls() {
     );
     let cov_diag = DVector::from_vec(vec![0.1, 0.1, 0.2, 0.3, 0.4]);
     let wls = WLS::estimate_from_cov_diag(&y, &cov_diag, &x);
-    println!("beta = {}", wls.ols.beta);
-    println!("err = {}", wls.ols.err.unwrap());
+    // println!("beta = {}", wls.ols.beta);
+    // println!("err = {}", wls.ols.err.unwrap());
 }
 
 #[test]

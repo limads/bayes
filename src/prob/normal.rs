@@ -7,22 +7,30 @@ use std::default::Default;
 pub use rand_distr::Distribution;
 use rand::Rng;
 use nalgebra::*;
+use approx::*;
 
 #[derive(Debug, Clone)]
+#[repr(C)]
 pub struct Normal {
 
     loc : f64,
 
     scale : f64,
 
-    n : usize,
+}
+
+impl Normal {
+
+    pub fn new(loc : f64, scale : f64) -> Self {
+        Self { loc, scale }
+    }
 
 }
 
 impl Default for Normal {
 
     fn default() -> Self {
-        Normal { loc : 0.0, scale : 1.0, n : 1 }
+        STANDARD_NORMAL.clone()
     }
 
 }
@@ -42,9 +50,33 @@ impl Default for Normal {
 
 }*/
 
+// In a location-scale family, p(x|loc, scale) = (1/scale)*p_s((x - loc)/scale),
+// where p_s is the distribution standard (loc=0 and scale=1).
+
+// cargo test -- normal --nocapture
+#[test]
+fn normal() {
+    let n = Normal::new(1.0, 10.0);
+    abs_diff_eq!(n.log_probability(3.), -2.270231079701696 );
+}
+
 impl Univariate for Normal { }
 
+// 1 / (2*pi) (normal base measure)
+const INV_2_PI : f64 = 0.1591549430918953357688837633725143620344596457404564487476673440;
+
+// (2*pi).ln()
+const LN_2_PI : f64 = 1.8378770664093454835606594728112352797227949472755668256343030809;
+
 impl Exponential for Normal {
+
+    fn log_probability(&self, y : f64) -> f64 {
+        normal_log_prob(y, self.loc, self.scale.sqrt())
+    }
+
+    fn base_measure(&self) -> f64 {
+        INV_2_PI
+    }
 
     fn location(&self) -> f64 {
         self.loc
@@ -131,8 +163,7 @@ impl<'a> Condition<MultiNormal> for [Normal] {
 
 const STANDARD_NORMAL : Normal = Normal {
     loc : 0.0,
-    scale : 1.0,
-    n : 0
+    scale : 1.0
 };
 
 /*impl rand::distributions::Distribution<f64> for Normal {
@@ -153,7 +184,7 @@ fn normal_log_prob(x : f64, mu : f64, stddev : f64) -> f64 {
 
 // based on stats::dnorm.ipp
 fn std_normal_log_prob(z : f64, stddev : f64) -> f64 {
-    -0.5 * (2.0*std::f64::consts::PI).ln() - stddev.ln() - z.powf(2.0) / 2.0
+    -0.5 * LN_2_PI - stddev.ln() - z.powf(2.0) / 2.0
 }
 
 // Based on the statslib impl
@@ -161,7 +192,7 @@ pub(crate) fn multinormal_log_prob(x : &DVector<f64>, mean : &DVector<f64>, cov 
 
     // This term can be computed at compile time if VectorN is used. Or we might
     // keep results into a static array of f64 and just index it with x.nrows().
-    let partition = -0.5 * x.nrows() as f64 * (2.0*std::f64::consts::PI).ln();
+    let partition = -0.5 * x.nrows() as f64 * LN_2_PI;
 
     let xc = x.clone() - mean;
 
