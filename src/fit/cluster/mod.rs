@@ -3,13 +3,19 @@
 use std::cmp::Eq;
 
 /// Hierarchical clustering implementation
-pub mod dendro;
+mod dendro;
+
+pub use dendro::*;
 
 /// Spatial density clustering implementation
-pub mod space;
+mod space;
+
+pub use space::*;
 
 /// Centroid-based (or prototype-based) clustering implementation
-pub mod center;
+mod center;
+
+pub use center::*;
 
 pub(crate) mod distance;
 

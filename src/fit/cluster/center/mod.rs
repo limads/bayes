@@ -386,7 +386,7 @@ impl Estimator for KMeans {
 
 }
 
-#[test]
+/*#[test]
 fn kmeans() {
 
     use crate::{prob::{Normal, Prior}, fit::{cluster::KMeans, cluster::KMeansSettings, Estimator}};
@@ -417,6 +417,6 @@ fn kmeans() {
 
     println!("{}", km);
 
-}
+}*/
 
 

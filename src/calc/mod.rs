@@ -7,6 +7,8 @@ use std::ops::AddAssign;
 use std::cmp::{Ord, Eq};
 use std::ops::Sub;
 use std::cmp::{PartialOrd, Ordering};
+use std::ops::Range;
+use rand_distr::Distribution;
 
 /* If two values are equal, return 1.0; else return 0.0. Useful to map
 realizations of categorical in the integers [0..k] to a real weight.
@@ -356,4 +358,32 @@ fn quantile() {
     println!("Q25 = {:?}; Q75 = {:?}", q_25, q_75);
     println!("Q25/Q75 = {:?};", running::quantiles((0..100).map(|s| 1u64 ), s_sum, &[0.25, 0.75]));*/
 
+}
+
+// TODO calculate mean with slice::select_nth_unstable_by
+// or select_nth_unstable.
+
+// Based on https://rosettacode.org/wiki/Cumulative_standard_deviation
+pub struct CumulativeStandardDeviation {
+    n: f64,
+    sum: f64,
+    sum_sq: f64
+}
+
+impl CumulativeStandardDeviation {
+    pub fn new() -> Self {
+        CumulativeStandardDeviation {
+            n: 0.,
+            sum: 0.,
+            sum_sq: 0.
+        }
+    }
+
+    fn push(&mut self, x: f64) -> f64 {
+        self.n += 1.;
+        self.sum += x;
+        self.sum_sq += x * x;
+
+        (self.sum_sq / self.n - self.sum * self.sum / self.n / self.n).sqrt()
+    }
 }

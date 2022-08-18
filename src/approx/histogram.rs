@@ -6,6 +6,7 @@ use std::iter::FromIterator;
 use std::fmt;
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
+use std::collections::BTreeMap;
 
 /// Represents the empirical cumulative distribution function (ECDF) of a sample.
 pub struct Cumulative {
@@ -59,7 +60,7 @@ pub struct Histogram {
 
     // Stores intervals of same size, with the interval order as key and count of ocurrences
     // as values. Intervals without an element count are missing entries.
-    bins : HashMap<u64, u64>
+    bins : BTreeMap<u64, u64>
 }
 
 #[derive(Serialize, Deserialize)]
@@ -71,6 +72,16 @@ pub struct Bin {
 }
 
 impl Histogram {
+
+    pub fn cumulative(&self) -> Vec<u32> {
+        let mut cumul = Vec::new();
+        let mut s : u32 = 0;
+        for (_, v) in self.bins.iter() {
+            s += *v as u32;
+            cumul.push(s);
+        }
+        cumul
+    }
 
     pub fn calculate<'a>(sample : impl Iterator<Item=&'a f64> + Clone, n_bins : usize) -> Self {
         let (mut min, mut max) = (f64::MAX, f64::MIN);
@@ -87,7 +98,7 @@ impl Histogram {
 
         let ampl = max - min;
         let intv = ampl / n_bins as f64;
-        let mut bins = HashMap::<u64, u64>::new();
+        let mut bins = BTreeMap::<u64, u64>::new();
         for s in sample {
 
             // Retrieves the discrete bin allocation for s as the ordered interval
