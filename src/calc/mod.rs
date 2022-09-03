@@ -9,6 +9,13 @@ use std::ops::Sub;
 use std::cmp::{PartialOrd, Ordering};
 use std::ops::Range;
 use rand_distr::Distribution;
+use std::ops::Mul;
+use num_traits::AsPrimitive;
+
+/* The entropy of a bimodal histogram with unequal probabilities equals
+the entropy of the corresponding unimodal histogram with same mass (due to additivity of entropy).
+An algorithm to search for histogram partition points is then to find points such that the local
+entropies are much lower than the global entropy. */
 
 /* If two values are equal, return 1.0; else return 0.0. Useful to map
 realizations of categorical in the integers [0..k] to a real weight.
@@ -39,7 +46,7 @@ pub trait Variate {
 
     fn unscale(&self, inv_scale : &Self) -> Self;
 
-    fn standardize(&self, mean : &Self, inv_scale : &Self) -> Self;
+    fn standardize(&self, mean : &Self, stddev : &Self) -> Self;
 
     fn identity(&self) -> Self;
 
@@ -90,8 +97,59 @@ impl Variate for f64 {
         *self / *inv_scale
     }
 
-    fn standardize(&self, mean : &Self, inv_scale : &Self) -> Self {
-        self.center(mean).unscale(inv_scale)
+    fn standardize(&self, mean : &Self, stddev : &Self) -> Self {
+        (*self - *mean) / *stddev
+    }
+
+}
+
+impl Variate for f32 {
+
+    fn identity(&self) -> Self {
+        *self
+    }
+
+    fn odds(&self) -> f32 {
+        *self / (1. - *self)
+    }
+
+    // The logit or log-odds of a probability p \in [0,1]
+    // is the natural log of the ratio p/(1-p)
+    fn logit(&self) -> Self {
+        let p = if *self == 0.0 {
+            f32::EPSILON
+        } else {
+            *self
+        };
+        (p / (1. - p)).ln()
+    }
+
+    // The sigmoid is the inverse of the logit (or log-odds function).
+    // and is given by 1 / (1 + exp(-logit))
+    fn sigmoid(&self) -> Self {
+        1. / (1. + (-1. * (*self)).exp() )
+    }
+
+    fn center(&self, mean : &Self) -> Self {
+        *self - *mean
+    }
+
+    ///
+    /// "Unscales" a value by multiplying it by its precision.
+    ///
+    /// ```rust
+    /// bayes::calc::unscale(1.0, 2.0);
+    /// ```
+    ///
+    /// ```lua
+    /// bayes.calc.unscale(1, 0.2)
+    /// ```
+    fn unscale(&self, inv_scale : &Self) -> Self {
+        *self / *inv_scale
+    }
+
+    fn standardize(&self, mean : &Self, stddev : &Self) -> Self {
+        (*self - *mean) / *stddev
     }
 
 }
@@ -116,14 +174,15 @@ pub fn counts_to_probs(bins : &[u32]) -> Vec<f32> {
 }
 
 // For each probability entry in the iterator, calculate the entropy
-// for all probs up to the desired point.
-pub fn cumulative_entropies<'a>(probs : impl Iterator<Item=f32> + 'a) -> impl Iterator<Item=f32> + 'a {
-    running::cumulative_sum(probs.map(move |p| p * p.ln() ))
+// for all probs up to the desired point. TODO multiply by -1 outside the summation.
+// Perhaps call cumulative_neg_information
+pub fn cumulative_entropy<'a>(probs : impl Iterator<Item=f32> + 'a) -> impl Iterator<Item=f32> + 'a {
+    running::cumulative_sum(probs.map(move |p| (-1.) * p * p.ln() ))
 }
 
 // Calculate the total entropy for an iterator over probabilities.
 pub fn entropy(probs : impl Iterator<Item=f32>) -> f32 {
-    (-1.)*probs.fold(0.0, |s, p| s + p * p.ln() )
+    (-1.)*probs.fold(0.0, |total, p| total + p * p.ln() )
 }
 
 pub fn squared_deviations<'a>(vals : impl Iterator<Item=f32> + 'a, m : f32) -> impl Iterator<Item=f32>  + 'a {
@@ -145,6 +204,36 @@ pub mod running {
     use std::borrow::Borrow;
     use num_traits::Zero;
     use std::ops::*;
+    use std::cmp::{PartialEq, Eq, PartialOrd};
+
+    pub struct Accumulated<T> {
+        pub pos : usize,
+        pub val : T
+    }
+
+    // Returns the position of iterated elements up to the point
+    // where the cumulative sum equals to or exceeds the val argument
+    // (if the iterator ends before that point, return None).
+    pub fn cumulative_sum_up_to<T>(iter : impl Iterator<Item=T>, val : T) -> Option<Accumulated<T>>
+    where
+        T : AddAssign + Zero + Copy + PartialEq + PartialOrd
+    {
+        let mut cs = cumulative_sum(iter);
+        let mut i = 0;
+        loop {
+            match cs.next() {
+                Some(s) => {
+                    if s >= val {
+                        return Some(Accumulated { pos : i, val : s });
+                    }
+                },
+                None => {
+                    return None;
+                }
+            }
+            i += 1;
+        }
+    }
 
     pub fn cumulative_sum<T>(iter : impl Iterator<Item=T>) -> impl Iterator<Item=T>
     where
@@ -362,28 +451,299 @@ fn quantile() {
 
 // TODO calculate mean with slice::select_nth_unstable_by
 // or select_nth_unstable.
+pub mod frequency {
 
-// Based on https://rosettacode.org/wiki/Cumulative_standard_deviation
-pub struct CumulativeStandardDeviation {
-    n: f64,
-    sum: f64,
-    sum_sq: f64
+    use super::*;
+
+    pub struct Mode<T> {
+        pub pos : usize,
+        pub val : T
+    }
+
+    pub fn mode<T>(s : &[T])
+    where
+        T : PartialOrd + Copy
+    {
+        let (pos, val) = s.iter()
+            .enumerate()
+            .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal) )
+            .unwrap();
+        Mode { pos, val }
+    }
+
 }
 
-impl CumulativeStandardDeviation {
-    pub fn new() -> Self {
-        CumulativeStandardDeviation {
-            n: 0.,
-            sum: 0.,
-            sum_sq: 0.
+pub mod rank {
+
+    #[derive(Debug, Clone, Copy)]
+    pub struct Rank<T> {
+        pub pos : usize,
+        pub val : T
+    }
+
+    use super::*;
+
+    pub fn quantile_mut<T : Ord + Copy>(s : &mut [T], q : f32) -> Rank<T> {
+        assert!(q >= 0.0 && q <= 1.0);
+        let pos = (s.len() as f32 * q) as usize;
+        let (_, q, _) = s.select_nth_unstable(pos);
+        Rank { val : *q, pos }
+    }
+
+    pub fn quantile<T : Ord + Copy>(s : &[T], q : f32) -> Rank<T> {
+        let mut cs = s.to_vec();
+        quantile_mut(&mut cs[..], q)
+    }
+
+    pub fn median_mut<T>(s : &mut [T]) -> Rank<T>
+    where
+        f32 : AsPrimitive<T>,
+        T : Add<Output=T> + Mul<Output=T> + Ord + Copy + 'static
+    {
+        match s.len() % 2 {
+            0 => {
+                let pos = s.len() / 2;
+                let (left, q, _) = s.select_nth_unstable(pos);
+                let half : T = (0.5f32).as_();
+                let n_left = left.len();
+                Rank { val : (left[n_left-1] + *q) * half, pos }
+            },
+            _ => {
+                let pos = s.len() / 2 + 1;
+                let (_, q, _) = s.select_nth_unstable(pos);
+                Rank { val : *q, pos }
+            }
         }
     }
 
-    fn push(&mut self, x: f64) -> f64 {
-        self.n += 1.;
-        self.sum += x;
-        self.sum_sq += x * x;
+    pub fn median_for_sorted<T>(s : &[T]) -> Rank<T>
+    where
+        f32 : AsPrimitive<T>,
+        T : Add<Output=T> + Mul<Output=T> + Copy + 'static
+    {
+        match s.len() % 2 {
+            0 => {
+                let left = s.len() / 2;
+                let right = left + 1;
+                let half : T = (0.5f32).as_();
+                Rank { val : (s[left] + s[right]) * half, pos : left }
+            },
+            _ => {
+                let pos = s.len() / 2 + 1;
+                Rank { val : s[pos], pos }
+            }
+        }
+    }
 
-        (self.sum_sq / self.n - self.sum * self.sum / self.n / self.n).sqrt()
+    pub fn median<T>(s : &[T]) -> Rank<T>
+    where
+        f32 : AsPrimitive<T>,
+        T : Add<Output=T> + Mul<Output=T> + Ord + Copy + 'static
+    {
+        let mut cs = s.to_vec();
+        median_mut(&mut cs[..])
+    }
+
+    // pub struct Interval<T> { }
+
+    // pub fn range()
+
+    /*pub fn median<T>(v : &[T]) -> T {
+
+    }
+
+    pub fn median_mut(v : &[T]) -> {
+
+    }*/
+
+}
+
+// Calculate sample statistics from contiguous memory regions (slices). Cheaper
+// than a running iterator, because there isn't the need to count elements.
+pub mod moment {
+
+    /*pub trait Sample
+    where
+        Self : Add<Output=Self> + Copy + 'static,
+        usize : AsPrimitive<Self>
+    {
+
+    }*/
+
+    use std::ops::{Add, AddAssign, Div, Sub};
+    use num_traits::{Zero, AsPrimitive, Float};
+
+    pub struct FstMoment<T> {
+        pub mean : T,
+    }
+
+    impl<T> FstMoment<T> {
+        pub fn calculate(v : &[T]) -> Self
+        where
+            T : AddAssign + Copy + Zero +  Div<Output=T> + 'static,
+            usize : AsPrimitive<T>
+        {
+            let mut s = T::zero();
+            let n : T = v.len().as_();
+            for vi in v {
+                s += *vi;
+            }
+            FstMoment { mean : s / n }
+        }
+
+        pub fn calculate_weighted<P>(v : &[T], p : &[T]) -> Self
+        where
+            T : AddAssign + Copy + Zero + Div<Output=T> + Float + Sub<Output=T> + 'static,
+            usize : AsPrimitive<T>
+        {
+            assert!(v.len() == p.len());
+            let mut s = T::zero();
+            let n : T = v.len().as_();
+            let two = T::from(2.0).unwrap();
+            for (vi, pi) in v.iter().zip(p.iter()) {
+                s += (*vi) * (*pi);
+            }
+            FstMoment { mean : s }
+        }
+    }
+
+    pub struct SndMoment<T> {
+        pub mean : T,
+        pub var : T
+    }
+
+    impl<T> SndMoment<T> {
+
+        pub fn calculate(v : &[T]) -> Self
+        where
+            T : AddAssign + Copy + Zero + Div<Output=T> + Float + 'static,
+            usize : AsPrimitive<T>
+        {
+            let mut s = T::zero();
+            let mut s_sqr = T::zero();
+            let n : T = v.len().as_();
+            let two = T::from(2.0).unwrap();
+            for vi in v {
+                s += *vi;
+                s_sqr += vi.powf(two);
+            }
+            let mean = s / n;
+            let var = s_sqr / n + mean;
+            SndMoment { mean, var }
+        }
+
+        pub fn calculate_weighted<P>(v : &[T], p : &[T]) -> Self
+        where
+            T : AddAssign + Copy + Zero + Div<Output=T> + Float + Sub<Output=T> + 'static,
+            usize : AsPrimitive<T>
+        {
+            assert!(v.len() == p.len());
+            let mut s = T::zero();
+            let mut s_sqr = T::zero();
+            let n : T = v.len().as_();
+            let two = T::from(2.0).unwrap();
+            for (vi, pi) in v.iter().zip(p.iter()) {
+                let w_vi = (*vi) * (*pi);
+                s += w_vi;
+                s_sqr += w_vi * (*vi);
+            }
+            SndMoment { mean : s, var : s_sqr - s }
+        }
+    }
+
+    // The skewness of a normal distribution is 0.0; distributions skewed to the
+    // right have a positive skew; distributions skewed to the left have a negative skew.
+    pub struct ThrMoment<T> {
+        pub mean : T,
+        pub var : T,
+        pub skew : T
+    }
+
+    impl<T> ThrMoment<T> {
+
+        pub fn calculate(v : &[T]) -> Self
+        where
+            T : AddAssign + Copy + Zero + Div<Output=T> + Float + 'static,
+            usize : AsPrimitive<T>
+        {
+            let mut s = T::zero();
+            let mut s_sqr = T::zero();
+            let mut s_cub = T::zero();
+            let n : T = v.len().as_();
+            let two = T::from(2.0).unwrap();
+            let three = T::from(3.0).unwrap();
+            for vi in v {
+                s += *vi;
+                s_sqr += vi.powf(two);
+                s_cub += vi.powf(three);
+            }
+            let mean = s / n;
+            let var = s_sqr / n + mean;
+            let stddev = var.sqrt();
+            let skew = (s_cub / n - three*mean*var - mean.powf(three)) / stddev.powf(two);
+            ThrMoment { mean, var, skew }
+        }
+    }
+
+    // The kurtosis of a normal distribution is 3.0, distributions with kurtosis
+    // values different than that have more outliers or less outliers than a normal
+    // distribution.
+    pub struct FthMoment<T> {
+        pub mean : T,
+        pub var : T,
+        pub skew : T,
+        pub kurtosis : T
+    }
+
+    impl<T> FthMoment<T> {
+
+        pub fn calculate(v : &[T]) -> Self
+        where
+            T : AddAssign + Copy + Zero + Div<Output=T> + Float + 'static,
+            usize : AsPrimitive<T>
+        {
+            let mut s = T::zero();
+            let mut s_sqr = T::zero();
+            let mut s_cub = T::zero();
+            let mut s_fth = T::zero();
+            let n : T = v.len().as_();
+            let two = T::from(2.0).unwrap();
+            let three = T::from(3.0).unwrap();
+            let four = T::from(4.0).unwrap();
+            let seven = T::from(7.0).unwrap();
+            for vi in v {
+                s += *vi;
+                s_sqr += vi.powf(two);
+                s_cub += vi.powf(three);
+                s_fth += vi.powf(four);
+            }
+            let mean = s / n;
+            let var = s_sqr / n + mean;
+            let stddev = var.sqrt();
+            let skew = (s_cub / n - three*mean*var - mean.powf(three)) / stddev.powf(two);
+            let kurtosis = (seven*mean.powf(four) - four*mean*(s_cub / n) * two*mean.powf(two)*var) / var.powf(two);
+            FthMoment { mean, var, skew, kurtosis }
+        }
+    }
+
+}
+
+// Implementor must check if slice is empty.
+pub(crate) fn iter_disjoint<T>(s : &[T], ranges : &[Range<usize>], mut f : impl FnMut(&[T])) {
+    match ranges.len() {
+        0 => {
+            f(&s[..]);
+        },
+        1 => {
+            f(&s[0..(ranges[0].start)]);
+            f(&s[(ranges[0].end)..(s.len())]);
+        },
+        n => {
+            f(&s[0..(ranges[0].start)]);
+            for i in 0..(ranges.len()-1) {
+                f(&s[(ranges[i].end)..(ranges[i+1].start)]);
+            }
+            f(&s[(ranges[n-1].end)..(s.len())]);
+        }
     }
 }

@@ -39,51 +39,15 @@ fn test_hdi() {
 // is sorted in decreasing order of the interval densities.
 pub fn hdis(accum_hist : &[u32], step : usize, min_width : usize, num_intervals : usize) -> Vec<Range<usize>> {
     let mut hdis = Vec::new();
-    highest_densities(accum_hist, &mut hdis, step);
+
+    // Populate the hdis vec with the highest density within each disjoint range interval of the previous vector.
+    // Iterate recursively until all the remaining ranges are smaller than the required step.
+    // Assume hdi vector is sorted by interval position.
+    super::multi_interval_search(accum_hist, &mut hdis, step, highest_density_at_range, true);
+
     hdis.retain(|hdi| hdi.0.end - hdi.0.start >= min_width );
     hdis.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal) );
     hdis.drain(..).map(|hdi| hdi.0 ).take(num_intervals).collect()
-}
-
-// Populate the hdis vec with the highest density within each disjoint range interval of the previous vector.
-// Iterate recursively until all the remaining ranges are smaller than the required step.
-// Assume hdi vector is sorted by interval position.
-fn highest_densities(accum_hist : &[u32], hdis : &mut Vec<(Range<usize>, f32)>, step : usize) {
-    let len_before = hdis.len();
-    match len_before {
-        0 => {
-            if let Some(d1) = highest_density_at_range(accum_hist, Range { start : 0, end : accum_hist.len() }, step) {
-                hdis.push(d1);
-            }
-        },
-        1 => {
-            if let Some(ds) = highest_density_at_range(accum_hist, Range { start : 0, end : hdis[0].0.start }, step) {
-                hdis.push(ds);
-            }
-            if let Some(de) = highest_density_at_range(accum_hist, Range { start : hdis[0].0.end, end : accum_hist.len() }, step) {
-                hdis.push(de);
-            }
-        },
-        n => {
-            if let Some(ds) = highest_density_at_range(accum_hist, Range { start : 0, end : hdis[0].0.start }, step) {
-                hdis.push(ds);
-            }
-
-            for i in 0..(hdis.len()-1) {
-                if let Some(di) = highest_density_at_range(accum_hist, Range { start : hdis[i].0.end, end : hdis[i+1].0.start }, step) {
-                    hdis.push(di);
-                }
-            }
-            if let Some(de) = highest_density_at_range(accum_hist, Range { start : hdis[n-1].0.end, end : accum_hist.len() }, step) {
-                hdis.push(de);
-            }
-        }
-    }
-    println!("{}", hdis.len());
-    hdis.sort_by(|a, b| a.0.start.cmp(&b.0.start) );
-    if len_before < hdis.len() {
-        highest_densities(accum_hist, hdis, step);
-    }
 }
 
 // Exhaustively search the cumulative histogram for the smallest region with highest mass.
@@ -91,7 +55,11 @@ fn highest_densities(accum_hist : &[u32], hdis : &mut Vec<(Range<usize>, f32)>, 
 // can be equivalently represented by start and scale). This ignores previous regions
 // at the prev parameter, which allows for localization of different modes by calling it
 // recursively starting with empty prev range.
-pub fn highest_density_at_range(accum_hist : &[u32], range : Range<usize>, step : usize) -> Option<(Range<usize>, f32)> {
+pub fn highest_density_at_range(
+    accum_hist : &[u32],
+    range : Range<usize>,
+    step : usize
+) -> Option<(Range<usize>, f32)> {
 
     if range.end - range.start < step {
         return None;

@@ -161,7 +161,7 @@ impl<'a> Condition<MultiNormal> for [Normal] {
 
 }*/
 
-const STANDARD_NORMAL : Normal = Normal {
+pub const STANDARD_NORMAL : Normal = Normal {
     loc : 0.0,
     scale : 1.0
 };
