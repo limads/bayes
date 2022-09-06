@@ -15,7 +15,11 @@ use std::ops::Range;
 use num_traits::Zero;
 use crate::calc::rank::Rank;
 use num_traits::Float;
+use crate::calc::running::*;
+use crate::calc::*;
+use crate::calc::frequency::Mode;
 
+#[derive(Debug, Clone, Copy)]
 pub struct Partition {
     pub mode : usize,
     pub first : usize,
@@ -23,8 +27,8 @@ pub struct Partition {
 }
 
 use petgraph::algo::simple_paths::all_simple_paths;
-use petgraph::DiGraph;
-use petgraph::NodeIndex;
+use petgraph::graph::DiGraph;
+use petgraph::graph::NodeIndex;
 use petgraph::visit::{DfsEvent, Control};
 
 /// Finds a histogram partition over an unknown number of modes (assumed to be
@@ -32,18 +36,18 @@ use petgraph::visit::{DfsEvent, Control};
 /// marginal histogram entropy and the conditional local histograms cross-entropies
 /// wrt. the marginal histogram. If the histogram were to be a mixture distribution,
 /// with a perfect analytical description like m(x) = \sum_k p_k(x)theta_k,
-/// then weighted cross entropies should be equal to the marginal cross-entropy.
+/// then weighted conditional entropies should be equal to a simple function of
+/// the partial marginal entropies (over the region of where the support of the
+/// conditional distribution is nonzero).
 /// Since this most likely won't be the case if we define our functions as a partition
 /// over the variable domain, we settle for the partition that minimizes the error
-/// to this situation. Assumes the partition intervals are symmetrical around histogram
-/// modes to keep the search space to a reasonable size, although this assumption could
-/// be relaxed to allow skewed distributions.
+/// to this situation.
 /// Arguments
-/// p : A probability histogram.
+/// probs : A probability histogram.
 /// min_mode, max_mode: Mode search space
-///
+/// min_range, max_range: minimum and maximum size of conditional intervals
 pub fn min_partial_entropy_partition(
-    probs : &[f32],
+    probs : &[f64],
     min_mode : usize,
     max_mode : usize,
     min_range : usize,
@@ -59,22 +63,31 @@ pub fn min_partial_entropy_partition(
     }
 
     let mut local_maxima = Vec::new();
+    println!("max intervals = {}", max_intervals);
     for _ in 0..max_intervals {
-        let past_sz = local_maxima.len();
+        // let past_sz = local_maxima.len();
         super::single_interval_search(
-            p
+            probs,
             &mut local_maxima,
             min_range / 2,
             local_mode,
             false
         );
-        if local_maxima.len() == past_sz {
-            break;
-        }
+        // if local_maxima.len() == past_sz {
+        //    break;
+        // }
     }
-
+    
+    // Extend first and last modes (note: this can extend the min_range, max_range) informed by the user.
+    if let Some(mut m) = local_maxima.first_mut() {
+        m.0.start = 0;
+    }
+    if let Some(mut m) = local_maxima.last_mut() {
+        m.0.end = probs.len();
+    }
+    
     // Make intervals contiguous.
-    let n_intervals = local_maxima.len();
+    let mut n_intervals = local_maxima.len();
     for i in 1..n_intervals {
         let half_dist = (local_maxima[i].0.start - local_maxima[i-1].0.end) / 2;
         if half_dist > 1 {
@@ -82,185 +95,217 @@ pub fn min_partial_entropy_partition(
             local_maxima[i].0.start = local_maxima[i-1].0.end;
         }
     }
+    println!("local maxima = {:?}", local_maxima);
+    
+    // This step limits the merge graph size to 2^16 = 65_536 nodes.
+    while local_maxima.len() > 16 {
+        for i in (0..(local_maxima.len()-1)).rev().step_by(2) {
+            local_maxima[i].0.end = local_maxima[i+1].0.end;
+            if local_maxima[i+1].1.val > local_maxima[i].1.val {
+                local_maxima[i].1.val = local_maxima[i+1].1.val;
+                local_maxima[i].1.pos = local_maxima[i+1].1.pos;
+            }
+            local_maxima.remove(i+1);
+        }
+    }
+    n_intervals = local_maxima.len();
 
-    let (valid_merge, merge_ranges) = determine_valid_merges(n_intervals, min_mode, max_mode);
-    let acc_probs : Vec<_> = crate::calc::cumulative_sum(p.iter().copied()).collect();
-    let acc_marg_entropy = crate::calc::cumulative_entropy(acc_probs.iter().copied());
-
-    let marg_entropy = acc_marg_entropy.last().unwrap();
-    let mut smallest_entropy = f32::MAX;
-    let mut best_partition = Vec::new();
+    /*let (valid_merges, merge_ranges) = determine_valid_merges(
+        n_intervals,
+        min_mode,
+        max_mode,
+        max_merge_sz
+    );
+    println!("valid merges={:?}\nmerge ranges={:?}", valid_merges, merge_ranges);
+    */
 
     // Now, visit histogram to find the weighted cross-entropy that most closely matches
     // the marginal cross-entropy.
-    let mut hist_ranges = Vec::new();
-    for merge_range in merge_ranges {
-        determine_hist_ranges(&mut hist_ranges, &valid_merges[..], &merge_ranges[..]);
+    let mut merge_ranges = Vec::new();
+    let mut merge_sep = Vec::new();
+    // let mut state = MergeState { n_contiguous : 1, n_merges : 0 };
+    println!("Mode range = {}-{}", min_mode, max_mode);
+    for n_modes in min_mode..(max_mode+1) {
+        println!("For {} modes", n_modes);
+        next_merge_range(
+            &mut merge_ranges, 
+            &mut merge_sep, 
+            &mut vec![Range { start : 0, end : 1 }], 
+            false, 
+            n_modes, 
+            n_intervals,
+            max_merge_sz
+        );
+        // state = MergeState { n_contiguous : 1, n_merges : 0 };
+        // curr_merge.clear();
+        println!("First branch done");
+        next_merge_range(
+            &mut merge_ranges, 
+            &mut merge_sep, 
+            &mut vec![Range { start : 0, end : 1 }], 
+            true,
+            n_modes,
+            n_intervals,
+            max_merge_sz
+        );
+    }
+    
+    let acc_probs : Vec<_> = cumulative_sum(probs.iter().copied())
+        .collect();
+    let acc_marg_entropy : Vec<_> = cumulative_entropy(probs.iter().copied())
+        .collect();
 
+    // Perhaps we can normalize values by this marginal entropy. Since we know 
+    // the summed conditional entropy cannot be lower than the marginal entropy,
+    // this ratio gives a value on the 0.0 - 1.0 scale.
+    // let marg_entropy = acc_marg_entropy.last().unwrap();
+    
+    let mut smallest_entropy = f64::MAX;
+    let mut best_partition = Vec::new();
+    
+    for merge_s in merge_sep {
         let mut total_cond_entropy = 0.0;
-        for r in &hist_ranges {
-            let p = acc_probs[r.end-1] - acc_probs[r.start];
+        for r in &merge_ranges[merge_s.clone()] {
+            let section = Range { 
+                start : local_maxima[r.start].0.start, 
+                end : local_maxima[r.end-1].0.end
+            };
+            let p = (acc_probs[section.end-1] - acc_probs[section.start]).max(std::f64::EPSILON);
+            assert!(p >= std::f64::EPSILON && p <= 1.0);
 
             // Gets section of marginal entropy corresponding to this conditional
-            let partial_entropy = acc_marg_entropy[r.end-1] - acc_marg_entropy[r.start];
+            let partial_entropy = acc_marg_entropy[section.end-1] - acc_marg_entropy[section.start];
+            println!("end: {}; start: {}; diff: {}", acc_marg_entropy[section.end-1], acc_marg_entropy[section.start], partial_entropy);
+            assert!(partial_entropy >= 0.0);
 
-            // The actual conditional entropy is a simple function of the partial marginal entropy
+            // The actual conditional entropy is a simple function of
+            // the partial marginal entropy, derived from a mixture model
+            // assumed to contain conditional distributions over the partitions.
+            // The term -p.ln() makes the conditional for n_modes == 1 = 0, equal
+            // to the marginal.
             let cond_entropy = partial_entropy / p - p.ln();
+            assert!(cond_entropy >= 0.0);
 
             total_cond_entropy += cond_entropy;
+
+            // if total_cond_entropy > smallest_entropy {
+            //    break;
+            // }
         }
 
-        if total_cond_entropy < smallest_entropy {
-            smallest_entropy = total_cond_entropy;
+        // Weight total conditional entropy by probability (averaging). Or else sums
+        // for different modes won't be comparable (we want cond entropy per #modes),
+        // and entropies with higher number of modes would always be preferable.
+        let avg_cond_entropy = total_cond_entropy / merge_s.len() as f64;
+        
+        if avg_cond_entropy < smallest_entropy {
+        
+            println!("Partition {:?} has smaller entropy {} (prev = {:?} with {})", &merge_ranges[merge_s.clone()], total_cond_entropy, best_partition, smallest_entropy);
+            
+            smallest_entropy = avg_cond_entropy;
             best_partition.clear();
-            for r in &hist_ranges {
-                let mode = local_maxima[r].iter()
-                    .max_by(|a, b| a.1.val.partial_cmp(&b.1.val).unwrap_or(Ordering::Equal) )
-                    .unwrap();
-                let (fst, lst) = (local_maxima[r].first().unwrap().0, local_maxima[r].last().unwrap());
+            for r in &merge_ranges[merge_s.clone()] {
+                // Get largest mode in this interval
+                let mode = local_maxima[r.clone()].iter()
+                    .max_by(|a, b|
+                        a.1.val.partial_cmp(&b.1.val).unwrap_or(Ordering::Equal)
+                    ).unwrap().1.pos;
+                let (fst_range, lst_range) = (
+                    local_maxima[r.clone()].first().cloned().unwrap().0,
+                    local_maxima[r.clone()].last().cloned().unwrap().0
+                );
                 let part = Partition {
                     mode,
-                    first : fst.0.start,
-                    last : lst.0.end
+                    first : fst_range.start,
+                    last : lst_range.end
                 };
                 best_partition.push(part);
             }
-        }
-    }
-    partitions
-}
-
-// This could be determined beforehand and saved to a JSON, for example,
-// mapping pairs n_intervals:min_mode:maxmode -> resulting graph, or required
-// to be computed only once by the user, that would pass this graph into
-// min_max_cross_entropy_partition (perhaps wrapped in a config-like structure).
-fn determine_valid_merges(
-    n_intervals : usize,
-    min_mode : usize,
-    max_mode : usize
-) -> (Vec<bool>, Vec<Range<usize>>) {
-
-    // Graph that dictates if the interval (index of local_maxima as node)
-    // should merge with the interval to the right (edge=true indicates a merge).
-    let mut merge_graph = DiGraph::<usize, bool>::new_directed();
-    let fst = merge_graph.add_node(0);
-    grow(&mut merge_graph, (fst, false), 0, n_intervals-1);
-    grow(&mut merge_graph, (fst, true), 0, n_intervals-1);
-
-    // Final merge accumulators
-    let mut valid_merges : Vec<bool> = Vec::new();
-    let mut curr_merge : Vec<bool> = Vec::new();
-    let mut merge_ranges : Vec<Range<usize>> = Vec::new();
-
-    // Graph state.
-    let mut prev_ix = NodeIndex::from(0);
-    let mut n_contiguous = 1;
-    let mut n_merges = 1;
-
-    for n_modes in min_mode..=max_mode {
-        // Filter graph paths with #false - 1 == n_modes AND max(contiguous trues) <= max_merge_sz.
-
-        petgraph::visit::depth_first_search(&merge_grah, Some(fst), |event| {
-            match event {
-                DfsEvent::Discover(ix, _) => {
-
-                    if merge_grah[ix] == 0 {
-
-                        // Starting a new path
-
-                        assert!(curr_merge.len() == 0);
-
-                        n_merges = 1;
-                        n_contiguous = 1;
-                        prev_ix = ix;
-                        Control::Continue
-                    } else if merge_grah[ix] == n_intervals-1 {
-
-                        // Ending last path
-
-                        let len_before = valid_merges.len();
-                        valid_merges.extend(curr_merge.drain(..));
-                        merge_ranges.push(Range { start : len_before, end : valid_merges.len() } );
-                        prev_ix = ix;
-                        Control::Continue
-                    } else {
-
-                        // Decide if merge path should be considered any further.
-
-                        let e = merge_grah.find_edge(prev_ix, ix).unwrap();
-                        let should_merge = merge_grah[&e];
-
-                        if should_merge {
-                            n_contiguous += 1;
-                        } else {
-                            n_contiguous = 1;
-                            n_merges += 1;
-                        }
-
-                        if n_merges <= n_modes && n_contiguous <= max_merge_sz {
-                            curr_merge.push(should_merge);
-                            prev_ix = ix;
-                            Control::Continue
-                        } else {
-                            curr_merge.clear();
-                            prev_ix = ix;
-                            n_contiguous = 1;
-                            n_merges = 1;
-                            Control::Prune
-                        }
-                    }
-                },
-                _ => {
-                    Control::Continue
-                }
-            }
-        });
-    }
-
-    (valid_merges, merge_ranges)
-}
-
-fn determine_hist_ranges(
-    hist_ranges : &mut Vec<Range<usize>>,
-    valid_merges : &[bool],
-    merge_ranges : &[Range<usize>]
-) {
-    hist_ranges.clear();
-    let mut curr_range = Range { start : 0, end : 1 };
-    for should_merge in merge_range {
-        if should_merge {
-            curr_range.end += 1;
         } else {
-            hist_ranges.push(curr_range);
-            curr_range = Range { start : i, end : i+1 };
+            println!("Partition {:?} has entropy {}", &merge_ranges[merge_s.clone()], total_cond_entropy);
         }
     }
+    println!("{:?}", best_partition);
+    best_partition
 }
 
-fn grow(merge_graph : &mut DiGraph::<usize, bool>, prev : (NodeIndex, bool), curr : usize, max : usize) {
-    let new = merge_graph.add_node(curr);
-    graph.add_edge(prev.0, new, prev.1);
-    if curr < max {
-        grow(merge_graph, (new, false), curr + 1, max);
-        grow(merge_graph, (new, true), curr + 1, max);
+// TODO store curr_merge at an allocation arena (the size of allocated
+// vec current state is upper bounded by the call graph size). Alternatively,
+// do not clear the vector when it fails or ends a path, but rather truncate it
+// to the size before the first recursive call was made.
+pub fn next_merge_range(
+    merge_ranges : &mut Vec<Range<usize>>,
+    merge_sep : &mut Vec<Range<usize>>,
+    curr_merge : &mut Vec<Range<usize>>,
+    should_merge : bool,
+    n_modes : usize,
+    n_intervals : usize,
+    max_merge_sz : usize
+) {    
+    if should_merge {
+        curr_merge.last_mut().unwrap().end += 1;
+    } else {
+        let last = curr_merge.last().cloned().unwrap();
+        curr_merge.push(Range { start : last.end, end : last.end + 1 });
+    }
+    
+    println!("Considering: {:?} ({})", curr_merge, n_modes);
+    
+    let last = curr_merge.last().cloned().unwrap();
+    if last.end - last.start <= max_merge_sz {
+        if curr_merge.len() <= n_modes && last.end < n_intervals {
+            next_merge_range(
+                merge_ranges,
+                merge_sep,
+                &mut curr_merge.clone(),
+                false,
+                n_modes,
+                n_intervals,
+                max_merge_sz
+            );
+            println!("First branch done");
+            // TODO truncate vec here to the size before the first recursive call to 
+            // avoid the clone.
+            next_merge_range(
+                merge_ranges,
+                merge_sep,
+                curr_merge,
+                true,
+                n_modes,
+                n_intervals,
+                max_merge_sz
+            );
+        } else if curr_merge.len() == n_modes && last.end == n_intervals {
+            let len_before = merge_ranges.len();
+            println!("n modes = {}; n intervals = {}, max_merge_sz = {}, merges = {:?}",
+                n_modes, n_intervals, max_merge_sz, curr_merge);
+            merge_ranges.extend(curr_merge.drain(..));
+            merge_sep.push(Range { start : len_before, end : merge_ranges.len() });
+        } else {
+            curr_merge.clear();
+            return;
+        }
+    } else {
+        curr_merge.clear();
+        return;
     }
 }
 
-fn local_mode(probs : &[f32], range : Range<usize>, step : usize) -> Option<(Range<usize>, Mode)> {
-    let local_mode = crate::calc::frequency::mode(&probs[range]);
+fn local_mode(
+    probs : &[f64], 
+    range : Range<usize>, 
+    step : usize
+) -> Option<(Range<usize>, Mode<f64>)> {    
+    println!("{:?}", range);
+    if range.end - range.start < 2*step {
+        return None;
+    }
+    let local_mode = crate::calc::frequency::mode(&probs[range.clone()]);
     let pos = local_mode.pos + range.start;
-    let mut start = pos.saturating_sub(step);
-
-    // Extend first and last intervals.
-    if start < step {
-        start = 0;
-    }
-    let mut end = (pos + step).min(probs.len());
-    if probs.len() - end < step {
-        end = probs.len();
-    }
-
-    Some((Range { start, end }, Mode { pos, val : local_mode.val }))
+    let mut start = pos.saturating_sub(step).max(range.start);
+    let mut end = (pos + step).min(range.end);
+    let effective_range = Range { start, end };
+    Some((effective_range, Mode { pos, val : local_mode.val }))
 }
 
 // mean += bin*prob where prob = count/total (but divide by total at the end)
@@ -483,6 +528,14 @@ pub struct Bin {
 }
 
 impl Histogram {
+
+    pub fn interval(&self) -> f64 {
+        self.intv
+    }
+
+    pub fn limits(&self) -> (f64, f64) {
+        (self.min, self.max)
+    }
 
     pub fn cumulative(&self) -> Vec<u32> {
         let mut cumul = Vec::new();

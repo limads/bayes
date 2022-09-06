@@ -1,5 +1,6 @@
 use std::ops::Range;
 use std::cmp::{PartialOrd, Ordering};
+use std::fmt::Debug;
 
 /*#[derive(Debug, Clone, Copy)]
 pub enum Strategy {
@@ -92,7 +93,7 @@ pub fn single_interval_search<F ,T, U>(
     recursive : bool
 ) where
     F : Fn(&[T], Range<usize>, usize) -> Option<(Range<usize>, U)> + Clone + Copy,
-    U : PartialOrd + Clone
+    U : PartialOrd + Clone + Debug
 {
     let len_before = intervals.len();
     add_disjoint_intervals(vals, intervals, step, f);
@@ -103,9 +104,12 @@ pub fn single_interval_search<F ,T, U>(
             .cloned().unwrap();
         intervals.truncate(len_before);
         intervals.push(best_candidate);
+        
+        // Guarantee interval order after any new insertions at the end.
         intervals.sort_by(|a, b| a.0.start.cmp(&b.0.start) );
+        
         if recursive {
-            single_interval_search(vals, intervals, step, f);
+            single_interval_search(vals, intervals, step, f, recursive);
         }
     }
 }
@@ -120,34 +124,50 @@ pub fn multi_interval_search<F, T, U>(
     f : F,
     recursive : bool
 ) where
-    F : Fn(&[T], Range<usize>, usize) -> Option<(Range<usize>, U)> + Clone + Copy
+    F : Fn(&[T], Range<usize>, usize) -> Option<(Range<usize>, U)> + Clone + Copy,
+    U : Debug
 {
     let len_before = intervals.len();
     add_disjoint_intervals(vals, intervals, step, f);
+    
+    // Guarantee interval order after any new insertions at the end.
+    intervals.sort_by(|a, b| a.0.start.cmp(&b.0.start) );
+    
     let any_new = len_before < intervals.len();
     if any_new && recursive {
-        multi_interval_search(vals, intervals, step, f);
+        multi_interval_search(vals, intervals, step, f, recursive);
     }
 }
 
+/* Intervals are added at the end, and are not sorted. */
 pub fn add_disjoint_intervals<F, T, U>(vals : &[T], intervals : &mut Vec<(Range<usize>, U)>, step : usize, f : F)
 where
-    F : Fn(&[T], Range<usize>, usize) -> Option<(Range<usize>, U)> + Clone + Copy
+    F : Fn(&[T], Range<usize>, usize) -> Option<(Range<usize>, U)> + Clone + Copy,
+    U : Debug
 {
+    println!("Added intervals = {:?}", intervals);
     match intervals.len() {
         0 => {
-            if let Some(d1) = f(vals, Range { start : 0, end : vals.len() }, step) {
+            let start_range = Range { start : 0, end : vals.len() };
+            if let Some(d1) = f(vals, start_range.clone(), step) {
+                assert!(d1.0.start >= start_range.start && d1.0.end <= start_range.end);
                 intervals.push(d1);
             }
         },
         1 => {
-            let start_range = Range { start : 0, end : intervals[0].0.start };
-            if let Some(ds) = f(vals, start_range, step) {
-                intervals.push(ds);
+            if intervals[0].0.start > 0 {
+                let start_range = Range { start : 0, end : intervals[0].0.start };
+                if let Some(ds) = f(vals, start_range.clone(), step) {
+                    assert!(ds.0.start >= start_range.start && ds.0.end <= start_range.end);
+                    intervals.push(ds);
+                }
             }
-            let end_range = Range { start : intervals[0].0.end, end : vals.len() };
-            if let Some(de) = f(vals, end_range, step) {
-                intervals.push(de);
+            if intervals[0].0.end < vals.len() {
+                let end_range = Range { start : intervals[0].0.end, end : vals.len() };
+                if let Some(de) = f(vals, end_range.clone(), step) {
+                    assert!(de.0.start >= end_range.start && de.0.end <= end_range.end);
+                    intervals.push(de);
+                }
             }
         },
         n => {
@@ -156,24 +176,33 @@ where
             // no interfere with already-inserted indices (the vector is sorted at the end
             // before the next iteration).
 
-            let start_range = Range { start : 0, end : intervals[0].0.start };
-            if let Some(ds) = f(vals, start_range, step) {
-                intervals.push(ds);
+            if intervals[0].0.start > 0 {
+                let start_range = Range { start : 0, end : intervals[0].0.start };
+                if let Some(ds) = f(vals, start_range.clone(), step) {
+                    assert!(ds.0.start >= start_range.start && ds.0.end <= start_range.end);
+                    intervals.push(ds);
+                }
             }
 
-            for i in 0..(intervals.len()-1) {
+            for i in 0..(n-1) {
                 let middle_range = Range { start : intervals[i].0.end, end : intervals[i+1].0.start };
-                if let Some(di) = f(vals, middle_range, step) {
+                if middle_range.end == middle_range.start {
+                    continue;
+                }
+                if let Some(di) = f(vals, middle_range.clone(), step) {
+                    assert!(di.0.start >= middle_range.start && di.0.end <= middle_range.end);
                     intervals.push(di);
                 }
             }
 
-            if let Some(de) = f(vals, Range { start : intervals[n-1].0.end, end : vals.len() }, step) {
-                intervals.push(de);
+            if intervals[n-1].0.end < vals.len() {
+                let end_range = Range { start : intervals[n-1].0.end, end : vals.len() };
+                if let Some(de) = f(vals, end_range.clone(), step) {
+                    assert!(de.0.start >= end_range.start && de.0.end <= end_range.end);
+                    intervals.push(de);
+                }
             }
         }
     }
 
-    // Guarantee interval order after any new insertions at the end.
-    intervals.sort_by(|a, b| a.0.start.cmp(&b.0.start) );
 }

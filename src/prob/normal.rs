@@ -25,6 +25,10 @@ impl Normal {
         Self { loc, scale }
     }
 
+    pub fn sample_with_default(&self) -> f64 {
+        self.sample(&mut rand::thread_rng())
+    }
+
 }
 
 impl Default for Normal {

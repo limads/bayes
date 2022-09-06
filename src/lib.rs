@@ -1,6 +1,120 @@
 #![allow(warnings)]
-
 #![doc(html_logo_url = "https://raw.githubusercontent.com/limads/bayes/master/assets/bayes-logo.png")]
+
+mod c {
+
+    use crate::prob::*;
+
+    #[no_mangle]
+    pub extern "C" fn histogram_partition(
+        probs : &[f64],
+        firsts : &mut [i64],
+        modes : &mut [i64],
+        lasts : &mut [i64],
+        n_ret_modes : &mut i64,
+        min_mode : i64,
+        max_mode : i64,
+        min_range : i64,
+        max_range : i64
+    ) -> i64 {
+        let partitions = crate::approx::min_partial_entropy_partition(
+            probs,
+            min_mode as usize,
+            max_mode as usize,
+            min_range as usize,
+            max_range as usize
+        );
+        println!("Returned {} partitions", partitions.len());
+        *n_ret_modes = partitions.len() as i64;
+        for (i, p) in partitions.iter().enumerate() {
+            firsts[i] = p.first as i64;
+            modes[i] = p.mode as i64;
+            lasts[i] = p.last as i64;
+        }
+        0
+    }
+
+    #[no_mangle]
+    pub extern "C" fn binned_histogram(
+        data : &[f64],
+        min : &mut f64,
+        max : &mut f64,
+        bin_width : &mut f64,
+        dst : &mut [f64],
+        is_rel : bool
+    ) -> i64 {
+        let hist = crate::approx::Histogram::calculate(data.iter(), dst.len());
+        for i in 0..dst.len() {
+            if is_rel {
+                dst[i] = hist.bin(i).unwrap().prop as f64;
+            } else {
+                dst[i] = hist.bin(i).unwrap().count as f64;
+            }
+        }
+        let (h_min, h_max) = hist.limits();
+        *min = h_min;
+        *max = h_max;
+        *bin_width = hist.interval();
+        0
+    }
+
+    #[no_mangle]
+    pub extern "C" fn error(code : i64, out : &mut [u8]) -> i64 {
+        if code < 0 {
+            return -1;
+        }
+        if let Some(msg) = ERRORS.get(code as usize) {
+            if msg.len() <= out.len() {
+                out[..msg.len()].copy_from_slice(&msg.as_bytes());
+                0
+            } else {
+                -1
+            }
+        } else {
+            -1
+        }
+    }
+
+    pub static ERRORS : [&'static str; 2] = [
+        "No error\0",
+        "Invalid distribution code\0"
+    ];
+
+    #[no_mangle]
+    pub static ERR_INVALID_DISTR : i64 = 1;
+
+    #[no_mangle]
+    pub static NORMAL : i64 = 0;
+
+    #[no_mangle]
+    pub static BINOMIAL : i64 = 1;
+
+    #[no_mangle]
+    pub static POISON : i64 = 2;
+
+    #[no_mangle]
+    pub static GAMMA : i64  = 3;
+
+    #[no_mangle]
+    pub extern "C" fn random_sample(distr : i64, params : &[f64], dst : &mut [f64]) -> i64 {
+        if distr == NORMAL {
+            let mut n = Normal::new(params[0], params[1]);
+            for dst in dst.iter_mut() {
+                *dst = n.sample_with_default();
+            }
+        } else if distr == BINOMIAL {
+
+        } else if distr ==  POISON {
+
+        } else if distr == GAMMA {
+
+        } else {
+            return ERR_INVALID_DISTR;
+        }
+        0
+    }
+
+}
 
 pub mod prob;
 

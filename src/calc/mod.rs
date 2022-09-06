@@ -11,6 +11,7 @@ use std::ops::Range;
 use rand_distr::Distribution;
 use std::ops::Mul;
 use num_traits::AsPrimitive;
+use num_traits::Float;
 
 /* The entropy of a bimodal histogram with unequal probabilities equals
 the entropy of the corresponding unimodal histogram with same mass (due to additivity of entropy).
@@ -176,13 +177,19 @@ pub fn counts_to_probs(bins : &[u32]) -> Vec<f32> {
 // For each probability entry in the iterator, calculate the entropy
 // for all probs up to the desired point. TODO multiply by -1 outside the summation.
 // Perhaps call cumulative_neg_information
-pub fn cumulative_entropy<'a>(probs : impl Iterator<Item=f32> + 'a) -> impl Iterator<Item=f32> + 'a {
-    running::cumulative_sum(probs.map(move |p| (-1.) * p * p.ln() ))
+pub fn cumulative_entropy<'a, F>(probs : impl Iterator<Item=F> + 'a) -> impl Iterator<Item=F> + 'a
+where
+    F : Float + Mul + Add + From<f32> + AddAssign + 'static
+{
+    running::cumulative_sum(probs.map(move |p| <F as From<f32>>::from((-1.)) * (p + F::epsilon()) * (p + F::epsilon()).ln() ))
 }
 
 // Calculate the total entropy for an iterator over probabilities.
-pub fn entropy(probs : impl Iterator<Item=f32>) -> f32 {
-    (-1.)*probs.fold(0.0, |total, p| total + p * p.ln() )
+pub fn entropy<F>(probs : impl Iterator<Item=F>) -> F
+where
+    F : Float + Mul + Add + From<f32> + Zero
+{
+    <F as From<f32>>::from(-1.) * probs.fold(F::zero(), |total, p| total + (p + F::epsilon()) * (p + F::epsilon()).ln() )
 }
 
 pub fn squared_deviations<'a>(vals : impl Iterator<Item=f32> + 'a, m : f32) -> impl Iterator<Item=f32>  + 'a {
@@ -450,17 +457,38 @@ fn quantile() {
 }
 
 // TODO calculate mean with slice::select_nth_unstable_by
-// or select_nth_unstable.
+// or select_nth_unstable. Perhaps rename to freq?
 pub mod frequency {
 
     use super::*;
 
-    pub struct Mode<T> {
+    #[derive(Debug, Clone)]
+    pub struct Mode<T>
+    where T : Copy
+    {
         pub pos : usize,
         pub val : T
     }
 
-    pub fn mode<T>(s : &[T])
+    impl<T> PartialEq for Mode<T>
+    where
+        T : PartialEq + Copy
+    {
+        fn eq(&self, other : &Self) -> bool {
+            self.val.eq(&other.val)
+        }
+    }
+
+    impl<T> PartialOrd for Mode<T>
+    where
+        T : PartialOrd + Copy
+    {
+        fn partial_cmp(&self, other : &Self) -> Option<Ordering> {
+            self.val.partial_cmp(&other.val)
+        }
+    }
+
+    pub fn mode<T>(s : &[T]) -> Mode<T>
     where
         T : PartialOrd + Copy
     {
@@ -468,7 +496,7 @@ pub mod frequency {
             .enumerate()
             .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal) )
             .unwrap();
-        Mode { pos, val }
+        Mode { pos, val : *val }
     }
 
 }
