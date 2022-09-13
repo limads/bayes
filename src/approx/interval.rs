@@ -145,7 +145,7 @@ where
     F : Fn(&[T], Range<usize>, usize) -> Option<(Range<usize>, U)> + Clone + Copy,
     U : Debug
 {
-    println!("Added intervals = {:?}", intervals);
+    // println!("Added intervals = {:?}", intervals);
     match intervals.len() {
         0 => {
             let start_range = Range { start : 0, end : vals.len() };

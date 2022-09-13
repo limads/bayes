@@ -18,6 +18,7 @@ use num_traits::Float;
 use crate::calc::running::*;
 use crate::calc::*;
 use crate::calc::frequency::Mode;
+use itertools::Itertools;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Partition {
@@ -30,6 +31,372 @@ use petgraph::algo::simple_paths::all_simple_paths;
 use petgraph::graph::DiGraph;
 use petgraph::graph::NodeIndex;
 use petgraph::visit::{DfsEvent, Control};
+
+#[derive(Debug, Clone, Copy)]
+pub enum DensityCriteria {
+
+    // Sum over probable regions until the target probability is reached.
+    // Probable regions are those with probability satisfying min_local_prob.
+    LocalRegion { min_local_prob : f64 },
+    
+    // Alternatively, iterate over combinations over all disjoint intervals
+    // (not only those satisfying min_local_prob), filter those combinations
+    // satisfying p >= min_global_prob, and search over the one covering the
+    // smallest area. The combinations have size [min_modes, max_modes]
+    SmallestArea { min_modes : usize, max_modes : usize } 
+}
+
+
+// Partitions that are closer than spacing and have center mode that is
+// higher than both the left and right modes are aggregated.
+fn aggregate_modes_symmetrically(
+    partitions : &mut Vec<Partition>, 
+    probs : &[f64], 
+    spacing : usize
+) {
+
+}
+
+// Simply aggregate all modes that are closer than spacing (smaller
+// modes are aggregated to larger modes).
+fn aggregate_modes_asymetrically(
+    partitions : &mut Vec<Partition>, 
+    probs : &[f64], 
+    spacing : usize
+) {
+
+}
+
+fn merge_intervals(local_maxima : &mut Vec<(Range<usize>, Mode<f64>)>, i : usize) {
+    local_maxima[i].0.end = local_maxima[i+1].0.end;
+    if local_maxima[i+1].1.val > local_maxima[i].1.val {
+        local_maxima[i].1.val = local_maxima[i+1].1.val;
+        local_maxima[i].1.pos = local_maxima[i+1].1.pos;
+    }
+    local_maxima.remove(i+1);
+}
+
+/*
+Finds the set of smallest disjoint areas such that each area contains a local mode,
+its probability is above or equal to local_probability, and the sum of the probabilities over
+the disjoint areas is above or equal to global_probability. If the density criteria smallest_area
+is chosen, modes will get merged together, but can be separated if the function is called 
+recursively by normalizing the probs over the region of the returned partition.
+*/
+pub fn highest_density_partition(
+    probs : &[f64],
+    min_interval : usize,
+    step_increment : usize,
+    min_global_prob : f64,
+    min_mode_ratio : f64,
+    crit : DensityCriteria,
+    recursive : bool
+) -> Vec<Partition> {
+    assert!(min_global_prob >= 0.0 && min_global_prob <= 1.0);
+    assert!(min_global_prob >= 0.0 && min_global_prob <= 1.0);
+    assert!(min_mode_ratio >= 0.0 && min_mode_ratio <= 1.0);
+    let mut local_maxima = Vec::new();
+    let mut max_intervals = probs.len() / min_interval;
+    
+    // This would leave regions with far away modes unexplored.
+    // if let DensityCriteria::SmallestArea { max_modes, .. } = crit {
+    //    max_intervals = max_modes;
+    // }
+
+    for _ in 0..max_intervals {
+        super::single_interval_search(
+            probs,
+            &mut local_maxima,
+            min_interval,
+            local_mode,
+            false
+        );
+    }
+    
+    // println!("Global prob: {}", min_global_prob);
+    let max_mode = local_maxima.iter()
+        .max_by(|a, b| a.1.val.partial_cmp(&b.1.val).unwrap_or(Ordering::Equal) 
+    ).unwrap().1.val;
+    local_maxima.retain(|(_, mode)| mode.val >= min_mode_ratio*max_mode );
+    
+    let acc_probs : Vec<_> = cumulative_sum(probs.iter().copied())
+        .collect();
+    // println!("{:?}", probs);
+    // println!("{:?}", acc_probs);
+    assert!(acc_probs.len() == probs.len());
+    let mut local_probs : Vec<f64> = (0..local_maxima.len())
+        .map(|_| 0.0 ).collect();
+    // println!("local maxima = {:?}", local_maxima);
+    
+    // Holds indices of a subset of local_probs/local_maxima matching 
+    // p >= local_prob (if min_local_prob is informed).
+    let mut probable_regions : Vec<usize> = Vec::new();
+    
+    // Holds sets of findices of local_probs/local_maxima (and the ranges) 
+    // matching p >= local_prob
+    // (if min_local_prob is not informed).
+    // let mut matching_regions : Vec<usize> = Vec::new();
+    // let mut matching_ranges : Vec<Range<usize>> = Vec::new();
+    
+    let mut indices : Vec<usize> = Vec::new();
+    let mut best_regions : Vec<usize> = Vec::new();
+    
+    let mut total_area = 0;
+    
+    let mut parts = Vec::new();
+    
+    /* Search in **parallel** the possibilities of having n=1..n=K modes. Then iterate
+    over combinations to find the one with the smallest area. */
+    
+    loop {
+    
+        // Expand intervals
+        for i in 1..(local_maxima.len()-1) {
+        
+            if local_maxima[i].1.val > local_maxima[i-1].1.val && 
+                local_maxima[i].0.start > step_increment 
+            {
+                local_maxima[i].0.start -= step_increment;
+            } else if local_maxima[i-1].0.end < probs.len() - step_increment {
+                local_maxima[i-1].0.end += step_increment;
+            }
+            
+            if local_maxima[i].1.val > local_maxima[i+1].1.val && 
+                local_maxima[i].0.end < probs.len() - step_increment 
+            {
+                local_maxima[i].0.end += step_increment;
+            } else if local_maxima[i+1].0.start > step_increment {
+                local_maxima[i+1].0.start -= step_increment;
+            }
+        }
+        
+        // Merge intervals that overlapped.
+        for i in (0..(local_maxima.len()-1)).rev() {
+            if local_maxima[i].0.end >= local_maxima[i+1].0.start {
+                merge_intervals(&mut local_maxima, i);
+            }
+        }
+        // println!("Intervals after merge: {:?}", local_maxima);
+        
+        calculate_local_probs(&acc_probs, &local_maxima, &mut local_probs);
+        // println!("Local probs: {:?}", local_probs);
+        
+        let area = local_maxima.iter().fold(0, |a, m| a + (m.0.end - m.0.start ) );
+        if area == total_area {
+            // If area could not be incremented, exit early.
+            // println!("Could not achieve global prob.");
+            return Vec::new();
+        }
+        total_area = area;
+        
+        match crit {
+            DensityCriteria::LocalRegion { min_local_prob } => {
+                assert!(min_local_prob <= min_global_prob);
+                probable_regions.clear();
+                let mut p = 0.0;
+                for (ix, lp) in local_probs.iter().enumerate() {
+                    if *lp >= min_local_prob {
+                        p += *lp;
+                        probable_regions.push(ix);
+                    }
+                }
+                
+                if p >= min_global_prob {
+                    for r_ix in &probable_regions {
+                        parts.push(Partition { 
+                            first : local_maxima[r_ix.clone()].0.start, 
+                            last : local_maxima[r_ix.clone()].0.end-1,
+                            mode : local_maxima[r_ix.clone()].1.pos
+                        }); 
+                    }
+                    break;
+                }
+            },
+            DensityCriteria::SmallestArea { min_modes, max_modes } => {
+    
+                if local_maxima.len() < min_modes {
+                    return Vec::new();
+                }
+                
+                // If the sum of local areas is smaller than the desired
+                // probability, there is no point in doing the more expensive
+                // combinatoric examination.
+                
+                let full_prob = local_probs.iter().fold(0.0, |p, np| p + *np );
+                // println!("Evaluating: {:?}", full_prob);
+                
+                if full_prob < min_global_prob {
+                    continue;
+                }
+                
+                indices.clear();
+                indices.extend(0..local_maxima.len());
+                
+                // matching_regions.clear();
+                // matching_ranges.clear();
+                let mut min_area = None;
+                for n_regions in min_modes..(max_modes+1) {
+                
+                    // Can only combine remaining regions with this
+                    // many regions when n >= actual regions.
+                    if local_maxima.len() < n_regions {
+                        break;
+                    }
+                    
+                    // investigate use of crates permute/permutation to minimize allocations.
+                    for comb in indices.iter().combinations(n_regions) {
+                        let pr = comb.clone().iter().fold(0.0, |p, ix| {
+                            p + local_probs[**ix] 
+                        });
+                        
+                        // Ignore combinations that don't satisfy global prob.
+                        if pr >= min_global_prob {
+                            let area : usize = comb.iter()
+                                .fold(0, |total_area, new_ix| {
+                                    let range = &local_maxima[**new_ix].0;
+                                    total_area + (range.end - range.start) 
+                                });
+                            if let Some(ref mut min_area) = min_area {
+                                if area < *min_area {
+                                    *min_area = area;
+                                    best_regions = comb.iter().map(|i| **i ).collect();
+                                }
+                            } else {
+                                min_area = Some(area);
+                                best_regions = comb.iter().map(|i| **i ).collect();
+                            }
+                        } 
+                    }
+                }
+                // println!("Found min area: {:?}", min_area);
+                
+                if let Some(min_area) = min_area {
+                    for r_ix in &best_regions {
+                        parts.push(Partition { 
+                            first : local_maxima[r_ix.clone()].0.start, 
+                            last : local_maxima[r_ix.clone()].0.end-1,
+                            mode : local_maxima[r_ix.clone()].1.pos
+                        });
+                    }
+                    assert!(parts.len() <= max_modes);
+                    break;
+                }
+            }
+        }
+    }
+    // println!("Found parts: {:?}", parts);
+    
+    /* The algorithm could have merged separate modes. Verify if
+    partitioning sub-intervals still leave the probability above
+    the desired threshold. If the recursive partition finds two
+    or more modes, attempt to use them instead. Do nothing otherwise. */
+    if recursive {
+        for i in (0..parts.len()).rev() {
+            probs_for_partitions(&mut local_probs, &acc_probs, &parts);
+            if parts[i].last - parts[i].first < 2*min_interval {
+                continue;
+            }
+            let local_probs : Vec<_> = (parts[i].first..=parts[i].last)
+                .map(|ix| probs[ix] / local_probs[i] )
+                .collect();
+            let mut local_parts = highest_density_partition(
+                &local_probs[..],
+                min_interval,
+                step_increment,
+                min_global_prob,
+                min_mode_ratio,
+                crit,
+                false
+            );
+            if local_parts.len() <= 1 {
+                continue;
+            }
+            local_parts.iter_mut().for_each(|p| {
+                p.first += parts[i].first; 
+                p.last += parts[i].first;
+            });
+            let mut partition_prob = 0.0;
+            for part in &local_parts {
+                partition_prob += accumulated_range(
+                    &acc_probs[..], 
+                    Range { start : part.first, end : part.last+1} 
+                );
+            }
+            let mut prob_compl = 0.0;
+            for j in 0..local_probs.len() {
+                if j != i {
+                    prob_compl += local_probs[j];
+                }
+            }
+            if partition_prob + prob_compl >= min_global_prob {
+                parts.remove(i);
+                for p in local_parts.iter().rev() {
+                    parts.insert(i, p.clone());
+                }
+            }
+        }
+    }
+    // println!("After recursive: {:?}", parts);
+    
+    /* The algorithm could have overshoot the desired probability
+    due to merges. Trim the found partitions symmetrically until
+    the probability is just above the user-desired threshold. */
+    let mut n_trimmed = 0;
+    loop {
+        probs_for_partitions(&mut local_probs, &acc_probs, &parts);
+        let p = local_probs.iter().copied().sum::<f64>();
+        if p < min_global_prob {
+            break;
+        }
+        n_trimmed = 0;
+        for part in parts.iter_mut() {
+            if part.last - part.first > min_interval && 
+                part.last > part.mode && 
+                part.first < part.mode 
+            {
+                part.first += 1;
+                part.last -= 1;
+                n_trimmed += 1;
+            }
+        }
+        if n_trimmed == 0 {
+            break;
+        }
+    }
+    // println!("After trimming: {:?}", parts);
+  
+    parts
+}
+
+fn probs_for_partitions(local_probs : &mut Vec<f64>, acc_probs : &[f64], parts : &[Partition]) {
+    if parts.len() < local_probs.len() {
+        local_probs.truncate(parts.len());
+    } else if parts.len() > local_probs.len() {
+        local_probs.clear();
+        local_probs.extend((0..parts.len()).map(|_| 0.0));
+    }
+    for (ix, Partition { first, last, .. }) in parts.iter().enumerate() {
+        local_probs[ix] = accumulated_range(
+            &acc_probs[..],
+            Range { start : *first, end : *last + 1 }
+        );
+    }
+    local_probs.truncate(parts.len());
+}
+
+fn calculate_local_probs(
+    acc_probs : &[f64], 
+    local_maxima : &[(Range<usize>, Mode<f64>)], 
+    local_probs : &mut Vec<f64>
+) {
+    local_probs.clear();
+    for (ix, (range, _)) in local_maxima.iter().enumerate() {
+        local_probs.push(accumulated_range(acc_probs, range.clone()));
+    }
+    
+    // Account for merged intervals
+    // local_probs.truncate(local_maxima.len());
+}
 
 /// Finds a histogram partition over an unknown number of modes (assumed to be
 /// within a user-provided interval) that minimizes the difference between the
@@ -63,13 +430,13 @@ pub fn min_partial_entropy_partition(
     }
 
     let mut local_maxima = Vec::new();
-    println!("max intervals = {}", max_intervals);
+    // println!("max intervals = {}", max_intervals);
     for _ in 0..max_intervals {
         // let past_sz = local_maxima.len();
         super::single_interval_search(
             probs,
             &mut local_maxima,
-            min_range / 2,
+            min_range,
             local_mode,
             false
         );
@@ -95,17 +462,12 @@ pub fn min_partial_entropy_partition(
             local_maxima[i].0.start = local_maxima[i-1].0.end;
         }
     }
-    println!("local maxima = {:?}", local_maxima);
+    // println!("local maxima = {:?}", local_maxima);
     
     // This step limits the merge graph size to 2^16 = 65_536 nodes.
     while local_maxima.len() > 16 {
-        for i in (0..(local_maxima.len()-1)).rev().step_by(2) {
-            local_maxima[i].0.end = local_maxima[i+1].0.end;
-            if local_maxima[i+1].1.val > local_maxima[i].1.val {
-                local_maxima[i].1.val = local_maxima[i+1].1.val;
-                local_maxima[i].1.pos = local_maxima[i+1].1.pos;
-            }
-            local_maxima.remove(i+1);
+        for i in (0..(local_maxima.len()-1)).rev() {
+            merge_intervals(&mut local_maxima, i);
         }
     }
     n_intervals = local_maxima.len();
@@ -124,9 +486,9 @@ pub fn min_partial_entropy_partition(
     let mut merge_ranges = Vec::new();
     let mut merge_sep = Vec::new();
     // let mut state = MergeState { n_contiguous : 1, n_merges : 0 };
-    println!("Mode range = {}-{}", min_mode, max_mode);
+    // println!("Mode range = {}-{}", min_mode, max_mode);
     for n_modes in min_mode..(max_mode+1) {
-        println!("For {} modes", n_modes);
+        // println!("For {} modes", n_modes);
         next_merge_range(
             &mut merge_ranges, 
             &mut merge_sep, 
@@ -138,7 +500,7 @@ pub fn min_partial_entropy_partition(
         );
         // state = MergeState { n_contiguous : 1, n_merges : 0 };
         // curr_merge.clear();
-        println!("First branch done");
+        // println!("First branch done");
         next_merge_range(
             &mut merge_ranges, 
             &mut merge_sep, 
@@ -170,12 +532,12 @@ pub fn min_partial_entropy_partition(
                 start : local_maxima[r.start].0.start, 
                 end : local_maxima[r.end-1].0.end
             };
-            let p = (acc_probs[section.end-1] - acc_probs[section.start]).max(std::f64::EPSILON);
+            let p = accumulated_range(&acc_probs, section.clone()).max(std::f64::EPSILON);
             assert!(p >= std::f64::EPSILON && p <= 1.0);
 
             // Gets section of marginal entropy corresponding to this conditional
-            let partial_entropy = acc_marg_entropy[section.end-1] - acc_marg_entropy[section.start];
-            println!("end: {}; start: {}; diff: {}", acc_marg_entropy[section.end-1], acc_marg_entropy[section.start], partial_entropy);
+            let partial_entropy = accumulated_range(&acc_marg_entropy, section.clone());
+            // println!("end: {}; start: {}; diff: {}", acc_marg_entropy[section.end-1], acc_marg_entropy[section.start], partial_entropy);
             assert!(partial_entropy >= 0.0);
 
             // The actual conditional entropy is a simple function of
@@ -200,7 +562,7 @@ pub fn min_partial_entropy_partition(
         
         if avg_cond_entropy < smallest_entropy {
         
-            println!("Partition {:?} has smaller entropy {} (prev = {:?} with {})", &merge_ranges[merge_s.clone()], total_cond_entropy, best_partition, smallest_entropy);
+            // println!("Partition {:?} has smaller entropy {} (prev = {:?} with {})", &merge_ranges[merge_s.clone()], total_cond_entropy, best_partition, smallest_entropy);
             
             smallest_entropy = avg_cond_entropy;
             best_partition.clear();
@@ -217,15 +579,15 @@ pub fn min_partial_entropy_partition(
                 let part = Partition {
                     mode,
                     first : fst_range.start,
-                    last : lst_range.end
+                    last : lst_range.end - 1
                 };
                 best_partition.push(part);
             }
         } else {
-            println!("Partition {:?} has entropy {}", &merge_ranges[merge_s.clone()], total_cond_entropy);
+            // println!("Partition {:?} has entropy {}", &merge_ranges[merge_s.clone()], total_cond_entropy);
         }
     }
-    println!("{:?}", best_partition);
+    // println!("{:?}", best_partition);
     best_partition
 }
 
@@ -249,7 +611,7 @@ pub fn next_merge_range(
         curr_merge.push(Range { start : last.end, end : last.end + 1 });
     }
     
-    println!("Considering: {:?} ({})", curr_merge, n_modes);
+    // println!("Considering: {:?} ({})", curr_merge, n_modes);
     
     let last = curr_merge.last().cloned().unwrap();
     if last.end - last.start <= max_merge_sz {
@@ -263,7 +625,7 @@ pub fn next_merge_range(
                 n_intervals,
                 max_merge_sz
             );
-            println!("First branch done");
+            // println!("First branch done");
             // TODO truncate vec here to the size before the first recursive call to 
             // avoid the clone.
             next_merge_range(
@@ -277,8 +639,8 @@ pub fn next_merge_range(
             );
         } else if curr_merge.len() == n_modes && last.end == n_intervals {
             let len_before = merge_ranges.len();
-            println!("n modes = {}; n intervals = {}, max_merge_sz = {}, merges = {:?}",
-                n_modes, n_intervals, max_merge_sz, curr_merge);
+            //println!("n modes = {}; n intervals = {}, max_merge_sz = {}, merges = {:?}",
+            //    n_modes, n_intervals, max_merge_sz, curr_merge);
             merge_ranges.extend(curr_merge.drain(..));
             merge_sep.push(Range { start : len_before, end : merge_ranges.len() });
         } else {
@@ -294,20 +656,44 @@ pub fn next_merge_range(
 fn local_mode(
     probs : &[f64], 
     range : Range<usize>, 
-    step : usize
+    interval_sz : usize
 ) -> Option<(Range<usize>, Mode<f64>)> {    
-    println!("{:?}", range);
-    if range.end - range.start < 2*step {
+    // println!("{:?}", range);
+    if range.end - range.start < interval_sz {
         return None;
     }
     let local_mode = crate::calc::frequency::mode(&probs[range.clone()]);
     let pos = local_mode.pos + range.start;
-    let mut start = pos.saturating_sub(step).max(range.start);
-    let mut end = (pos + step).min(range.end);
+    let mut start = pos.saturating_sub(interval_sz / 2).max(range.start);
+    let mut end = (pos + interval_sz / 2).min(range.end);
+    let mut sz = end - start;
+    let mut extended_left = false;
+    let mut extended_right = false;
+    loop {
+        if end - start < interval_sz && start > range.start {
+            start -= 1;
+            extended_left = true;
+        } else {
+            extended_left = false;
+        }
+        if end - start < interval_sz && end < range.end {
+            end += 1;
+            extended_left = true;
+        } else {
+            extended_left = false;
+        }
+        if end - start == interval_sz {
+            break;
+        } else {
+            if !extended_left && !extended_right {
+                return None;
+            }
+        }
+    }
     let effective_range = Range { start, end };
     Some((effective_range, Mode { pos, val : local_mode.val }))
 }
-
+    
 // mean += bin*prob where prob = count/total (but divide by total at the end)
 pub fn mean_for_hist<B>(h : &[B]) -> B
 where
@@ -456,8 +842,9 @@ where
 
         // Take the least likely normal
         let rare_range = ranges.iter().min_by(|a, b| {
-            (cumul_probs[a.end]-cumul_probs[a.start]).partial_cmp(&(cumul_probs[b.end]-cumul_probs[b.start]))
-            .unwrap_or(Ordering::Equal)
+            let ca = accumulated_range(&cumul_probs, (*a).clone());
+            let cb = accumulated_range(&cumul_probs, (*b).clone());
+            (ca).partial_cmp(&cb).unwrap_or(Ordering::Equal)
         }).unwrap();
         normal_is_likely = (cumul_probs[rare_range.end]-cumul_probs[rare_range.start]) >= min_prob;
     }

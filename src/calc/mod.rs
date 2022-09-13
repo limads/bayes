@@ -254,6 +254,21 @@ pub mod running {
             }
         )
     }
+    
+    /* Anything calculated from a cumulative sum can have intermediate values
+    calculated in O(1) by indexing the difference over a range. But The first range
+    is a special case, since the cumulative sum is simply the regular value
+    (cumulative sums start at first element, not at zero). */
+    pub fn accumulated_range<T>(accum : &[T], range : Range<usize>) -> T 
+    where
+        T : Sub<Output=T> + Copy
+    {
+        if range.start > 0 {
+            accum[range.end-1] - accum[range.start]
+        } else {
+            accum[range.end-1]
+        }
+    }
 
     pub fn single_pass_sum_sum_sq(sample : impl IntoIterator<Item=impl Borrow<f64>>) -> (f64, f64, usize) {
         let mut n = 0;

@@ -1,10 +1,48 @@
 #![allow(warnings)]
 #![doc(html_logo_url = "https://raw.githubusercontent.com/limads/bayes/master/assets/bayes-logo.png")]
 
+#[abiparse::export_abi]
 mod c {
 
     use crate::prob::*;
 
+    #[no_mangle]
+    pub extern "C" fn histogram_hdis(
+        probs : &[f64],
+        min_interval : i64,
+        step_increment : i64,
+        min_global_prob : f64,
+        min_mode_ratio : f64,
+        min_modes : i64,
+        max_modes : i64,
+        firsts : &mut [i64],
+        modes : &mut [i64],
+        lasts : &mut [i64],
+        n_ret_modes : &mut i64,
+        recursive : bool
+    ) -> i64 {
+        let crit = crate::approx::DensityCriteria::SmallestArea { 
+            min_modes : min_modes as usize,
+            max_modes : max_modes as usize
+        };
+        let partitions = crate::approx::highest_density_partition(
+            probs, 
+            min_interval as usize, 
+            step_increment as usize,
+            min_global_prob,
+            min_mode_ratio,
+            crit,
+            recursive
+        );
+        *n_ret_modes = partitions.len() as i64;
+        for (i, p) in partitions.iter().enumerate() {
+            firsts[i] = p.first as i64;
+            modes[i] = p.mode as i64;
+            lasts[i] = p.last as i64;
+        }
+        0
+     }
+    
     #[no_mangle]
     pub extern "C" fn histogram_partition(
         probs : &[f64],
