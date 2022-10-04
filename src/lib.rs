@@ -7,6 +7,39 @@ mod c {
     use crate::prob::*;
 
     #[no_mangle]
+    pub extern "C" fn histogram_closest_median_mode_partition(
+        probs : &[f64],
+        firsts : &mut [i64],
+        modes : &mut [i64],
+        lasts : &mut [i64],
+        n_ret_modes : &mut i64,
+        min_mode : i64,
+        max_mode : i64,
+        min_range : i64,
+        max_range : i64,
+        min_prob : f64,
+        max_med_mode_dist : i64
+    ) -> i64 {
+        let partitions = crate::approx::closest_median_mode_partition(
+            probs,
+            min_mode as usize,
+            max_mode as usize,
+            min_range as usize,
+            max_range as usize,
+            min_prob,
+            max_med_mode_dist as usize
+        );
+        println!("Returned {} partitions", partitions.len());
+        *n_ret_modes = partitions.len() as i64;
+        for (i, p) in partitions.iter().enumerate() {
+            firsts[i] = p.first as i64;
+            modes[i] = p.mode as i64;
+            lasts[i] = p.last as i64;
+        }
+        0
+    }
+    
+    #[no_mangle]
     pub extern "C" fn histogram_hdis(
         probs : &[f64],
         min_interval : i64,

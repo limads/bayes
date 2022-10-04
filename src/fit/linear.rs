@@ -52,6 +52,56 @@ impl OLS {
         Some(Self { beta, sigma_b, err : None, r_squared : None })
     }
 
+    // estimate from a column of y values and a row-major slice x.chunks(nrows)
+    pub fn estimate_from_rows<'a>(
+        y : &[f64],
+        xs : impl IntoIterator<Item=&'a [f64]> + Clone, 
+        add_intercept : bool
+    ) -> Option<Self> {
+        let ncols = xs.clone().into_iter().next()?.len();
+        let n = y.len();
+        let dm = if add_intercept {
+            let mut dm = DMatrix::zeros(n, ncols + 1);
+            dm.column_mut(0).fill(1.0);
+            for (i, c) in xs.into_iter().enumerate() {
+                dm.row_mut(i).columns_mut(1, ncols).copy_from_slice(c);
+            }
+            dm
+        } else {
+            let mut dm = DMatrix::zeros(n, ncols);
+            for (i, c) in xs.into_iter().enumerate() {
+                dm.row_mut(i).copy_from_slice(c);
+            }
+            dm
+        };
+        Self::estimate_from_data(&DVector::from(y.to_vec()), &dm)
+    }
+
+    // estimate from a column of y values and a column-major slice x.chunks(ncols)
+    pub fn estimate_from_cols<'a>(
+        y : &[f64], 
+        xs : impl IntoIterator<Item=&'a [f64]> + Clone, 
+        add_intercept : bool
+    ) -> Option<Self> {
+        let ncols = xs.clone().into_iter().count();
+        let n = y.len();
+        let dm = if add_intercept {
+            let mut dm = DMatrix::zeros(n, ncols + 1);
+            dm.column_mut(0).fill(1.0);
+            for (i, c) in xs.into_iter().enumerate() {
+                dm.column_mut(i+1).copy_from_slice(c);
+            }
+            dm
+        } else {
+            let mut dm = DMatrix::zeros(n, ncols);
+            for (i, c) in xs.into_iter().enumerate() {
+                dm.column_mut(i).copy_from_slice(c);
+            }
+            dm
+        };
+        Self::estimate_from_data(&DVector::from(y.to_vec()), &dm)
+    }
+    
     pub fn estimate_from_data(y : &DVector<f64>, x : &DMatrix<f64>) -> Option<Self> {
         let xx = x.clone().transpose() * x;
         let xy = x.clone().transpose() * y;

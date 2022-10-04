@@ -46,7 +46,6 @@ pub enum DensityCriteria {
     SmallestArea { min_modes : usize, max_modes : usize } 
 }
 
-
 // Partitions that are closer than spacing and have center mode that is
 // higher than both the left and right modes are aggregated.
 fn aggregate_modes_symmetrically(
@@ -398,6 +397,203 @@ fn calculate_local_probs(
     // local_probs.truncate(local_maxima.len());
 }
 
+// Holds a series of merge/sep possibilities.
+struct MergeSpace {
+    merge_ranges : Vec<Range<usize>>,
+    merge_sep : Vec<Range<usize>>,
+    local_maxima : Vec<(Range<usize>, Mode<f64>)>
+}
+
+impl MergeSpace {
+
+    fn calculate(probs : &[f64], 
+        min_mode : usize,
+        max_mode : usize,
+        min_range : usize,
+        max_range : usize
+    ) -> Self {
+        // Holds as many local maxima as are possible by array size / min_range.
+        let max_intervals = probs.len() / min_range;
+
+        // TODO iterate backward from max range up to first divisor
+        // of max_merge_sz
+        let mut max_merge_sz = 1;
+        while max_merge_sz*min_range <= max_range {
+            max_merge_sz += 1;
+        }
+
+        let mut local_maxima = Vec::new();
+        // println!("max intervals = {}", max_intervals);
+        for _ in 0..max_intervals {
+            // let past_sz = local_maxima.len();
+            super::single_interval_search(
+                probs,
+                &mut local_maxima,
+                min_range,
+                local_mode,
+                false
+            );
+            // if local_maxima.len() == past_sz {
+            //    break;
+            // }
+        }
+        
+        // Extend first and last modes (note: this can extend the min_range, max_range) informed by the user.
+        if let Some(mut m) = local_maxima.first_mut() {
+            m.0.start = 0;
+        }
+        if let Some(mut m) = local_maxima.last_mut() {
+            m.0.end = probs.len();
+        }
+        
+        // Make intervals contiguous.
+        let mut n_intervals = local_maxima.len();
+        for i in 1..n_intervals {
+            let half_dist = (local_maxima[i].0.start - local_maxima[i-1].0.end) / 2;
+            if half_dist > 1 {
+                local_maxima[i-1].0.end += half_dist;
+                local_maxima[i].0.start = local_maxima[i-1].0.end;
+            }
+        }
+        println!("after contiguous = {:?}", local_maxima);
+        
+        // This step limits the merge graph size to 2^16 = 65_536 nodes.
+        'outer : while local_maxima.len() > 16 {
+            for i in (0..(local_maxima.len()-1)).rev() {
+                merge_intervals(&mut local_maxima, i);
+                if local_maxima.len() <= 16 {
+                    break 'outer;
+                }
+            }
+        }
+        n_intervals = local_maxima.len();
+        println!("after merrge = {:?}", local_maxima);
+
+        /*let (valid_merges, merge_ranges) = determine_valid_merges(
+            n_intervals,
+            min_mode,
+            max_mode,
+            max_merge_sz
+        );
+        println!("valid merges={:?}\nmerge ranges={:?}", valid_merges, merge_ranges);
+        */
+
+        // Now, visit histogram to find the weighted cross-entropy that most closely matches
+        // the marginal cross-entropy.
+        let mut merge_ranges = Vec::new();
+        let mut merge_sep = Vec::new();
+        // let mut state = MergeState { n_contiguous : 1, n_merges : 0 };
+        // println!("Mode range = {}-{}", min_mode, max_mode);
+        for n_modes in min_mode..(max_mode+1) {
+            // println!("For {} modes", n_modes);
+            next_merge_range(
+                &mut merge_ranges, 
+                &mut merge_sep, 
+                &mut vec![Range { start : 0, end : 1 }], 
+                false, 
+                n_modes, 
+                n_intervals,
+                max_merge_sz
+            );
+            // state = MergeState { n_contiguous : 1, n_merges : 0 };
+            // curr_merge.clear();
+            // println!("First branch done");
+            next_merge_range(
+                &mut merge_ranges, 
+                &mut merge_sep, 
+                &mut vec![Range { start : 0, end : 1 }], 
+                true,
+                n_modes,
+                n_intervals,
+                max_merge_sz
+            );
+        }
+        
+        Self { merge_ranges, merge_sep, local_maxima }
+    }
+    
+    
+}
+
+/* Gets the partition such that the average distance between mode and median
+within each partition is minimized. */
+pub fn closest_median_mode_partition(
+    probs : &[f64],
+    min_mode : usize,
+    max_mode : usize,
+    min_range : usize,
+    max_range : usize,
+    min_prob : f64,
+    max_med_mode_dist : usize
+) -> Vec<Partition> {
+    let MergeSpace { 
+        merge_ranges, 
+        merge_sep, 
+        local_maxima 
+    } = MergeSpace::calculate(probs, min_mode, max_mode, min_range, max_range);
+    println!("{:?}", (min_mode, max_mode, min_range, max_range));
+    let acc_probs : Vec<_> = cumulative_sum(probs.iter().copied())
+        .collect();
+    let acc_marg_entropy : Vec<_> = cumulative_entropy(probs.iter().copied())
+        .collect();
+    let acc_probs : Vec<_> = cumulative_sum(probs.iter().copied())
+        .collect();
+    let mut min_dist : f32 = f32::MAX;
+    let mut best_part = Vec::new();
+    println!("{:?}", local_maxima);
+    
+    'outer : for merge_s in merge_sep {
+        let mut curr_dist = 0.0;
+        let mut n_counted = 0;
+        'inner : for r in &merge_ranges[merge_s.clone()] {
+            let section = Range { 
+                start : local_maxima[r.start].0.start, 
+                end : local_maxima[r.end-1].0.end
+            };
+            let local_p = accumulated_range(&acc_probs, section.clone())
+                .max(std::f64::EPSILON);
+            if local_p < min_prob {
+                continue;
+            }
+            n_counted += 1;
+            let mode_ix = local_maxima[r.clone()].iter()
+                .max_by(|a, b| a.1.val.partial_cmp(&b.1.val).unwrap_or(Ordering::Equal) )
+                .unwrap()
+                .1.pos;
+            
+            let local_probs = &acc_probs[section.clone()];
+            let mut median_ix = local_probs
+                .partition_point(|p| *p / local_p <= 0.5).min(local_probs.len()-1);
+            median_ix += section.start;
+            
+            let diff = mode_ix.abs_diff(median_ix);
+            if diff > max_med_mode_dist {
+                continue 'outer;
+            }
+            
+            curr_dist += diff as f32;
+        }
+        curr_dist /= (n_counted as f32);    
+        if n_counted >= min_mode && curr_dist < min_dist {
+            min_dist = curr_dist;
+            best_part.clear();
+            for r in  &merge_ranges[merge_s.clone()] {
+                let part = part_from_range(&local_maxima[r.clone()]);
+                best_part.push(part);
+            }
+        }
+    }
+    println!("{:?}", (&best_part, &min_dist));
+    best_part.retain(|part| {
+        let local_p = accumulated_range(
+            &acc_probs, 
+            Range { start : part.first, end : part.last + 1 }
+        );
+        local_p >= min_prob
+    });
+    best_part
+}
+
 /// Finds a histogram partition over an unknown number of modes (assumed to be
 /// within a user-provided interval) that minimizes the difference between the
 /// marginal histogram entropy and the conditional local histograms cross-entropies
@@ -420,97 +616,11 @@ pub fn min_partial_entropy_partition(
     min_range : usize,
     max_range : usize
 ) -> Vec<Partition> {
-
-    // Holds as many local maxima as are possible by array size / min_range.
-    let max_intervals = probs.len() / min_range;
-
-    let mut max_merge_sz = 1;
-    while max_merge_sz*min_range <= max_range {
-        max_merge_sz += 1;
-    }
-
-    let mut local_maxima = Vec::new();
-    // println!("max intervals = {}", max_intervals);
-    for _ in 0..max_intervals {
-        // let past_sz = local_maxima.len();
-        super::single_interval_search(
-            probs,
-            &mut local_maxima,
-            min_range,
-            local_mode,
-            false
-        );
-        // if local_maxima.len() == past_sz {
-        //    break;
-        // }
-    }
-    
-    // Extend first and last modes (note: this can extend the min_range, max_range) informed by the user.
-    if let Some(mut m) = local_maxima.first_mut() {
-        m.0.start = 0;
-    }
-    if let Some(mut m) = local_maxima.last_mut() {
-        m.0.end = probs.len();
-    }
-    
-    // Make intervals contiguous.
-    let mut n_intervals = local_maxima.len();
-    for i in 1..n_intervals {
-        let half_dist = (local_maxima[i].0.start - local_maxima[i-1].0.end) / 2;
-        if half_dist > 1 {
-            local_maxima[i-1].0.end += half_dist;
-            local_maxima[i].0.start = local_maxima[i-1].0.end;
-        }
-    }
-    // println!("local maxima = {:?}", local_maxima);
-    
-    // This step limits the merge graph size to 2^16 = 65_536 nodes.
-    while local_maxima.len() > 16 {
-        for i in (0..(local_maxima.len()-1)).rev() {
-            merge_intervals(&mut local_maxima, i);
-        }
-    }
-    n_intervals = local_maxima.len();
-
-    /*let (valid_merges, merge_ranges) = determine_valid_merges(
-        n_intervals,
-        min_mode,
-        max_mode,
-        max_merge_sz
-    );
-    println!("valid merges={:?}\nmerge ranges={:?}", valid_merges, merge_ranges);
-    */
-
-    // Now, visit histogram to find the weighted cross-entropy that most closely matches
-    // the marginal cross-entropy.
-    let mut merge_ranges = Vec::new();
-    let mut merge_sep = Vec::new();
-    // let mut state = MergeState { n_contiguous : 1, n_merges : 0 };
-    // println!("Mode range = {}-{}", min_mode, max_mode);
-    for n_modes in min_mode..(max_mode+1) {
-        // println!("For {} modes", n_modes);
-        next_merge_range(
-            &mut merge_ranges, 
-            &mut merge_sep, 
-            &mut vec![Range { start : 0, end : 1 }], 
-            false, 
-            n_modes, 
-            n_intervals,
-            max_merge_sz
-        );
-        // state = MergeState { n_contiguous : 1, n_merges : 0 };
-        // curr_merge.clear();
-        // println!("First branch done");
-        next_merge_range(
-            &mut merge_ranges, 
-            &mut merge_sep, 
-            &mut vec![Range { start : 0, end : 1 }], 
-            true,
-            n_modes,
-            n_intervals,
-            max_merge_sz
-        );
-    }
+    let MergeSpace { 
+        merge_ranges, 
+        merge_sep, 
+        local_maxima 
+    } = MergeSpace::calculate(probs, min_mode, max_mode, min_range, max_range);
     
     let acc_probs : Vec<_> = cumulative_sum(probs.iter().copied())
         .collect();
@@ -568,19 +678,7 @@ pub fn min_partial_entropy_partition(
             best_partition.clear();
             for r in &merge_ranges[merge_s.clone()] {
                 // Get largest mode in this interval
-                let mode = local_maxima[r.clone()].iter()
-                    .max_by(|a, b|
-                        a.1.val.partial_cmp(&b.1.val).unwrap_or(Ordering::Equal)
-                    ).unwrap().1.pos;
-                let (fst_range, lst_range) = (
-                    local_maxima[r.clone()].first().cloned().unwrap().0,
-                    local_maxima[r.clone()].last().cloned().unwrap().0
-                );
-                let part = Partition {
-                    mode,
-                    first : fst_range.start,
-                    last : lst_range.end - 1
-                };
+                let part = part_from_range(&local_maxima[r.clone()]);
                 best_partition.push(part);
             }
         } else {
@@ -589,6 +687,22 @@ pub fn min_partial_entropy_partition(
     }
     // println!("{:?}", best_partition);
     best_partition
+}
+
+fn part_from_range(local_maxima : &[(Range<usize>, Mode<f64>)]) -> Partition {
+    let mode = local_maxima.iter()
+    .max_by(|a, b|
+        a.1.val.partial_cmp(&b.1.val).unwrap_or(Ordering::Equal)
+    ).unwrap().1.pos;
+    let (fst_range, lst_range) = (
+        local_maxima.first().cloned().unwrap().0,
+        local_maxima.last().cloned().unwrap().0
+    );
+    Partition {
+        mode,
+        first : fst_range.start,
+        last : lst_range.end - 1
+    }
 }
 
 // TODO store curr_merge at an allocation arena (the size of allocated
@@ -723,7 +837,7 @@ where
     f32 : Div<Output=f32>
 {
     let max_val : f32 = h.last().copied().unwrap().as_();
-    let pos = h.partition_point(|a| a.as_() / max_val <= q );
+    let pos = h.partition_point(|a| a.as_() / max_val <= q ).min(h.len()-1);
     Rank { pos, val : h[pos] }
 }
 
