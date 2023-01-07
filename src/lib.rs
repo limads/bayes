@@ -304,3 +304,29 @@ impl Stochastic for Process<Joint<Normal>>;
 impl Stochastic for Process<Dirichlet>
 
 */
+
+use nalgebra::*;
+
+pub fn homoscedastic(n : usize, var : f64) -> DMatrix<f64> {
+    let mut c = DMatrix::zeros(n, n);
+    c.fill_with_identity();
+    c.scale_mut(var);
+    c
+}
+
+// cargo test --lib -- rwmh --nocapture
+#[test]
+fn rwmh() {
+    use statrs::distribution::*;
+    use mcmclib::*;
+    let init_vals = DVector::zeros(2);
+    let lp = |vals : &DVector<f64>|->f64 {
+        // let mvn = statrs::distribution::MultivariateNormal::new(vals.clone().data.into(), homoscedastic(2, 10.0).data.into()).unwrap();
+        // mvn.ln_pdf(&vec![10.0, 10.0].into())
+        let mvn = statrs::distribution::MultivariateNormal::new(vec![0.0, 0.0].into(), homoscedastic(2, 10.0).data.into()).unwrap();
+        mvn.ln_pdf(&vals.data.as_vec().clone().into())
+    };
+    let out = rwmh_init(&init_vals, lp, &RWMHSettings::default()).unwrap();
+    println!("{:?}", out.draws_out.row_mean());
+}
+

@@ -12,6 +12,21 @@ pub struct RWMHSettings {
     pub cov_mat : Option<DMatrix<f64>>
 }
 
+impl Default for RWMHSettings {
+    fn default() -> Self {
+        Self {
+            n_draws : 10_000,
+            n_burnin : 500,
+            par_scale : 1.0,
+            vals_bound : false,
+            lower_bounds : DVector::zeros(1),
+            upper_bounds : DVector::zeros(1),
+            cov_mat : None
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct RWMCOutput {
     pub draws_out : DMatrix<f64>,
     pub accept_rate : f64
@@ -52,7 +67,7 @@ impl RWMHState {
 
 }
 
-fn rwmh_int(
+pub fn rwmh_init(
     initial_vals : &DVector<f64>,
     target_log_kernel : impl Fn(&DVector<f64>)->f64,
     settings : &RWMHSettings
@@ -123,3 +138,4 @@ fn rwmh_int(
     let accept_rate = n_accept as f64 / n_draws_keep as f64;
     return Ok(RWMCOutput { draws_out, accept_rate });
 }
+

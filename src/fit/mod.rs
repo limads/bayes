@@ -63,4 +63,32 @@ where Self : Sized {
 
 }
 
+/* Gibbs-style conditional posterior estimator.
+Implement generic gibbs estimation: estimate from A, then modify
+B given the current state of A, then estimate B (then iterate). Can
+be nested indefinitely.
+pub struct Gibbs<A, B>
+where
+    A : Estimator,
+    B : Estimator
+{
+    a : A,
+    b : B,
+    b_cond_a : Box<dyn Fn(&A, &mut B)>,
+    a_cond_b : Box<dyn Fn(&mut A, &B)>
+}
+
+// Gelman-style multilevel models. Estimate from all AS, then use
+// their results as the likelihood for B, then estimate B. Can be nested
+// indefinitely, up to a root model, after which the whole process is repeated.
+pub struct Gelman<A, B>
+where
+    A : Estimator,
+    B : Estimator
+{
+    b : B,
+    as : Vec<A>,
+    b_cond_as : Box<dyn Fn(as : &[A], b : &mut B)>
+}
+*/
 

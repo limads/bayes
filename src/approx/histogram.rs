@@ -17,7 +17,7 @@ use crate::calc::rank::Rank;
 use num_traits::Float;
 use crate::calc::running::*;
 use crate::calc::*;
-use crate::calc::frequency::Mode;
+use crate::calc::count::Mode;
 use itertools::Itertools;
 
 #[derive(Debug, Clone, Copy)]
@@ -776,7 +776,7 @@ fn local_mode(
     if range.end - range.start < interval_sz {
         return None;
     }
-    let local_mode = crate::calc::frequency::mode(&probs[range.clone()]);
+    let local_mode = crate::calc::count::mode(&probs[range.clone()]);
     let pos = local_mode.pos + range.start;
     let mut start = pos.saturating_sub(interval_sz / 2).max(range.start);
     let mut end = (pos + interval_sz / 2).min(range.end);
@@ -1355,6 +1355,104 @@ fn histogram() {
     // let hist = Histogram::calculate(data.iter());
     // println!("{}", hist);
     // println!("{}", hist.subsample(10));
+}
+
+/*/* The most performant implementation JointCumulative would increment all
+(i, j) such that i < y, j < x, so that probability queries would be done
+in constant time */
+#[derive(Debug, Clone)]
+pub struct JointEmpirical<T>
+where
+    T : AddAssign + Add<Output=T> + Clone + Copy + std::fmt::Debug + PartialEq + Eq + PartialOrd + Ord + num_traits::Zero +
+    Div<Output=T> + num_traits::Zero + num_traits::ToPrimitive + std::iter::Sum + 'static
+{
+    vals : Vec<T>,
+    width : usize,
+    height : usize,
+    total : T
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct JointMean {
+    pub x : f32,
+    pub y : f32
+}
+
+impl<T> JointEmpirical<T>
+where
+    T : AddAssign + Add<Output=T> + Clone + Copy + std::fmt::Debug + PartialEq + Eq + PartialOrd + Ord + num_traits::Zero +
+    Div<Output=T> + num_traits::Zero + num_traits::ToPrimitive + std::iter::Sum + 'static
+{
+
+    pub fn new(height : usize, width : usize) -> Self {
+        Self { vals : (0..(height*width)).map(|_| T::zero() ).collect(), height, width, total : T::zero() }
+    }
+
+    pub fn increment(&mut self, x : usize, y : usize, n : T) {
+        self.vals[self.width * y + x] += n;
+        self.total += n;
+    }
+
+    pub fn iter_x_cond_y<'a>(&'a self, y : usize) -> impl Iterator<Item=&'a T> + 'a {
+        let start = (self.width*y);
+        self.vals[start..(start+self.width)].iter()
+    }
+
+    pub fn iter_y_cond_x<'a>(&'a self, x : usize) -> impl Iterator<Item=&'a T> + 'a {
+        self.vals[x..].iter().step_by(self.width)
+    }
+
+    pub fn marginal_probability_y(&self, y : usize) -> f32 {
+        self.iter_x_cond_y(y).copied().sum::<T>().to_f32().unwrap() / self.total.to_f32().unwrap()
+    }
+
+    pub fn marginal_probability_x(&self, x : usize) -> f32 {
+        self.iter_y_cond_x(x).copied().sum::<T>().to_f32().unwrap() / self.total.to_f32().unwrap()
+    }
+
+    pub fn joint_probability(&self, x : usize, y : usize) -> f32 {
+        self.vals[y*self.width + x].to_f32().unwrap() / self.total.to_f32().unwrap()
+    }
+
+    pub fn mean(&self) -> JointMean {
+        let (mut mx, mut my) = (0.0, 0.0);
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let p = self.vals[y*self.width + x].to_f32().unwrap() / self.total.to_f32().unwrap();
+                mx += p*(x as f32);
+                my += p*(y as f32);
+            }
+        }
+        JointMean { x : mx, y : my }
+    }
+
+}*/
+
+pub struct JointCumulative {
+    vals : DMatrix<u32>
+}
+
+impl JointCumulative {
+
+    pub fn new(height : usize, width : usize) -> Self {
+        Self { vals : DMatrix::<u32>::zeros(height, width) }
+    }
+
+    pub fn increment(&mut self, y : usize, x : usize, by : u32) {
+        let h = self.vals.nrows();
+        let w = self.vals.ncols();
+        let w_right = w - x;
+        let w_left = w - w_right;
+        let h_below = h - y;
+
+
+        // Increment everything to the right of x
+        self.vals.slice_mut((0, x), (w_right, h)).add_scalar_mut(by);
+
+        // Increment everything below and to the left of (y, x)
+        self.vals.slice_mut((y, 0), (w_left, x)).add_scalar_mut(by);
+    }
+
 }
 
 

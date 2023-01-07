@@ -48,7 +48,7 @@ fn boxed_log_prob_kernel<'a>(
     }
 }
 
-mod mala;
+// mod mala;
 
 mod de;
 
@@ -68,7 +68,7 @@ pub use de::*;
 
 pub use hmc::*;
 
-pub use mala::*;
+// pub use mala::*;
 
 pub use rmhmc::*;
 
