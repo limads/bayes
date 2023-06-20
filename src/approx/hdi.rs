@@ -24,10 +24,10 @@ fn test_hdi() {
         s.push(n1.sample(&mut rand::thread_rng()));
         s.push(n2.sample(&mut rand::thread_rng()));
     }
-    let hist = crate::approx::Histogram::calculate(s.iter(), 100);
-    let cumul = hist.cumulative();
-    println!("{:?}", cumul);
-    println!("{:?}", hdis(&cumul[..], 4, 4, 2) );
+    // let hist = crate::approx::Histogram::calculate(s.iter(), 100);
+    // let cumul = hist.cumulative();
+    // println!("{:?}", cumul);
+    // println!("{:?}", hdis(&cumul[..], 4, 4, 2) );
 }
 
 // To build Gaussian-like shapes, we can use a weight

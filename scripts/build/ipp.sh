@@ -9,6 +9,9 @@ rustfmt src/foreign/ipp/ippvm.rs
 bindgen /opt/intel/oneapi/ipp/latest/include/ippi.h -o src/foreign/ipp/ippi.rs --no-rustfmt-bindings
 rustfmt src/foreign/ipp/ippi.rs
 
+bindgen /opt/intel/oneapi/ipp/latest/include/ippcc.h -o src/foreign/ipp/ippcc.rs --no-rustfmt-bindings --whitelist-type IppiSize --whitelist-function .*ReduceBits.*
+rustfmt src/foreign/ipp/ippcc.rs
+
 bindgen /opt/intel/oneapi/ipp/latest/include/ipps.h -o src/foreign/ipp/ipps.rs --no-rustfmt-bindings
 rustfmt src/foreign/ipp/ipps.rs
 

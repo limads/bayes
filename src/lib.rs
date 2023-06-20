@@ -114,7 +114,8 @@ mod c {
         dst : &mut [f64],
         is_rel : bool
     ) -> i64 {
-        let hist = crate::approx::Histogram::calculate(data.iter(), dst.len());
+        use crate::approx::Histogram;
+        let hist = crate::approx::SparseCountHistogram::calculate(data.iter(), dst.len());
         for i in 0..dst.len() {
             if is_rel {
                 dst[i] = hist.bin(i).unwrap().prop as f64;
@@ -328,5 +329,31 @@ fn rwmh() {
     };
     let out = rwmh_init(&init_vals, lp, &RWMHSettings::default()).unwrap();
     println!("{:?}", out.draws_out.row_mean());
+}
+
+#[macro_export]
+macro_rules! save {
+    ( $path:expr, $( $x:ident ),* ) => {
+        let mut env = std::collections::BTreeMap::<String, serde_json::Value>::new();
+        {
+            $(
+                env.insert(stringify!($x).to_string(), serde_json::to_value(&$x).unwrap());
+            )*
+        }
+        std::fs::write($path, &serde_json::to_string_pretty(&env).unwrap()[..]);
+    };
+}
+
+#[macro_export]
+macro_rules! show {
+    ( $( $x:ident ),* ) => {
+        let mut env = std::collections::BTreeMap::<String, serde_json::Value>::new();
+        {
+            $(
+                env.insert(stringify!($x).to_string(), serde_json::to_value(&$x).unwrap());
+            )*
+        }
+        print!("{}", serde_json::to_string_pretty(&env).unwrap());
+    };
 }
 

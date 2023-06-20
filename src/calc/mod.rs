@@ -77,7 +77,7 @@ impl Variate for f64 {
     // The sigmoid is the inverse of the logit (or log-odds function).
     // and is given by 1 / (1 + exp(-logit))
     fn sigmoid(&self) -> Self {
-        1. / (1. + (-1. * (*self)).exp() )
+        1. / ((1. + (-1.0 * (*self)).exp() ) + std::f64::EPSILON)
     }
 
     fn center(&self, mean : &Self) -> Self {
@@ -128,7 +128,7 @@ impl Variate for f32 {
     // The sigmoid is the inverse of the logit (or log-odds function).
     // and is given by 1 / (1 + exp(-logit))
     fn sigmoid(&self) -> Self {
-        1. / (1. + (-1. * (*self)).exp() )
+        1. / ((1. + (-1. * (*self)).exp() ) + std::f32::EPSILON)
     }
 
     fn center(&self, mean : &Self) -> Self {
@@ -153,6 +153,45 @@ impl Variate for f32 {
         (*self - *mean) / *stddev
     }
 
+}
+
+pub fn accumulate<T>(mut v : Vec<T>) -> Vec<T>
+where
+    T : AddAssign + Copy
+{
+    accumulate_inplace(&mut v);
+    v
+}
+
+pub fn accumulate_inplace<T>(vals : &mut impl AsMut<[T]>)
+where
+    T : AddAssign + Copy
+{
+    let mut vals = vals.as_mut();
+    for i in 1..vals.len() {
+        vals[i] += vals[i-1];
+    }
+}
+
+pub fn histogram_mean_stddev<T, U>(domain : &[T], vals : &[U]) -> (T, T)
+where
+    T : num_traits::AsPrimitive<f32>,
+    U : num_traits::AsPrimitive<f32>,
+    f32 : num_traits::AsPrimitive<T>
+{
+    assert!(domain.len() == vals.len());
+    let mut sum : f32 = 0.0;
+    let mut sum_sq : f32 = 0.0;
+    let mut n = 0.0;
+    for i in 0..domain.len() {
+        let d : f32 = domain[i].as_();
+        let v : f32 = vals[i].as_();
+        sum += d*v;
+        sum_sq += d.powf(2.)*v;
+        n += v;
+    }
+    let mean = sum / n;
+    (mean.as_(), ((sum_sq / n) - mean.powf(2.)).as_())
 }
 
 /* Normalizing wrt maximum is useful if values are odds-ratios. Then the
@@ -530,9 +569,102 @@ pub mod count {
 /// Rank-based descriptive statistics (median, quantiles)
 pub mod rank {
 
+    use super::*;
+    use smallvec::SmallVec;
+
+    #[derive(Debug, Clone)]
+    pub struct OnlineMedian<T : PartialOrd + Copy> {
+        data : Vec<T>,
+        ranks : Vec<usize>,
+        order : usize
+    }
+
+    impl<T : PartialOrd + Copy> OnlineMedian<T> {
+
+        pub fn data(&self) -> &[T] {
+            &self.data[..]
+        }
+
+        pub fn len(&self) -> usize {
+            self.data.len()
+        }
+
+        pub fn clear(&mut self) {
+            self.data.clear();
+        }
+
+        pub fn new(order : usize) -> Self {
+            assert!(order % 2 != 0);
+            Self { order, data : Vec::with_capacity(order), ranks : Vec::with_capacity(order) }
+        }
+
+        pub fn state(&self) -> Option<T> {
+            self.data.get(self.data.len() / 2).cloned()
+        }
+
+        pub fn batch_update(&mut self, dts : &[T]) -> Vec<T> {
+            dts.iter().filter_map(|dt| self.update(*dt) ).collect()
+        }
+
+        pub fn update(&mut self, dt : T) -> Option<T> {
+            if self.data.len() < self.order {
+                match self.data.binary_search_by(|d| d.partial_cmp(&dt).unwrap_or(Ordering::Equal) ) {
+                    Ok(ix) | Err(ix) => {
+                        self.data.insert(ix, dt);
+                        self.ranks.push(ix);
+                    }
+                }
+            } else {
+                let oldest = self.ranks.remove(0);
+                self.data.remove(oldest);
+                match self.data.binary_search_by(|d| d.partial_cmp(&dt).unwrap_or(Ordering::Equal) ) {
+                    Ok(ix) | Err(ix) => {
+                        self.data.insert(ix, dt);
+                        self.ranks.push(ix);
+                    }
+                }
+            }
+            self.state()
+        }
+
+    }
+
+    #[derive(Debug, Clone)]
     pub struct Extrema<T> {
         pub min : T,
         pub max : T
+    }
+
+    impl<T> Extrema<T>
+    where
+        T : PartialOrd + num_traits::Bounded + Copy
+    {
+
+        pub fn batch_update(&mut self, vals : &[T]) {
+            for val in vals {
+                self.update(*val);
+            }
+        }
+
+        pub fn calculate(vals : &[T]) -> Self {
+            let mut extr = Extrema::new();
+            extr.batch_update(vals);
+            extr
+        }
+
+        pub fn new() -> Self {
+            Self { min : T::max_value(), max : T::min_value() }
+        }
+
+        pub fn update(&mut self, val : T) {
+            if val > self.max {
+                self.max = val;
+            }
+            if val < self.min {
+                self.min = val;
+            }
+        }
+
     }
 
     #[derive(Debug, Clone, Copy)]
@@ -541,54 +673,138 @@ pub mod rank {
         pub val : T
     }
 
-    /*pub struct Ranked<I, T>
+    pub struct Ranked<T>
     where
-        I : Iterator<Item=T>
-        T : Ord
+        T : PartialOrd
     {
-        iter : I,
-        vals : Vec<T>
+        vals : SmallVec<[T; 8]>,
+        curr : usize
     }
 
-    pub trait Ranks {
-
-        /* Iterator adaptor that return the rank of the ith item. */
-        fn ranks(self) -> Ranked<T>;
-
+    pub struct RankedBy<T, F>
+    where
+        T : PartialOrd,
+        F : Fn(&T, &T)->Ordering
+    {
+        vals : SmallVec<[T; 8]>,
+        f : F,
+        curr : usize
     }
 
-    impl<I, T> Ranks for I
-        where
-            I : Iterator<Item=T>,
-            T : Ord
+    impl<T> Ranked<T>
+    where
+        T : PartialOrd + Copy
     {
 
-        fn ranks(self) -> Ranked<I, T> {
-            Ranked { iter : self, vals : Vec::new() }
-        }
-    }
-
-    impl<I, T> Iterator for Ranked<I, T> {
-
-        type Item = Rank<T>;
-
-        pub fn next(&mut self) -> Option<Self::Item> {
-            let it = self.iter.next()?;
-            match self.vals.binary_search(it) {
+        fn update(&mut self, it : T) -> Rank<T> {
+            match self.vals.binary_search_by(|probe| probe.partial_cmp(&it).unwrap_or(Ordering::Equal) ) {
                 Ok(pos) => {
-                    self.vals.insert(it, pos+1);
-                    Some(Rank { val : it, pos : pos + 1})
+                    self.vals.insert(pos+1, it);
+                    Rank { val : it, pos : pos + 1}
                 },
                 Err(pos) => {
-                    self.vals.insert(it, pos);
-                    Some(Rank { val : it, pos : pos })
+                    self.vals.insert(pos, it);
+                    Rank { val : it, pos : pos }
                 }
             }
         }
 
-    }*/
+        // pub fn sorted_values(self) -> SmallVec<T> {
+        //     self.vals
+        // }
 
-    use super::*;
+    }
+
+    impl<T, F> RankedBy<T, F>
+    where
+        T : PartialOrd + Copy,
+        F : Fn(&T, &T)->Ordering
+    {
+        fn update(&mut self, it : T) -> Rank<T> {
+            match self.vals.binary_search_by(|probe| (&self.f)(probe, &it) ) {
+                Ok(pos) => {
+                    self.vals.insert(pos+1, it);
+                    Rank { val : it, pos : pos + 1}
+                },
+                Err(pos) => {
+                    self.vals.insert(pos, it);
+                    Rank { val : it, pos : pos }
+                }
+            }
+        }
+    }
+
+    pub trait Ranks<T>
+    where
+        Self : Sized,
+        Self : Iterator<Item=T>,
+        T : PartialOrd
+    {
+
+        /* Iterator adaptor that return the rank of the ith item. */
+        fn rank(self) -> Ranked<T>;
+
+        fn rank_by<F>(self, f : F) -> RankedBy<T, F>
+        where
+            F : Fn(&T, &T)->Ordering;
+
+    }
+
+    impl<I, T> Ranks<T> for I
+    where
+        I : Sized + Iterator<Item=T>,
+        T : PartialOrd
+    {
+
+        fn rank(self) -> Ranked<T> {
+            let mut vals : SmallVec<[T; 8]> = self.collect();
+            vals.sort_by(|a, b| a.partial_cmp(&b).unwrap_or(Ordering::Equal) );
+            Ranked { vals, curr : 0 }
+        }
+
+        fn rank_by<F>(self, f : F) -> RankedBy<T, F>
+        where
+            F : Fn(&T, &T)->Ordering
+        {
+            let mut vals : SmallVec<[T; 8]> = self.collect();
+            vals.sort_by(&f);
+            RankedBy { vals, curr : 0, f }
+        }
+
+    }
+
+    impl<T> Iterator for Ranked<T>
+    where
+        T : PartialOrd + Copy
+    {
+
+        type Item = Rank<T>;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            let old_curr = self.curr;
+            let it = self.vals.get(old_curr)?;
+            self.curr += 1;
+            Some(Rank { pos : old_curr, val : *it })
+        }
+
+    }
+
+    impl<T, F> Iterator for RankedBy<T, F>
+    where
+        T : PartialOrd + Copy,
+        F : Fn(&T, &T)->Ordering + Clone
+    {
+
+        type Item = Rank<T>;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            let old_curr = self.curr;
+            let it = self.vals.get(old_curr)?;
+            self.curr += 1;
+            Some(Rank { pos : old_curr, val : *it })
+        }
+
+    }
 
     pub fn quantile_mut<T : Ord + Copy>(s : &mut [T], q : f32) -> Rank<T> {
         assert!(q >= 0.0 && q <= 1.0);
@@ -615,7 +831,7 @@ pub mod rank {
         (0.5*a + 0.5*b).as_()
     }
 
-    pub fn median_mut<T>(s : &mut [T]) -> Rank<T>
+    pub fn median_mut<T>(s : &mut [T]) -> Option<Rank<T>>
     where
         f32 : AsPrimitive<T>,
         T : Add<Output=T> + Mul<Output=T> + Ord + Copy + 'static + AsPrimitive<f32>
@@ -623,36 +839,55 @@ pub mod rank {
         match s.len() % 2 {
             0 => {
                 let pos = s.len() / 2;
+                if pos >= s.len() {
+                    return None;
+                }
                 let (left, q, _) = s.select_nth_unstable(pos);
-                Rank { val : even_median(left, *q), pos }
+                Some(Rank { val : even_median(left, *q), pos })
             },
             _ => {
                 let pos = s.len() / 2 + 1;
+                if pos >= s.len() {
+                    return None;
+                }
                 let (_, q, _) = s.select_nth_unstable(pos);
-                Rank { val : *q, pos }
+                Some(Rank { val : *q, pos })
             }
         }
     }
 
-    pub fn median_for_sorted<T>(s : &[T]) -> Rank<T>
+    pub fn median_for_sorted<T>(s : &[T]) -> Option<Rank<T>>
     where
         f32 : AsPrimitive<T>,
         T : Add<Output=T> + Mul<Output=T> + Copy + 'static + AsPrimitive<f32>
     {
+        if s.len() == 0 {
+            return None;
+        }
         match s.len() % 2 {
             0 => {
                 let left = s.len() / 2;
                 let right = left + 1;
-                Rank { val : even_median(&s[..=left], s[right]), pos : left }
+                Some(Rank { val : even_median(&s[..=left], s[right]), pos : left })
             },
             _ => {
                 let pos = s.len() / 2 + 1;
-                Rank { val : s[pos], pos }
+                Some(Rank { val : s[pos], pos })
             }
         }
     }
 
-    pub fn median<T>(s : &[T]) -> Rank<T>
+    pub fn median_for_iter<I, T>(iter : I) -> Option<Rank<T>>
+    where
+        I : Iterator<Item=T>,
+        f32 : AsPrimitive<T>,
+        T : Add<Output=T> + Mul<Output=T> + Ord + Copy + 'static + AsPrimitive<f32>
+    {
+        let mut v : Vec<T> = iter.collect();
+        median_mut(&mut v[..])
+    }
+
+    pub fn median<T>(s : &[T]) -> Option<Rank<T>>
     where
         f32 : AsPrimitive<T>,
         T : Add<Output=T> + Mul<Output=T> + Ord + Copy + 'static + AsPrimitive<f32>
@@ -673,6 +908,101 @@ pub mod rank {
 
     }*/
 
+    /* Keeps a sorted collection of objects with a size upper bound.
+    As elements are added, old elements close to the rank of the
+    added element are removed to keep the size constant. */
+    #[derive(Debug, Clone)]
+    pub struct RankSet<T> {
+        vals : Vec<T>,
+        sz : usize
+    }
+
+    impl<T> RankSet<T>
+    where
+        T : num_traits::Bounded + Clone + Copy + PartialOrd,
+        T : num_traits::AsPrimitive<f32>
+    {
+
+        pub fn values(&self) -> &[T] {
+            &self.vals[..]
+        }
+
+        pub fn split_quantile(&self, q : f64) -> (&[T], &[T]) {
+            let pos = (self.vals.len() as f64 * q) as usize;
+            self.vals.split_at(pos)
+        }
+
+        pub fn quantile(&self, q : f64) -> Option<Rank<T>> {
+            let pos = (self.vals.len() as f64 * q) as usize;
+            Some(Rank { val : self.vals.get(pos)?.clone(), pos })
+        }
+
+        pub fn extrema(&self) -> Option<Extrema<T>> {
+            Some(Extrema { min : self.vals.first()?.clone(), max : self.vals.last()?.clone() })
+        }
+
+        pub fn rank(&self, rank : usize) -> Option<Rank<T>> {
+            Some(Rank { val : self.vals.get(rank)?.clone(), pos : rank })
+        }
+
+        pub fn new(sz : usize) -> Self {
+            assert!(sz >= 2);
+            Self {
+                vals : Vec::new(),
+                sz
+            }
+        }
+
+        pub fn add(&mut self, val : T) {
+            if self.vals.len() == 0 {
+                self.vals.push(val);
+                return;
+            }
+            let last = self.vals[self.vals.len()-1];
+            let first = self.vals[0];
+            if val > last {
+                self.vals.push(val);
+            } else if val < first {
+                self.vals.insert(0, val);
+            } else if self.vals.len() < self.sz {
+                match self.vals.binary_search_by(|old| old.partial_cmp(&val).unwrap_or(Ordering::Equal) ) {
+                    Ok(_) => { },
+                    Err(pos) => {
+                        self.vals.insert(pos, val);
+                    }
+                }
+            } else {
+                match self.vals.binary_search_by(|old| old.partial_cmp(&val).unwrap_or(Ordering::Equal) ) {
+                    Ok(_) => { },
+                    Err(pos) => {
+                        if pos == 0 || pos == self.vals.len() - 1 {
+                            self.vals[pos] = val;
+                        } else {
+                            let diff_left : f32 = (self.vals[pos].as_() - val.as_()).abs();
+                            let diff_right : f32 = (self.vals[pos+1].as_() - val.as_()).abs();
+                            if diff_right > diff_left {
+                                self.vals[pos+1] = val;
+                            } else {
+                                self.vals[pos] = val;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+    }
+
+}
+
+pub fn geometric_mean(xs : &[f64]) -> f64 {
+    let avg_ln = xs.iter().fold(0.0, |m, x| m + x.ln() ) / xs.len() as f64;
+    avg_ln.exp()
+}
+
+pub fn harmonic_mean(xs : &[f64]) -> f64 {
+    let avg_inv = xs.iter().fold(0.0, |m, x| m + 1.0 / x ) / xs.len() as f64;
+    1.0 / avg_inv
 }
 
 pub trait Mean<T> {
@@ -983,4 +1313,11 @@ pub mod corr {
 
 }
 
+#[test]
+fn online_median() {
+    let mut om = crate::calc::rank::OnlineMedian::<f32>::new(5);
+    for it in [1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0,9.0,10.0] {
+        println!("{:?} {:?} {:?}", om.update(it), om.len(), om.data());
+    }
+}
 

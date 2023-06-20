@@ -583,7 +583,6 @@ pub fn closest_median_mode_partition(
             }
         }
     }
-    println!("{:?}", (&best_part, &min_dist));
     best_part.retain(|part| {
         let local_p = accumulated_range(
             &acc_probs, 
@@ -647,7 +646,6 @@ pub fn min_partial_entropy_partition(
 
             // Gets section of marginal entropy corresponding to this conditional
             let partial_entropy = accumulated_range(&acc_marg_entropy, section.clone());
-            // println!("end: {}; start: {}; diff: {}", acc_marg_entropy[section.end-1], acc_marg_entropy[section.start], partial_entropy);
             assert!(partial_entropy >= 0.0);
 
             // The actual conditional entropy is a simple function of
@@ -671,9 +669,6 @@ pub fn min_partial_entropy_partition(
         let avg_cond_entropy = total_cond_entropy / merge_s.len() as f64;
         
         if avg_cond_entropy < smallest_entropy {
-        
-            // println!("Partition {:?} has smaller entropy {} (prev = {:?} with {})", &merge_ranges[merge_s.clone()], total_cond_entropy, best_partition, smallest_entropy);
-            
             smallest_entropy = avg_cond_entropy;
             best_partition.clear();
             for r in &merge_ranges[merge_s.clone()] {
@@ -682,10 +677,10 @@ pub fn min_partial_entropy_partition(
                 best_partition.push(part);
             }
         } else {
-            // println!("Partition {:?} has entropy {}", &merge_ranges[merge_s.clone()], total_cond_entropy);
+
         }
     }
-    // println!("{:?}", best_partition);
+
     best_partition
 }
 
@@ -725,8 +720,6 @@ pub fn next_merge_range(
         curr_merge.push(Range { start : last.end, end : last.end + 1 });
     }
     
-    // println!("Considering: {:?} ({})", curr_merge, n_modes);
-    
     let last = curr_merge.last().cloned().unwrap();
     if last.end - last.start <= max_merge_sz {
         if curr_merge.len() <= n_modes && last.end < n_intervals {
@@ -739,7 +732,6 @@ pub fn next_merge_range(
                 n_intervals,
                 max_merge_sz
             );
-            // println!("First branch done");
             // TODO truncate vec here to the size before the first recursive call to 
             // avoid the clone.
             next_merge_range(
@@ -753,8 +745,6 @@ pub fn next_merge_range(
             );
         } else if curr_merge.len() == n_modes && last.end == n_intervals {
             let len_before = merge_ranges.len();
-            //println!("n modes = {}; n intervals = {}, max_merge_sz = {}, merges = {:?}",
-            //    n_modes, n_intervals, max_merge_sz, curr_merge);
             merge_ranges.extend(curr_merge.drain(..));
             merge_sep.push(Range { start : len_before, end : merge_ranges.len() });
         } else {
@@ -772,7 +762,6 @@ fn local_mode(
     range : Range<usize>, 
     interval_sz : usize
 ) -> Option<(Range<usize>, Mode<f64>)> {    
-    // println!("{:?}", range);
     if range.end - range.start < interval_sz {
         return None;
     }
@@ -807,7 +796,7 @@ fn local_mode(
     let effective_range = Range { start, end };
     Some((effective_range, Mode { pos, val : local_mode.val }))
 }
-    
+
 // mean += bin*prob where prob = count/total (but divide by total at the end)
 pub fn mean_for_hist<B>(h : &[B]) -> B
 where
@@ -966,6 +955,7 @@ where
 }
 
 /// Represents the empirical cumulative distribution function (ECDF) of a sample.
+/// TODO separate AbsCumulative and RelCumulative
 pub struct Cumulative {
 
     rel_cumul : DVector<f64>,
@@ -997,8 +987,35 @@ impl Cumulative {
 
 }
 
-#[derive(Debug)]
-pub struct Histogram {
+/* A histogram binning strategy */
+// https://en.wikipedia.org/wiki/Histogram
+pub enum Binning {
+
+    // Bins between (min, max) at sample with equal intervals of size Width.
+    Width(f64),
+
+    // Binds between (min, max) with equal intervals in such a way that there
+    // are count intervals.
+    Count(u32),
+
+    // Produce ceil(sqrt(n)) bins where n is the sample size.
+    CountSqrt,
+
+    // Produces ceil(log2(n)) + 1 bins, where n is the sample size.
+    CountSturges,
+
+    // Produces 2*cbrt(n) bins
+    CountRice,
+
+    // CountDoane
+    // CountScott
+    // CountFreedman
+    // CountShimazaki
+
+}
+
+#[derive(Debug, Clone)]
+pub struct IntervalPartition {
 
     min : f64,
 
@@ -1010,14 +1027,190 @@ pub struct Histogram {
     // Full interval to be represented
     ampl : f64,
 
-    // Number of samples
-    n : usize,
-
     n_bins : usize,
+
+    n : u32
+
+}
+
+impl IntervalPartition {
+
+    pub fn new_empty(min : f64, max : f64, binning : Binning) -> Option<Self> {
+        assert!(max > min);
+        let ampl = max - min;
+        let n_bins = match binning {
+            Binning::Count(n) => n as usize,
+            Binning::Width(w) => (ampl / w).ceil() as usize,
+            _ => return None
+        };
+        let intv = ampl / n_bins as f64;
+        Some(Self {
+            n : 0,
+            min,
+            max,
+            intv,
+            ampl,
+            n_bins
+        })
+    }
+
+    pub fn new<'a>(sample : impl Iterator<Item=&'a f64> + Clone, n_bins : usize) -> Self {
+        let (mut min, mut max) = (f64::MAX, f64::MIN);
+        let mut n = 0;
+        for s in sample.clone() {
+            if *s > max {
+                max = *s;
+            }
+            if *s < min {
+                min = *s;
+            }
+            n += 1;
+        }
+        let ampl = max - min;
+        let intv = ampl / n_bins as f64;
+        Self { min, max, intv, ampl, n_bins, n }
+    }
+
+    pub fn bin_containing(&self, val : f64) -> Option<usize> {
+        let bin = ((val - self.min) / self.intv).floor() as usize;
+        if bin < self.n_bins {
+            Some(bin)
+        } else {
+            None
+        }
+    }
+
+    pub fn bin_bounds(&self, pos : usize) -> Option<(f64, f64)> {
+        let low = self.min + self.intv*(pos as f64);
+        let high = low + self.intv;
+        Some((low, high))
+    }
+
+}
+
+/// Structure to represent one-dimensional empirical distributions non-parametrically (Work in progress).
+/// One-dimensional histogram, useful for representing univariate marginal distributions
+/// of sampled posteriors non-parametrically. Retrieved by indexing a Sample structure.
+/// The histogram resolution is a linear function of the sample size. Histograms can be
+/// thought of as a non-parametric counterpart to bayes::distr::Normal in the sense that it
+/// represents a distribution over an unbounded real variable. But unlike Normals, which are
+/// defined only by mean and variance, histograms can represent any empiric univariate distribution.
+/// Histogram implements Distribution API.
+pub trait Histogram {
+
+    fn iter_bins(&self) -> Vec<Bin> {
+        (0..self.num_bins()).map(|pos : usize| self.bin(pos).unwrap() ).collect()
+    }
+
+    fn bin(&self, pos : usize) -> Option<Bin> {
+        let (low, high) = self.bin_bounds(pos)?;
+        let prop = self.proportion(pos);
+        let count = self.count(pos);
+        Some(Bin{ low, high, prop, count })
+    }
+
+    fn interval(&self) -> f64;
+
+    fn num_bins(&self) -> usize;
+
+    fn limits(&self) -> (f64, f64);
+
+    /// Returns 0 if bin position is outside bounds or no elements are allocated to it.
+    fn count(&self, pos : usize) -> u64;
+
+    /// Returns 0 if bin position is outside bounds or no elements are allocated to it.
+    fn proportion(&self, pos : usize) -> f64;
+
+    fn bin_bounds(&self, pos : usize) -> Option<(f64, f64)>;
+
+    fn bin_containing(&self, val : f64) -> Option<usize>;
+
+}
+
+/* A histogram for real-time scenarios. Values are known to
+be within the given bounds specified at creation, and counts
+can be updated in online mode. Stores counts in a vector, so
+the used memory is proportional to the sample interval bounds.
+Access to frequencies are done in constant time, so this is
+the most performant approach. */
+pub struct DenseCountHistogram {
+    part : IntervalPartition,
+
+    // Stores intervals of same size, with the interval order as key and count of ocurrences
+    // as values. Intervals without an element count are missing entries.
+    bins : Vec<u64>
+}
+
+impl DenseCountHistogram {
+
+    pub fn increment(&mut self, pos : usize, by : u64) {
+        self.bins[pos] += by;
+        self.part.n += by as u32;
+    }
+
+    pub fn increment_containing(&mut self, val : f64, by : u64) {
+        let pos = self.bin_containing(val).unwrap();
+        self.increment(pos, by);
+    }
+
+    pub fn calculate<'a>(sample : impl Iterator<Item=&'a f64> + Clone, n_bins : usize) -> Self {
+        let part = IntervalPartition::new(sample.clone(), n_bins);
+        let mut bins : Vec<_> = (0..part.n_bins).map(|_| 0 ).collect();
+        for s in sample {
+            let b = part.bin_containing(*s).unwrap();
+            bins[b] += 1;
+        }
+        Self { part, bins }
+    }
+
+}
+
+impl Histogram for DenseCountHistogram {
+
+    fn num_bins(&self) -> usize {
+        self.part.n_bins
+    }
+
+    fn interval(&self) -> f64 {
+        self.part.intv
+    }
+
+    fn limits(&self) -> (f64, f64) {
+        (self.part.min, self.part.max)
+    }
+
+    /// Returns 0 if bin position is outside bounds or no elements are allocated to it.
+    fn count(&self, pos : usize) -> u64 {
+        self.bins.get(pos).cloned().unwrap_or(0u64)
+    }
+
+    /// Returns 0 if bin position is outside bounds or no elements are allocated to it.
+    fn proportion(&self, pos : usize) -> f64 {
+        self.bins.get(pos).map(|b| *b as f64 / self.part.n as f64 ).unwrap_or(0.0)
+    }
+
+    fn bin_bounds(&self, pos : usize) -> Option<(f64, f64)> {
+        self.part.bin_bounds(pos)
+    }
+
+    fn bin_containing(&self, val : f64) -> Option<usize> {
+        self.part.bin_containing(val)
+    }
+
+}
+
+/* Holds data in a BTreeMap mapping bin order to frequency count.
+Is slightly more demanding to compute than DenseCountHistogram,
+but saves up memory since bins with zero counts aren't stored. */
+#[derive(Debug)]
+pub struct SparseCountHistogram {
+
+    part : IntervalPartition,
 
     // Stores intervals of same size, with the interval order as key and count of ocurrences
     // as values. Intervals without an element count are missing entries.
     bins : BTreeMap<u64, u64>
+
 }
 
 #[derive(Serialize, Deserialize)]
@@ -1028,14 +1221,51 @@ pub struct Bin {
     pub prop : f64
 }
 
-impl Histogram {
+impl Histogram for SparseCountHistogram {
 
-    pub fn interval(&self) -> f64 {
-        self.intv
+    fn num_bins(&self) -> usize {
+        self.part.n_bins
     }
 
-    pub fn limits(&self) -> (f64, f64) {
-        (self.min, self.max)
+    fn interval(&self) -> f64 {
+        self.part.intv
+    }
+
+    fn limits(&self) -> (f64, f64) {
+        (self.part.min, self.part.max)
+    }
+
+    /// Returns 0 if bin position is outside bounds or no elements are allocated to it.
+    fn count(&self, pos : usize) -> u64 {
+        *self.bins.get(&(pos as u64)).clone().unwrap_or(&0)
+    }
+
+    /// Returns 0 if bin position is outside bounds or no elements are allocated to it.
+    fn proportion(&self, pos : usize) -> f64 {
+        self.bins.get(&(pos as u64)).map(|b| *b as f64 / self.part.n as f64 ).unwrap_or(0.0)
+    }
+
+    fn bin_bounds(&self, pos : usize) -> Option<(f64, f64)> {
+        self.part.bin_bounds(pos)
+    }
+
+    fn bin_containing(&self, val : f64) -> Option<usize> {
+        self.part.bin_containing(val)
+    }
+
+}
+
+impl SparseCountHistogram {
+
+    pub fn increment(&mut self, pos : u64, by : u64) {
+        let b_count = self.bins.entry(pos).or_insert(0);
+        *b_count += 1;
+        self.part.n += by as u32;
+    }
+
+    pub fn increment_containing(&mut self, val : f64, by : u64) {
+        let pos = self.bin_containing(val).unwrap();
+        self.increment(pos as u64, by);
     }
 
     pub fn cumulative(&self) -> Vec<u32> {
@@ -1049,336 +1279,60 @@ impl Histogram {
     }
 
     pub fn calculate<'a>(sample : impl Iterator<Item=&'a f64> + Clone, n_bins : usize) -> Self {
-        let (mut min, mut max) = (f64::MAX, f64::MIN);
-        let mut n = 0;
-        for s in sample.clone() {
-            if *s > max {
-                max = *s;
-            }
-            if *s < min {
-                min = *s;
-            }
-            n += 1;
-        }
-
-        let ampl = max - min;
-        let intv = ampl / n_bins as f64;
+        let part = IntervalPartition::new(sample.clone(), n_bins);
         let mut bins = BTreeMap::<u64, u64>::new();
         for s in sample {
 
             // Retrieves the discrete bin allocation for s as the ordered interval
-            let b = ((*s - min) / intv).floor().abs() as u64;
+            let b = part.bin_containing(*s).unwrap() as u64;
             let b_count = bins.entry(b).or_insert(0);
             *b_count += 1;
         }
 
-        Self { min, max, n, intv, ampl, bins, n_bins }
-    }
-
-    /// Returns 0 if bin position is outside bounds or no elements are allocated to it.
-    pub fn count(&self, pos : usize) -> u64 {
-        *self.bins.get(&(pos as u64)).clone().unwrap_or(&0)
-    }
-
-    /// Returns 0 if bin position is outside bounds or no elements are allocated to it.
-    pub fn proportion(&self, pos : usize) -> f64 {
-        self.bins.get(&(pos as u64)).map(|b| *b as f64 / self.n as f64 ).unwrap_or(0.0)
-    }
-
-    pub fn bounds(&self, pos : usize) -> Option<(f64, f64)> {
-        let low = self.min + self.intv*(pos as f64);
-        let high = low + self.intv;
-        Some((low, high))
-    }
-
-    pub fn bin(&self, pos : usize) -> Option<Bin> {
-        let (low, high) = self.bounds(pos)?;
-        let prop = self.proportion(pos);
-        let count = self.count(pos);
-        Some(Bin{ low, high, prop, count })
-    }
-
-    pub fn iter_bins(&self) -> Vec<Bin> {
-        (0..self.n_bins).map(|pos : usize| self.bin(pos).unwrap() ).collect()
-    }
-}
-
-/*/// Structure to represent one-dimensional empirical distributions non-parametrically (Work in progress).
-/// One-dimensional histogram, useful for representing univariate marginal distributions
-/// of sampled posteriors non-parametrically. Retrieved by indexing a Sample structure.
-/// The histogram resolution is a linear function of the sample size. Histograms can be
-/// thought of as a non-parametric counterpart to bayes::distr::Normal in the sense that it
-/// represents a distribution over an unbounded real variable. But unlike Normals, which are
-/// defined only by mean and variance, histograms can represent any empiric univariate distribution.
-/// Histogram implements Distribution API.
-pub struct Histogram {
-
-    ord_sample : DVector<f64>,
-
-    // homogeneous partition of the variable domain.
-    prob_intv : f64,
-
-    // Values of the variable that partition the
-    // cumulative sum into homogeneous probability
-    // intervals.
-    bounds : DVector<f64>,
-
-    mean : f64,
-
-    variance : f64,
-
-    full_interval : f64
-}
-
-impl Histogram {
-
-    pub fn calculate<'a>(sample : impl Iterator<Item=&'a f64>) -> Self {
-        let s = DVector::from(Vec::from_iter(sample.cloned()));
-        Self::calculate_from_vec(&s)
-    }
-
-    pub fn calculate_from_vec<S>(sample : &Matrix<f64, Dynamic, U1, S>) -> Self
-        where S : Storage<f64, Dynamic, U1>
-    {
-
-        // TODO consider using itertools::sorted_by
-        assert!(sample.nrows() > 5, "Sample too small to build histogram");
-        let mut sample_c = sample.clone_owned();
-        let mut sample_vec : Vec<_> = sample_c.data.into();
-        sample_vec.sort_unstable_by(|s1, s2| s1.partial_cmp(s2).unwrap_or(Ordering::Equal) );
-        let ord_sample = DVector::from_vec(sample_vec);
-        let n = ord_sample.nrows();
-        let s_min : f64 = ord_sample[0];
-        let s_max : f64 = ord_sample[n - 1];
-        let n_bins = n / 4;
-        let mut acc = s_min + s_max;
-        let mut acc_sq = s_min.powf(2.) + s_max.powf(2.);
-        let mut bounds = DVector::zeros(n_bins+1);
-        bounds[0] = s_min;
-        bounds[n_bins] = s_max;
-        let mut curr_bin = 0;
-        let prob_intv = 1. / n_bins as f64;
-        for i in 1..(ord_sample.nrows() - 1) {
-            acc += ord_sample[i];
-            acc_sq += ord_sample[i].powf(2.);
-            //println!("sample:{}", ord_sample[i]);
-            //println!("acc: {}", acc);
-            if i as f64 / n as f64 > (curr_bin as f64)*prob_intv {
-                bounds[curr_bin] = (ord_sample[i-1] + ord_sample[i]) / 2.;
-                curr_bin += 1;
-            }
-        }
-        assert!(curr_bin == bounds.nrows() - 1);
-        let mean = acc / (n as f64);
-        let variance = acc_sq / (n as f64) - mean.powf(2.);
-        let full_interval = bounds[bounds.nrows() - 1] - bounds[0];
-        Self{ ord_sample, prob_intv, bounds, mean, variance, full_interval }
-    }
-
-    pub fn median(&self) -> f64 {
-        self.quantile(0.5)
-    }
-
-    pub fn mean(&self) -> f64 {
-        self.mean
-    }
-
-    pub fn var(&self) -> f64 {
-        self.variance
-    }
-
-    pub fn limits(&self) -> (f64, f64) {
-        let n = self.ord_sample.nrows();
-        (self.ord_sample[0], self.ord_sample[n-1])
-    }
-
-    /// Returns value such that cumulative probability == prob.
-    pub fn quantile(&self, prob : f64) -> f64 {
-        assert!(prob >= 0.0 && prob <= 1.0, "Invalid probability value");
-        let p_ix = ((self.bounds.nrows() as f64) * prob) as usize;
-        //(self.bounds[p_ix] + self.bounds[p_ix - 1]) / 2.
-        self.bounds[p_ix]
-    }
-
-    /// Returns cumulative probability up to the informed value, by starting
-    /// the search over the accumulated bounds at the informed value, and returning
-    /// the number of iterations performed.
-    fn prob_bounded(&self, value : f64, lower_bound : usize) -> (f64, usize) {
-        assert!(value <= self.bounds[self.bounds.nrows() - 1], "Value should be < sample maximum");
-        let diff_ix = self.bounds.rows(lower_bound, self.bounds.nrows() - lower_bound)
-            .iter().position(|b| *b >= value).unwrap();
-        //(self.bounds[b_ix] - self.bounds[0]) / self.full_interval
-        ((lower_bound+diff_ix) as f64 * self.prob_intv, diff_ix)
-    }
-
-    /// Returns cumulative probability up to the informed value, performing a full serch
-    /// over the histogram.
-    fn prob(&self, value : f64, bound : usize) -> f64 {
-        self.prob_bounded(value, 0).0
-    }
-
-    /// Returns (bin right bound, probabilities) pair when the full interval is
-    /// partitioned into nbin intervals.
-    pub fn full(&self, nbins : usize, cumul : bool) -> (DVector<f64>, DVector<f64>) {
-        assert!(nbins > 3);
-        let interval = self.full_interval / nbins as f64;
-        let mut values = DVector::from_iterator(
-            nbins,
-            (1..(nbins+1)).map(|b| self.bounds[0] + (b as f64)*interval )
-        );
-        let mut curr_bound = 0;
-        let cumul_prob = values.map(|v| {
-            let (p,nd) = self.prob_bounded(v, curr_bound);
-            curr_bound += nd;
-            p
-        });
-        //println!("prob: {}", cumul_prob);
-        if cumul {
-            (values, cumul_prob)
-        } else {
-            let mut prob = DVector::zeros(cumul_prob.nrows());
-            prob[0] = cumul_prob[0];
-            for i in 1..prob.nrows() {
-                prob[i] = cumul_prob[i] - cumul_prob[i-1];
-            }
-            (values, prob)
-        }
-    }
-
-    pub fn quartiles(&self) -> (f64, f64) {
-        (self.quantile(0.25), self.quantile(0.75))
-    }
-
-    pub fn subsample(&self, nbins : usize) -> Histogram {
-        let (full, probs) = self.full(nbins, false);
-        let n = full.nrows();
-        let mut sample = Vec::new();
-        for (x, p) in full.iter().zip(probs.iter()) {
-            sample.extend((0..(n as f64 * p) as usize).map(|_| x ));
-        }
-        Self::calculate_from_vec(&DVector::from_vec(sample))
-    }
-
-}
-
-impl fmt::Display for Histogram {
-
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let (fst, last) = self.limits();
-        let (quart_low, quart_high) = self.quartiles();
-        let mean = self.mean();
-        let med = self.median();
-        let var = self.var();
-        write!(
-            f,
-            "Histogram {{ Limits: [{} - {}]; Quartiles: [{} - {}]; Mean: {}; Median: {}; Variance: {} }}",
-            fst,
-            last,
-            quart_low,
-            quart_high,
-            mean,
-            med,
-            var
-        )
-    }
-
-}
-
-pub struct JointCumulative {
-
-}
-
-impl JointCumulative {
-
-}
-
-/// Useful to represent the joint distribution of pairs of non-parametric
-/// posterior parameters and to calculate pair-wise statistics for them, such
-/// as their covariance and correlation. This can be thought of as a nonparametric
-/// counterpart to bayes::prob::MultiNormal of dimensionality 2. Representing distributions
-/// of higher-dimensions non-parametrically becomes computationally infeasible for dimensionality
-/// greater than two, so you must resort to a parametric formulation in this case; or at least
-/// to a mixture. Distributions can be through of as living in the continum of flexibility x tractability:
-/// <-- Flexibility         Tractability -->
-/// Histograms      Mixtures       Parametric (Expoential-family)
-pub struct JointHistogram {
-    comm_domain : DVector<f64>,
-    joint_prob : DMatrix<f64>,
-}
-
-impl JointHistogram {
-
-    pub fn build(a : Histogram, b : Marginal) -> Self {
-        /*let n = b.len();
-        let mut cols = Vec::new();
-        for i in 0..n {
-            cols.push(b[i])
-        }*/
-        //Self{ bottom : a.subsample(n), cols }
-        unimplemented!()
-    }
-
-    pub fn quantile(pa : f64, pb : f64) -> (f64, f64) {
-        /*let qa = self.quantile(pa);
-        let ix = self.comm_domain.position(|b| b >= qa).unwrap();
-        self.cols[ix].quantile(pb);
-        (pa, pb)*/
-        unimplemented!()
-    }
-
-    pub fn prob(pa : f64, pb : f64) -> f64 {
-        /*let x = self.quantile(pa);
-        self.bottom.prob(p) **/
-        unimplemented!()
+        Self { part, bins }
     }
 
 }
 
 /// Pair of marginal histograms.
-pub struct Marginal {
-    bottom : Histogram,
-    right : Histogram
+pub struct MarginalHistogram {
+    bottom : DenseCountHistogram,
+    right : DenseCountHistogram
 }
 
 impl MarginalHistogram {
 
-    pub fn build(a : Histogram, b : Histogram) -> Self {
+    pub fn build(a : DenseCountHistogram, b : DenseCountHistogram) -> Self {
         Self{ bottom : a, right : b}
     }
 
-}*/
-
-#[test]
-fn histogram() {
-    let incr = 1.0;
-    let data : Vec<_> = (0..10).map(|s| s as f64 * incr).collect();
-    // let hist = Histogram::calculate(data.iter());
-    // println!("{}", hist);
-    // println!("{}", hist.subsample(10));
 }
 
-/*/* The most performant implementation JointCumulative would increment all
-(i, j) such that i < y, j < x, so that probability queries would be done
-in constant time */
-#[derive(Debug, Clone)]
-pub struct JointEmpirical<T>
-where
-    T : AddAssign + Add<Output=T> + Clone + Copy + std::fmt::Debug + PartialEq + Eq + PartialOrd + Ord + num_traits::Zero +
-    Div<Output=T> + num_traits::Zero + num_traits::ToPrimitive + std::iter::Sum + 'static
-{
-    vals : Vec<T>,
-    width : usize,
-    height : usize,
-    total : T
-}
-
-#[derive(Debug, Clone, Copy)]
+/*#[derive(Debug, Clone, Copy)]
 pub struct JointMean {
     pub x : f32,
     pub y : f32
+}*/
+
+// A dense histogram defined over a 2D surface.
+// Useful to represent the joint distribution of pairs of non-parametric
+// posterior parameters and to calculate pair-wise statistics for them, such
+// as their covariance and correlation. This can be thought of as a nonparametric
+// counterpart to bayes::prob::MultiNormal of dimensionality 2. Representing distributions
+// of higher-dimensions non-parametrically becomes computationally infeasible for dimensionality
+// greater than two, so you must resort to a parametric formulation in this case; or at least
+// to a mixture.
+/* The most performant implementation JointCumulative would increment all
+(i, j) such that i < y, j < x, so that probability queries would be done
+in constant time */
+/*#[derive(Debug, Clone)]
+pub struct JointHistogram {
+    vals : DMatrix<u32>,
+    px : PartitionInterval,
+    py : PartitionInterval,
 }
 
-impl<T> JointEmpirical<T>
+impl<T> JointHistogram<T>
 where
     T : AddAssign + Add<Output=T> + Clone + Copy + std::fmt::Debug + PartialEq + Eq + PartialOrd + Ord + num_traits::Zero +
     Div<Output=T> + num_traits::Zero + num_traits::ToPrimitive + std::iter::Sum + 'static
@@ -1414,7 +1368,7 @@ where
         self.vals[y*self.width + x].to_f32().unwrap() / self.total.to_f32().unwrap()
     }
 
-    pub fn mean(&self) -> JointMean {
+    /*pub fn mean(&self) -> JointMean {
         let (mut mx, mut my) = (0.0, 0.0);
         for y in 0..self.height {
             for x in 0..self.width {
@@ -1424,7 +1378,7 @@ where
             }
         }
         JointMean { x : mx, y : my }
-    }
+    }*/
 
 }*/
 
@@ -1445,7 +1399,6 @@ impl JointCumulative {
         let w_left = w - w_right;
         let h_below = h - y;
 
-
         // Increment everything to the right of x
         self.vals.slice_mut((0, x), (w_right, h)).add_scalar_mut(by);
 
@@ -1455,4 +1408,376 @@ impl JointCumulative {
 
 }
 
+// https://en.wikipedia.org/wiki/Interpolation
+pub trait Interpolator {
+
+}
+
+pub struct NearestInterpolator {
+    // Set value = closest value. This generate step-like
+    // functions
+}
+
+pub struct LinearInterpolator {
+    // y == ya + (yb - ya) * ((x - xa) / (xb - xa))
+}
+
+// Generalizes the linear interpolator, and builds the full
+// polynomial of degree=# points that interpolates the values.
+// Might be costly for many points.
+pub struct PolynomialInterpolator {
+
+}
+
+// Based on https://elonen.iki.fi/code/tpsdemo/index.html
+pub struct SplineInterpolator {
+    a : Vector3<f64>,
+    domain : DMatrix<f64>,
+    w : DVector<f64>,
+    metrics : DVector<f64>
+}
+
+fn spline_rbf(r : f64) -> f64 {
+    if r > 0.0 { r.powf(2.) * r.ln() } else { 0.0 }
+}
+
+impl SplineInterpolator {
+
+    // Interpolate (x, y) into f(x, y)
+    pub fn interpolate(&mut self, x : f64, y : f64) -> f64 {
+        let v = Vector2::new(x, y);
+        let l1 = LpNorm(1);
+        for i in 0..self.w.len() {
+            self.metrics[i] = spline_rbf(self.domain.column(i).apply_metric_distance(&v, &l1));
+        }
+        Vector3::new(1.0, x, y).dot(&self.a) + self.w.dot(&self.metrics)
+    }
+
+    // Lambda 0.0 = perfect interpolation, up to 1.0
+    pub fn new(xs : &[f64], ys  : &[f64], zs : &[f64], lambda : f64) -> Option<Self> {
+        let n = xs.len();
+
+        let mut domain = DMatrix::zeros(2, n);
+        for i in 0..n {
+            domain[(0, i)] = xs[i];
+            domain[(1, i)] = ys[i];
+        }
+
+        let mut pts_mat = DMatrix::from_element(n, 3, 1.0);
+        pts_mat.column_mut(1).copy_from_slice(xs);
+
+        // pts_mat.column_mut(2).copy_from_slice(ys);
+        for i in 0..n {
+            // Unless this noise is added, the matrix L will not be of full rank.
+            if xs[i] == ys[i]  {
+                pts_mat[(i, 2)] = ys[i] + rand::random::<f64>()*1e-10;
+            } else {
+                pts_mat[(i, 2)] = ys[i];
+            }
+        }
+
+        // TODO calculate only upper part
+        let mut metric_diffs = DMatrix::zeros(n, n);
+        let l1 = LpNorm(1);
+        for i in 0..n {
+            for j in 0..n {
+                metric_diffs[(i,j)] = domain.column(i).apply_metric_distance(&domain.column(j), &l1);
+                // metric_diffs[(i,j)] = (domain.column(i).clone_owned() - &domain.column(j)).abs().sum();
+            }
+        }
+
+        // Mean distances between control points xy's projections
+        let alpha = metric_diffs.sum() / (n as f64).powf(2.);
+
+        let mut L = DMatrix::zeros(n + 3, n + 3);
+        let I_lambda = DMatrix::<f64>::identity(n, n).scale(lambda);
+
+        // TODO calculate only upper part
+        for i in 0..n {
+            for j in 0..n {
+
+                // TODO only needs to be added to L(i,j) on diagonal
+                let s : f64 = I_lambda[(i,j)]*alpha.powf(2.);
+
+                L[(i,j)] = spline_rbf(metric_diffs[(i,j)]) + s;
+            }
+        }
+        L.slice_mut((0, n), (n, 3)).copy_from(&pts_mat);
+        L.slice_mut((n, 0), (3, n)).tr_copy_from(&pts_mat);
+
+        let mut b = DVector::zeros(n+3);
+        b.rows_mut(0, n).copy_from_slice(&zs);
+        //println!("{:.2}", L);
+        //println!("{:.2}", b);
+        //println!("Det(L) = {:.4}", L.determinant());
+        //println!("rank(L) = {}", L.rank(0.01));
+        assert!(L.nrows() == b.nrows());
+        let x = LU::new(L).solve(&b)?;
+        // println!("Solve ok");
+        let nx = x.len();
+        Some(Self {
+            metrics : DVector::zeros(n),
+            w : x.rows(0, n).clone_owned(),
+            a : Vector3::new(x[nx-3], x[nx-2], x[nx-1]),
+            domain
+        })
+    }
+
+}
+// Uses a weighted combination of function values, with weights
+// proportional to the distances to all points in the set (then
+// divide result by weight sum). Might work well for closely
+// packed points, but the interpolated value decays to zero
+// at large intervals and at extrapolation. Alternatively,
+// uses only the closest points within a sphere around the
+// desired value.
+// https://en.wikipedia.org/wiki/Inverse_distance_weighting
+pub struct InvDistInterpolator {
+
+}
+
+impl Interpolator for BilinearInterpolator { }
+
+use nalgebra::Matrix4;
+
+// https://en.wikipedia.org/wiki/Bilinear_interpolation
+#[derive(Debug, Clone)]
+pub struct BilinearInterpolator {
+    xs : Vec<f64>,
+    ys : Vec<f64>,
+    zs : Vec<f64>
+}
+
+impl BilinearInterpolator {
+
+    // Important: xs and ys are assumed sorted.
+    pub fn new(xs : &[f64], ys : &[f64], zs : &[f64]) -> Self {
+        Self {
+            xs : xs.to_vec(),
+            ys : ys.to_vec(),
+            zs : zs.to_vec()
+        }
+    }
+
+    /*// This is for the regular grid case. To generalize to
+    // arbitrarily positioned 4 points (trapezoid), see
+    // https://math.stackexchange.com/questions/828392/spatial-interpolation-for-irregular-grid
+    pub fn eval(&self, x_val : f64, y_val : f64) -> f64 {
+
+        let ix_x = self.xs.partition_point(|x| x < x_val );
+        let ix_y = self.ys.partition_point(|y| y < y_val );
+
+        // In a equally-spaced grid, the partition points xs < x, xs > x
+        // and ys < x, ys > x WILL be the four closest points, and they
+        // will delimit the shaded region that contains the test point
+        // but not any point in the original set. This is not the case
+        // for irregularly-sampled data.
+        let pts = [
+            (self.xs[ix_x], self.ys[ix_x]);
+            (self.xs[ix_x+1], self.ys[ix_x+1]);
+            (self.xs[ix_y], self.ys[ix_y]);
+            (self.xs[ix_y+1], self.ys[ix_y+1])
+        ];
+
+        let mut a = Matrix4::ones();
+        for i in 0..4 {
+            a[(i, 1)] = pts[i].0;
+            a[(i, 2)] = pts[i].1;
+            a[(i, 3)] = pts[i].0 * pts[i].1;
+        }
+        let b = DVector::from_vec(zs.to_vec());
+        let coefs = a.solve(b);
+        coefs * Vector4::new(1.0, x_val, y_val, x_val*y_val)
+    }*/
+
+}
+
+// cargo test --lib -- mvinterp --nocapture
+#[test]
+fn mvinterp() {
+    use statrs::distribution::*;
+    let n = Normal::new(0.0, 1.0).unwrap();
+    let domain : Vec<_> = (0..10).map(|x| -3.0 + (x as f64 / 10.0)*6.0 ).collect();
+    let domain_r : Vec<_> = (0..10).map(|x| domain[x] + rand::random::<f64>()*0.0001 ).collect();
+    let height : Vec<_> = domain.iter().map(|x| n.pdf(*x) ).collect();
+
+    let mut inter = SplineInterpolator::new(&domain, &domain, &height, 0.1).unwrap();
+    let mut out_x = Vec::new();
+    let mut out_y = Vec::new();
+    let mut out_z = Vec::new();
+    for i in 0..100 {
+        let x = -3.0 + (i as f64 / 100.0)*6.0;
+        out_x.push(x);
+        out_y.push(x);
+        out_z.push(inter.interpolate(x, x));
+    }
+    // crate::save!("/home/diego/Downloads/interp.json", out_x, out_y, out_z);
+    // let mut inter = polyspline::PolyharmonicSpline::new_surface(2, &domain, &domain_r, &height, None);
+}
+
+// Translated from the original Julia code by
+// https://gist.github.com/lstagner/04a05b120e0be7de9915
+// Licensed under MIT.
+mod polyspline {
+
+    use nalgebra::{DVector, DMatrix};
+    use std::ops::AddAssign;
+
+    pub struct PolyharmonicSpline {
+        dim : usize,
+        order : u32,
+        coeff : DVector<f64>,
+        centers : DMatrix<f64>,
+        error : f64
+    }
+
+    impl PolyharmonicSpline {
+
+        /* Return function values at the given points. */
+        fn interpolate_generic(
+            &self,
+            x : &DMatrix<f64>
+        ) -> DVector<f64> {
+            let (m, n) = x.shape();
+            assert!(n == self.dim);
+            let mut interpolates = DVector::zeros(m);
+            for i in 0..m {
+                let mut tmp = 0.0;
+                let l = self.coeff.nrows() - (n+1);
+                for j in 0..l {
+                    let norm = x.row(i).metric_distance(&self.centers.row(j));
+                    tmp += self.coeff[j]*polyharmonic_k(norm, self.order);
+                }
+
+                tmp += self.coeff[l];
+                for j in 1..(n+1) {
+                    tmp += self.coeff[l+j]*x[(i, j-1)];
+                }
+                interpolates[i] = tmp;
+            }
+            interpolates
+        }
+
+        // Eval interp points at x
+        pub fn interpolate_curve(&self, x : &[f64]) -> DVector<f64> {
+            let mut dm = DMatrix::zeros(x.len(), 1);
+            dm.column_mut(0).copy_from_slice(x);
+            self.interpolate_generic(&dm)
+        }
+
+        // Eval interp points at domain (x,y)
+        pub fn interpolate_surface(&self, x : &[f64], y : &[f64]) -> DVector<f64> {
+            let mut dm = DMatrix::zeros(x.len(), 2);
+            dm.column_mut(0).copy_from_slice(x);
+            dm.column_mut(1).copy_from_slice(x);
+            self.interpolate_generic(&dm)
+        }
+
+        pub fn new_curve(
+            k : u32,
+            xs : &[f64],
+            ys : &[f64],
+            s : Option<f32>
+        ) -> Self {
+            Self::new_generic(
+                k,
+                DMatrix::from_vec(xs.len(), 1, xs.to_vec()),
+                DMatrix::from_vec(ys.len(), 1, ys.to_vec()),
+                s
+            )
+        }
+
+        pub fn new_surface(
+            k : u32,
+            xs : &[f64],
+            ys : &[f64],
+            zs : &[f64],
+            s : Option<f32>
+        ) -> Self {
+            let mut centers = DMatrix::zeros(xs.len(), 2);
+            centers.column_mut(0).copy_from_slice(xs);
+            centers.column_mut(1).copy_from_slice(ys);
+            Self::new_generic(k, centers, DMatrix::from_vec(zs.len(), 1, zs.to_vec()), s)
+        }
+
+        // For 2D domain:
+        // Centers is nx2 domain points,
+        // values is nx1 (z, fn eval dimension)
+        // For 1D domain:
+        // Centers is nx1 domain points
+        // values is nx1 eval dimension.
+        // K is the RBF order >= 1.
+        pub fn new_generic(
+            k : u32,
+            centers : DMatrix<f64>,
+            values : DMatrix<f64>,
+            s : Option<f32>
+        ) -> Self {
+            let s = s.unwrap_or(0.0);
+            let (m, n) = centers.shape();
+            assert!(m == values.nrows());
+            let mut M = DMatrix::zeros(m, m);
+            let mut N = DMatrix::zeros(m, n+1);
+
+            for i in 0..m {
+                let nc = N.ncols();
+                N[(i,0)] = 1.0;
+                N.row_mut(i).columns_mut(1, nc-1).copy_from(&centers.row(i));
+                for j in 0..m {
+                    let norm = centers.row(i).metric_distance(&centers.row(j));
+                    M[(i,j)] = polyharmonic_k(norm, k);
+                }
+            }
+
+            let S = DMatrix::identity(m, m).scale(s as f64);
+            M.add_assign(&S);
+
+            let Nt = N.transpose();
+
+            let mut L = DMatrix::zeros(M.nrows() + Nt.nrows(), M.ncols() + N.ncols());
+            L.slice_mut((0,0), M.shape()).copy_from(&M);
+            L.slice_mut((0, M.ncols()), N.shape()).copy_from(&N);
+            L.slice_mut((M.nrows(), 0), Nt.shape()).copy_from(&Nt);
+
+            // TODO stuck here..
+            println!("Calculating pinv");
+            let L_pinv = L.pseudo_inverse(0.1).unwrap();
+            println!("Pinv calculated");
+
+            let mut y = DVector::zeros(values.nrows() + n + 1);
+            y.rows_mut(0, values.nrows()).copy_from(&values);
+            let w = L_pinv * y;
+
+            let mut ivalues = DVector::zeros(m);
+            for i in 0..m {
+                let mut tmp = 0.0;
+                for j in 0..m {
+                    let norm = centers.row(i).metric_distance(&centers.row(j));
+                    tmp += w[j] * polyharmonic_k(norm, k);
+                }
+                tmp += w[m+1];
+                for j in 1..(n+1) {
+                    tmp += w[m+j]*centers[(i, j-1)];
+                }
+                ivalues[i] += tmp;
+            }
+            let error = values.metric_distance(&ivalues);
+            Self { dim : n, order : k, coeff : w, centers, error }
+        }
+
+    }
+
+    /* The RBF phi(r) = r^k for k odd; r^k*ln(r) for k even.
+    where r is the euclidian metric between data point x
+    and center c. */
+    fn polyharmonic_k(r : f64, k : u32) -> f64 {
+        assert!(k >= 1);
+        if k % 2 == 0 {
+            r.powf(k as f64) * r.ln()
+        } else {
+            r.powf(k as f64)
+        }
+    }
+
+}
 
